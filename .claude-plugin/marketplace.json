@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "rexia-scribe",
+  "description": "Scribe: sessões e decisões do Claude Code na sua área de trabalho.",
+  "owner": { "name": "RexIA", "url": "https://rexia.com.br" },
+  "plugins": [
+    {
+      "name": "scribe",
+      "source": "./plugins/scribe",
+      "description": "Acompanha sessões e encaminha decisões para o app local Scribe.",
+      "category": "productivity",
+      "tags": ["local", "sessions", "permissions"]
+    }
+  ]
+}

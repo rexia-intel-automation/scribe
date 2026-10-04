@@ -7,6 +7,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 ### Adicionado
 
 - Aprovação independente da Fase 0 na rodada 5; preparo nativo Windows verificado.
+- Marketplace e plugin Scribe com onze hooks, MCP local, skill de contexto e
+  comando; manifestos passaram na validação estrita.
+- Cliente observador Rust com HTTP mantido, sem proxy/redirect; teste do
+  executável de release para todos os eventos e falhas; instalação local pelo CLI.
 - Instrumentação da Fase 0 para coletar hooks reais com autenticação e anonimização.
 - Verificador que falha quando faltam duas capturas por evento obrigatório.
 - Testes de redação e configuração; roteiro de coleta e falha segura.
