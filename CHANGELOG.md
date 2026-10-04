@@ -7,6 +7,8 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 ### Adicionado
 
 - Aprovação independente da Fase 0 na rodada 5; preparo nativo Windows verificado.
+- Aprovação independente da Fase 1 na rodada 3; esqueleto instalável, dezoito
+  testes Node, um Rust e CI verde em três plataformas com auditoria.
 - Marketplace e plugin Scribe com onze hooks, MCP local, skill de contexto e
   comando; manifestos passaram na validação estrita.
 - Cliente observador Rust com HTTP mantido, sem proxy/redirect; teste do

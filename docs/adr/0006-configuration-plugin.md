@@ -1,7 +1,7 @@
 # ADR 0006 — configuração do plugin
 
 - Data: 2026-10-04.
-- Estado: implementado; revisão da Fase 1 pendente.
+- Estado: implementado e aprovado na rodada 3 da Fase 1.
 
 ## Contexto
 

@@ -1,6 +1,7 @@
 # Fase 1 — plugin instalável
 
-Estado: em implementação, revisão ainda pendente. A Fase 0 passou na rodada 5.
+Estado: aprovada na rodada 3, A9 B8 C8 D8 E8 F8 J8 K8.
+A Fase 0 passou na rodada 5. Aprovação restrita ao esqueleto instalável.
 
 ## Entregas
 
@@ -48,7 +49,8 @@ espaços, input excessivo/malformado e stdin que não encerra. Nenhuma saída
 
 [O repositório público](https://github.com/rexia-intel-automation/scribe) e
 [o PR em rascunho](https://github.com/rexia-intel-automation/scribe/pull/1)
-existem. CI passou nas três plataformas para c9af439. O site e a release do app
+existem. CI passou nas três plataformas para d94398d, incluindo auditoria.
+O site e a release do app
 ainda não estão disponíveis. FR-04 com app real, decisões e builds de
 macOS/Linux aguardam as fases correspondentes; permanecem no plano v0.1.
 
@@ -61,7 +63,8 @@ do CLI deixava o timer de 90 s ativo. O timer agora é liberado em finally;
 uma regressão do run original cobre executável ausente, saída e timeout.
 Reprodução real com CLI ausente terminou com código 1 em 136 ms, salvando
 resultado de falha e sem erros de limpeza. A porta padrão voltou a 7717,
-conforme §5.4 do PRD. Esses ajustes aguardam a rodada 3 independente.
+conforme §5.4 do PRD. A rodada 3 confirmou as correções e aprovou a catraca,
+com quinze tentativas documentadas e nenhum achado novo demonstrável.
 Dezoito testes Node passaram após as correções. cargo-audit 0.22.2 terminou
 com código zero e warnings tratados como erro: 31 pacotes, 1290 avisos da base
 consultados. Evidência: dependency-audit-phase-1.json. Isso não audita o app

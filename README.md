@@ -4,8 +4,8 @@ Local desktop companion for Claude Code sessions and human decisions.
 
 [Português brasileiro](README.pt-BR.md)
 
-**Development status:** Phase 0 approved; Phase 1 plugin and native observer
-under review. No desktop release is available yet. The native client currently
+**Development status:** Phases 0 and 1 approved; local server implementation
+is next. No desktop release is available yet. The native client currently
 observes events only; permission decisions are not implemented.
 
 The repository is the `rexia-scribe` marketplace. The configuration-only plugin
