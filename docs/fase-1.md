@@ -19,6 +19,7 @@ cargo test --manifest-path app/hook-client/Cargo.toml --locked
 cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
 node --test scripts/verification/*.test.mjs
 node scripts/verification/plugin-install.mjs --installation-only
+cargo audit --file app/hook-client/Cargo.lock --deny warnings
 ```
 
 O teste registra marketplace e instala o plugin no escopo local de um workspace
@@ -55,3 +56,7 @@ A rodada 1 reprovou C7/E7/K7 por ausência de auditoria/Dependabot e falha na
 limpeza do teste. As três correções incluem CI cargo audit, Dependabot cargo e
 actions, tentativas de limpeza independentes com erros registrados e regressão
 do finally original. A nova rodada deverá conferir o commit corrigido e seu CI.
+Dezessete testes Node passaram após as correções. cargo-audit 0.22.2 terminou
+com código zero e warnings tratados como erro: 31 pacotes, 1290 avisos da base
+consultados. Evidência: dependency-audit-phase-1.json. Isso não audita o app
+futuro, que ainda não existe.
