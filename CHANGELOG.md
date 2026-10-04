@@ -17,6 +17,8 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Auditoria cargo no CI e Dependabot para crates/actions; limpeza do teste de
+  instalação prossegue e registra falhas mesmo quando o CLI de remoção falha.
 - O coletor não produz decisões de permissão nem modifica configurações do usuário.
 - Correções após revisão independente: redação em nomes de arquivo, variáveis
   inline, valores entre aspas e IDs; rejeição de Origin vazio.

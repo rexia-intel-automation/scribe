@@ -45,6 +45,13 @@ espaços, input excessivo/malformado e stdin que não encerra. Nenhuma saída
    fornecido pelo app; nunca colocar token na linha de comando.
 5. Abrir uma sessão nova e usar `/scribe` (`/scribe:scribe` se houver colisão).
 
-O repositório/site ainda não foram publicados. Não apresentar esses passos
-como instalação disponível hoje. FR-04 com app real, decisões e builds de
+[O repositório público](https://github.com/rexia-intel-automation/scribe) e
+[o PR em rascunho](https://github.com/rexia-intel-automation/scribe/pull/1)
+existem. CI passou nas três plataformas para c9af439. O site e a release do app
+ainda não estão disponíveis. FR-04 com app real, decisões e builds de
 macOS/Linux aguardam as fases correspondentes; permanecem no plano v0.1.
+
+A rodada 1 reprovou C7/E7/K7 por ausência de auditoria/Dependabot e falha na
+limpeza do teste. As três correções incluem CI cargo audit, Dependabot cargo e
+actions, tentativas de limpeza independentes com erros registrados e regressão
+do finally original. A nova rodada deverá conferir o commit corrigido e seu CI.

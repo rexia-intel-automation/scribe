@@ -77,6 +77,7 @@ async function run(label, args, stdin = '') {
   const child = spawn('claude', args, { cwd: workspace, windowsHide: true,
     env: { ...process.env, SCRIBE_CONNECTION_FILE: connectionFile, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' },
     stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdin.on('error', () => {});
   child.stdin.end(stdin);
   let stdout = '', stderr = '';
   child.stdout.on('data', chunk => { stdout += chunk; });
@@ -110,7 +111,7 @@ async function run(label, args, stdin = '') {
   return stdout;
 }
 
-let registered = false, installed = false, passed = false, installationPassed = false;
+let registered = false, installed = false, passed = false, installationPassed = false, executionFailed = false;
 try {
   const existing = JSON.parse(await run('marketplace inventory', ['plugin', 'marketplace', 'list', '--json']));
   if (JSON.stringify(existing).includes('rexia-scribe')) throw new Error('Selected marketplace already registered; preserve it');
@@ -146,15 +147,28 @@ try {
     ['scribe_report', 'scribe_ask'].every(name => tools.some(call => call.name === name && call.sessionMatchesHook)) && commandHasInstallLink;
   cli.at(-1).commandHasInstallLink = commandHasInstallLink;
   }
+} catch {
+  passed = false;
+  executionFailed = true;
 } finally {
-  if (installed) await run('uninstall probe plugin', ['plugin', 'uninstall', 'scribe@rexia-scribe', '--scope', 'local', '--json']);
-  if (registered) await run('remove probe marketplace', ['plugin', 'marketplace', 'remove', 'rexia-scribe', '--scope', 'local', '--json']);
-  server.closeAllConnections();
-  await new Promise(ok => server.close(ok));
-  await writeFile(join(root, 'result.json'), JSON.stringify({ runId, passed, installationPassed,
+  const cleanupErrors = [];
+  async function attempt(label, effect) {
+    try { await effect(); } catch { cleanupErrors.push(label); passed = false; }
+  }
+  if (installed) await attempt('uninstall probe plugin', () => run('uninstall probe plugin',
+    ['plugin', 'uninstall', 'scribe@rexia-scribe', '--scope', 'local', '--json']));
+  if (registered) await attempt('remove probe marketplace', () => run('remove probe marketplace',
+    ['plugin', 'marketplace', 'remove', 'rexia-scribe', '--scope', 'local', '--json']));
+  await attempt('close local server', async () => {
+    server.closeAllConnections();
+    if (server.listening) await new Promise(ok => server.close(ok));
+  });
+  await attempt('save result', () => writeFile(join(root, 'result.json'), JSON.stringify({
+    runId, passed, installationPassed, executionFailed, cleanupErrors,
     modelChecksRun: !process.argv.includes('--installation-only'), cli, events, calls,
     limitations: ['Native client is an observer at Phase 1; decisions belong to Phase 4.',
-      'Server is a local protocol probe, not the production app.', 'No GUI launch or cross-platform installer is claimed.'] }, null, 2) + '\n');
+      'Server is a local protocol probe, not the production app.', 'No GUI launch or cross-platform installer is claimed.'] }, null, 2) + '\n'));
+  if (cleanupErrors.length) process.exitCode = 1;
 }
 console.log(JSON.stringify({ runId, passed, installationPassed, cli: cli.map(({ label, code }) => ({ label, code })), events, calls }));
 if (!passed) process.exitCode = 1;

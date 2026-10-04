@@ -8,6 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  dependency-audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+      - run: cargo install cargo-audit --locked --version 0.22.2
+      - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
   native-and-plugin:
     strategy:
       fail-fast: false
