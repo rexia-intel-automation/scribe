@@ -20,7 +20,7 @@
       "type": "number",
       "title": "Porta local",
       "description": "Porta exibida pelo app Scribe. O host é sempre 127.0.0.1.",
-      "default": 21517,
+      "default": 7717,
       "min": 1024,
       "max": 65535
     },

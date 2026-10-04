@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 test('original installer cleanup tries each official removal, closes server and saves failures independently', async () => {
   const source = await readFile(new URL('./plugin-install.mjs', import.meta.url), 'utf8');
-  const body = source.match(/\} finally \{([\s\S]+?)\n\}\nconsole\.log/)[1];
+  const body = source.match(/\} finally \{(\n  const cleanupErrors = \[\];[\s\S]+?)\n\}\nconsole\.log/)[1];
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const cleanup = new AsyncFunction('installed', 'registered', 'run', 'server', 'writeFile',
     'join', 'root', 'runId', 'passed', 'installationPassed', 'executionFailed',

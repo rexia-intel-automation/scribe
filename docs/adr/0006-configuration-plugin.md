@@ -11,7 +11,7 @@ app, sem Node, shell ou token nos argumentos. O MCP requer porta e token locais.
 ## Decisão
 
 userConfig declara client_path (file obrigatório), port (1024–65535, padrão
-21517) e token (string sensível). Hooks em exec form substituem client_path
+7717, conforme o PRD) e token (string sensível). Hooks em exec form substituem client_path
 diretamente em command; args contém apenas --hook e o evento. MCP usa URL com
 127.0.0.1 fixo e token em header. O app orientará/configurará pelo CLI oficial;
 não escreverá settings.json diretamente. Tokens passam por stdin em

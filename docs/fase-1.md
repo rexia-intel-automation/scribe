@@ -55,8 +55,14 @@ macOS/Linux aguardam as fases correspondentes; permanecem no plano v0.1.
 A rodada 1 reprovou C7/E7/K7 por ausência de auditoria/Dependabot e falha na
 limpeza do teste. As três correções incluem CI cargo audit, Dependabot cargo e
 actions, tentativas de limpeza independentes com erros registrados e regressão
-do finally original. A nova rodada deverá conferir o commit corrigido e seu CI.
-Dezessete testes Node passaram após as correções. cargo-audit 0.22.2 terminou
+do finally original. A rodada 2 confirmou esses ajustes e o CI do commit
+87904647 nas três plataformas, mas encontrou outro caminho: erro de spawn
+do CLI deixava o timer de 90 s ativo. O timer agora é liberado em finally;
+uma regressão do run original cobre executável ausente, saída e timeout.
+Reprodução real com CLI ausente terminou com código 1 em 136 ms, salvando
+resultado de falha e sem erros de limpeza. A porta padrão voltou a 7717,
+conforme §5.4 do PRD. Esses ajustes aguardam a rodada 3 independente.
+Dezoito testes Node passaram após as correções. cargo-audit 0.22.2 terminou
 com código zero e warnings tratados como erro: 31 pacotes, 1290 avisos da base
 consultados. Evidência: dependency-audit-phase-1.json. Isso não audita o app
 futuro, que ainda não existe.

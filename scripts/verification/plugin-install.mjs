@@ -83,8 +83,12 @@ async function run(label, args, stdin = '') {
   child.stdout.on('data', chunk => { stdout += chunk; });
   child.stderr.on('data', chunk => { stderr += chunk; });
   const timer = setTimeout(() => child.kill(), 90000);
-  const code = await new Promise((ok, fail) => { child.once('error', fail); child.once('close', ok); });
-  clearTimeout(timer);
+  let code;
+  try {
+    code = await new Promise((ok, fail) => { child.once('error', fail); child.once('close', ok); });
+  } finally {
+    clearTimeout(timer);
+  }
   const signals = ['not configured', 'not found', 'missing', 'required', 'trusted', 'not installed',
     'Unknown', 'Warning', 'Error', 'userConfig', 'client_path', 'token', 'port', 'configuration',
     'plugin', 'marketplace', 'scribe', 'settings.local.json', 'scope', 'local',
