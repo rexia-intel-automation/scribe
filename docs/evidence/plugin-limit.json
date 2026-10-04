@@ -1,0 +1,155 @@
+{
+  "runId": "plugin-1791154832629",
+  "passed": false,
+  "cli": [
+    {
+      "label": "marketplace inventory",
+      "code": 0,
+      "elapsedMs": 355,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "plugin",
+        "marketplace"
+      ]
+    },
+    {
+      "label": "add local marketplace",
+      "code": 0,
+      "elapsedMs": 803,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "marketplace",
+        "scribe",
+        "local"
+      ]
+    },
+    {
+      "label": "install local plugin",
+      "code": 0,
+      "elapsedMs": 771,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "required",
+        "userConfig",
+        "plugin",
+        "scribe",
+        "scope",
+        "local"
+      ]
+    },
+    {
+      "label": "configure through stdin",
+      "code": 0,
+      "elapsedMs": 566,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "installed lifecycle",
+      "code": 0,
+      "elapsedMs": 824,
+      "stdout": "",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "automatic MCP + production skill",
+      "code": 1,
+      "elapsedMs": 1643,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "required",
+        "token",
+        "port",
+        "plugin",
+        "scribe",
+        "budget"
+      ],
+      "result": {
+        "subtype": "success",
+        "totalCostUsd": 0,
+        "isError": true,
+        "errorSignals": [
+          "limit",
+          "hit",
+          "reset"
+        ]
+      }
+    },
+    {
+      "label": "uninstall probe plugin",
+      "code": 0,
+      "elapsedMs": 650,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "plugin",
+        "scribe",
+        "scope",
+        "local"
+      ]
+    },
+    {
+      "label": "remove probe marketplace",
+      "code": 0,
+      "elapsedMs": 404,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "marketplace",
+        "scribe",
+        "local"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event": "SessionStart",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "authenticated": true
+    },
+    {
+      "event": "SessionStart",
+      "authenticated": true
+    },
+    {
+      "event": "UserPromptSubmit",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "authenticated": true
+    }
+  ],
+  "calls": [
+    {
+      "method": "server/discover",
+      "authenticated": true
+    },
+    {
+      "method": "initialize",
+      "authenticated": true
+    },
+    {
+      "method": "notifications/initialized",
+      "authenticated": true
+    },
+    {
+      "method": "tools/list",
+      "authenticated": true
+    }
+  ],
+  "limitations": [
+    "Native client is an observer at Phase 1; decisions belong to Phase 4.",
+    "Server is a local protocol probe, not the production app.",
+    "No GUI launch or cross-platform installer is claimed."
+  ]
+}

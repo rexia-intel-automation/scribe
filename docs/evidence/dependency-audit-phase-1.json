@@ -1,0 +1,11 @@
+{
+  "tool": "cargo-audit",
+  "version": "0.22.2",
+  "date": "2026-10-04",
+  "command": ["cargo", "audit", "--file", "app/hook-client/Cargo.lock", "--deny", "warnings"],
+  "exitCode": 0,
+  "advisoriesLoaded": 1290,
+  "packagesScanned": 31,
+  "source": "https://github.com/RustSec/advisory-db.git",
+  "scope": "Native observer lockfile only; not the future app or frontend"
+}

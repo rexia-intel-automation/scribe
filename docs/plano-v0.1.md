@@ -64,5 +64,7 @@ Os relatórios anteriores permanecem preservados.
 A Fase 0 foi aprovada na rodada 5: A9 B8 C8 D8 F8 J8. Quatorze testes passaram,
 46 fixtures são rastreáveis e o achado baixo R1 está registrado no relatório.
 Build Tools foi instalado; observador Rust compilou e passou seis cenários,
-com os limites descritos no ADR 0005. A Fase 1 começou. O app de produção
-ainda não existe e nenhuma versão está publicada.
+com os limites descritos no ADR 0005. A Fase 1 foi aprovada na rodada 3:
+A9 B8 C8 D8 E8 F8 J8 K8. Dezoito testes Node e um Rust passaram; CI verde
+em três plataformas e auditoria de dependências. O próximo passo é a Fase 2.
+O app de produção ainda não existe e nenhuma versão está publicada.

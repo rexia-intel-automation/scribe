@@ -1,0 +1,16 @@
+{
+  "runId": "plugin-1791156591303",
+  "passed": false,
+  "installationPassed": false,
+  "executionFailed": true,
+  "cleanupErrors": [],
+  "modelChecksRun": false,
+  "cli": [],
+  "events": [],
+  "calls": [],
+  "limitations": [
+    "Native client is an observer at Phase 1; decisions belong to Phase 4.",
+    "Server is a local protocol probe, not the production app.",
+    "No GUI launch or cross-platform installer is claimed."
+  ]
+}

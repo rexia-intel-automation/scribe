@@ -1,0 +1,151 @@
+{
+  "runId": "plugin-1791154606463",
+  "passed": false,
+  "cli": [
+    {
+      "label": "marketplace inventory",
+      "code": 0,
+      "elapsedMs": 341,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "add local marketplace",
+      "code": 0,
+      "elapsedMs": 678,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "install local plugin",
+      "code": 0,
+      "elapsedMs": 789,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "configure through stdin",
+      "code": 0,
+      "elapsedMs": 642,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "installed lifecycle",
+      "code": 0,
+      "elapsedMs": 890,
+      "stdout": "",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "automatic MCP + production skill",
+      "code": 1,
+      "elapsedMs": 10963,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "uninstall probe plugin",
+      "code": 0,
+      "elapsedMs": 1032,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "remove probe marketplace",
+      "code": 0,
+      "elapsedMs": 516,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    }
+  ],
+  "events": [
+    {
+      "event": "SessionStart",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "authenticated": true
+    },
+    {
+      "event": "SessionStart",
+      "authenticated": true
+    },
+    {
+      "event": "UserPromptSubmit",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "authenticated": true
+    },
+    {
+      "event": "PostToolUse",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "authenticated": true
+    }
+  ],
+  "calls": [
+    {
+      "method": "server/discover",
+      "authenticated": true
+    },
+    {
+      "method": "initialize",
+      "authenticated": true
+    },
+    {
+      "method": "notifications/initialized",
+      "authenticated": true
+    },
+    {
+      "method": "tools/list",
+      "authenticated": true
+    },
+    {
+      "method": "tools/call",
+      "authenticated": true,
+      "name": "scribe_report",
+      "sessionMatchesHook": true
+    },
+    {
+      "method": "server/discover",
+      "authenticated": true
+    },
+    {
+      "method": "initialize",
+      "authenticated": true
+    },
+    {
+      "method": "notifications/initialized",
+      "authenticated": true
+    },
+    {
+      "method": "tools/call",
+      "authenticated": true,
+      "name": "scribe_report",
+      "sessionMatchesHook": true
+    }
+  ],
+  "limitations": [
+    "Native client is an observer at Phase 1; decisions belong to Phase 4.",
+    "Server is a local protocol probe, not the production app.",
+    "No GUI launch or cross-platform installer is claimed."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "scribe": {
+      "type": "http",
+      "url": "http://127.0.0.1:${user_config.port}/mcp",
+      "timeout": 610000,
+      "headers": { "Authorization": "Bearer ${user_config.token}" }
+    }
+  }
+}

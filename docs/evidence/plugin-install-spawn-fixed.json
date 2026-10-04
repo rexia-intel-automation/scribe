@@ -1,0 +1,105 @@
+{
+  "runId": "plugin-1791156637044",
+  "passed": true,
+  "installationPassed": true,
+  "executionFailed": false,
+  "cleanupErrors": [],
+  "modelChecksRun": false,
+  "cli": [
+    {
+      "label": "marketplace inventory",
+      "code": 0,
+      "elapsedMs": 345,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "plugin",
+        "marketplace"
+      ]
+    },
+    {
+      "label": "add local marketplace",
+      "code": 0,
+      "elapsedMs": 728,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "marketplace",
+        "scribe",
+        "local"
+      ]
+    },
+    {
+      "label": "install local plugin",
+      "code": 0,
+      "elapsedMs": 1057,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "required",
+        "userConfig",
+        "plugin",
+        "scribe",
+        "scope",
+        "local"
+      ]
+    },
+    {
+      "label": "configure through stdin",
+      "code": 0,
+      "elapsedMs": 859,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "installed lifecycle",
+      "code": 0,
+      "elapsedMs": 1253,
+      "stdout": "",
+      "stderr": "",
+      "signals": []
+    },
+    {
+      "label": "uninstall probe plugin",
+      "code": 0,
+      "elapsedMs": 869,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "plugin",
+        "scribe",
+        "scope",
+        "local"
+      ]
+    },
+    {
+      "label": "remove probe marketplace",
+      "code": 0,
+      "elapsedMs": 512,
+      "stdout": "[content omitted]",
+      "stderr": "",
+      "signals": [
+        "marketplace",
+        "scribe",
+        "local"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event": "SessionStart",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "authenticated": true
+    }
+  ],
+  "calls": [],
+  "limitations": [
+    "Native client is an observer at Phase 1; decisions belong to Phase 4.",
+    "Server is a local protocol probe, not the production app.",
+    "No GUI launch or cross-platform installer is claimed."
+  ]
+}
