@@ -1,0 +1,21 @@
+{
+  "session_id": "session_id-840318512fbd",
+  "transcript_path": "/anonymous/path-1d37c4a6eda8/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7a118b3b7c19",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "[content omitted]",
+    "prompt": "[content omitted]",
+    "subagent_type": "Explore",
+    "run_in_background": false
+  },
+  "tool_response": "[content omitted]",
+  "tool_use_id": "tool_use_id-6973b174be43",
+  "duration_ms": 4643
+}

@@ -1,0 +1,29 @@
+# Changelog
+
+Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
+
+## [Não lançado]
+
+### Adicionado
+
+- Aprovação independente da Fase 0 na rodada 5; preparo nativo Windows verificado.
+- Instrumentação da Fase 0 para coletar hooks reais com autenticação e anonimização.
+- Verificador que falha quando faltam duas capturas por evento obrigatório.
+- Testes de redação e configuração; roteiro de coleta e falha segura.
+
+### Segurança
+
+- O coletor não produz decisões de permissão nem modifica configurações do usuário.
+- Correções após revisão independente: redação em nomes de arquivo, variáveis
+  inline, valores entre aspas e IDs; rejeição de Origin vazio.
+- Comandos e basenames omitidos nas capturas públicas; regressões de credenciais
+  embutidas e teste do caminho real de gravação. Evidência histórica reprocessada.
+- Transporte por comando com cliente Rust incluído no instalador adotado; a
+  validação nativa ainda depende do linker MSVC.
+- Fase 0 interrompida após a terceira reprovação: fragmentos de credenciais em
+  description ainda escapam. Correção e nova revisão aguardam diretriz humana.
+- Retomada autorizada: política de campos e valores permitidos; texto livre e
+  nomes de campos desconhecidos omitidos. Mantidos os mínimos de revisão,
+  removido o teto de rodadas; relatórios anteriores preservados.
+- Tipos de enums, IDs e caminhos validados antes da recursão; números e booleanos
+  limitados a campos tipados de metadados. Regressões de callback e auditoria.

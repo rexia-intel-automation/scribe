@@ -1,0 +1,113 @@
+{
+  "probe": "MCP Streamable HTTP + skill session substitution",
+  "validation": {
+    "exitCode": 0,
+    "stdout": "[content omitted]",
+    "stderr": ""
+  },
+  "execution": {
+    "exitCode": 0,
+    "stdout": "[content omitted]",
+    "stderr": ""
+  },
+  "hookSession": "session_id-f0ea8707f58e",
+  "calls": [
+    {
+      "method": "server/discover",
+      "params": {
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientInfo": {
+            "name": "claude-code",
+            "title": "Claude Code",
+            "version": "2.1.289",
+            "description": "[content omitted]",
+            "websiteUrl": "https://claude.com/claude-code"
+          },
+          "io.modelcontextprotocol/clientCapabilities": {
+            "roots": {
+              "listChanged": true
+            },
+            "elicitation": {
+              "form": {},
+              "url": {}
+            }
+          }
+        }
+      },
+      "authenticated": true
+    },
+    {
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {
+          "roots": {
+            "listChanged": true
+          },
+          "elicitation": {
+            "form": {},
+            "url": {}
+          }
+        },
+        "clientInfo": {
+          "name": "claude-code",
+          "title": "Claude Code",
+          "version": "2.1.289",
+          "description": "[content omitted]",
+          "websiteUrl": "https://claude.com/claude-code"
+        }
+      },
+      "authenticated": true
+    },
+    {
+      "method": "notifications/initialized",
+      "authenticated": true
+    },
+    {
+      "method": "tools/list",
+      "authenticated": true
+    },
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "scribe_report",
+        "arguments": {
+          "session_id": "session_id-f0ea8707f58e",
+          "text": "[content omitted]"
+        },
+        "_meta": {
+          "claudecode/toolUseId": "claudecode/toolUseId-282414473673",
+          "progressToken": "••••"
+        }
+      },
+      "authenticated": true,
+      "sessionMatchesHook": true
+    },
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "scribe_ask",
+        "arguments": {
+          "session_id": "session_id-f0ea8707f58e",
+          "question": "[content omitted]",
+          "options": [
+            "[content omitted]",
+            "[content omitted]"
+          ]
+        },
+        "_meta": {
+          "claudecode/toolUseId": "claudecode/toolUseId-3c0c32ef2b36",
+          "progressToken": "••••"
+        }
+      },
+      "authenticated": true,
+      "sessionMatchesHook": true
+    }
+  ],
+  "passed": true,
+  "limitations": [
+    "Question answer is intentionally timeout; this does not validate a real user choice or ten-minute wait.",
+    "The validated plugin .mcp.json is explicitly loaded via --mcp-config to isolate the probe from user servers. Automatic plugin connection remains a Phase 1 installation test."
+  ]
+}

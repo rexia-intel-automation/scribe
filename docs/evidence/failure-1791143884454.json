@@ -1,0 +1,70 @@
+[
+  {
+    "scenario": "baseline",
+    "exitCode": 0,
+    "elapsedMs": 887,
+    "calls": [],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "scenario": "healthy",
+    "exitCode": 0,
+    "elapsedMs": 1257,
+    "calls": [
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "scenario": "closed",
+    "exitCode": 0,
+    "elapsedMs": 975,
+    "calls": [],
+    "stdout": "",
+    "stderr": "[content omitted]"
+  },
+  {
+    "scenario": "stalled",
+    "exitCode": 0,
+    "elapsedMs": 1870,
+    "calls": [
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": "[content omitted]"
+  },
+  {
+    "scenario": "invalid-json",
+    "exitCode": 0,
+    "elapsedMs": 855,
+    "calls": [
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": "[content omitted]"
+  },
+  {
+    "scenario": "http-error",
+    "exitCode": 0,
+    "elapsedMs": 720,
+    "calls": [
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": "[content omitted]"
+  }
+]

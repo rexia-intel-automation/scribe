@@ -1,0 +1,92 @@
+[
+  {
+    "transport": "command",
+    "scenario": "baseline",
+    "exitCode": 0,
+    "elapsedMs": 705,
+    "calls": [],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "transport": "command",
+    "scenario": "healthy",
+    "exitCode": 0,
+    "elapsedMs": 1010,
+    "calls": [
+      {
+        "event": "SessionStart",
+        "authenticated": true
+      },
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "transport": "command",
+    "scenario": "closed",
+    "exitCode": 0,
+    "elapsedMs": 1118,
+    "calls": [],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "transport": "command",
+    "scenario": "stalled",
+    "exitCode": 0,
+    "elapsedMs": 1496,
+    "calls": [
+      {
+        "event": "SessionStart",
+        "authenticated": true
+      },
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "transport": "command",
+    "scenario": "invalid-json",
+    "exitCode": 0,
+    "elapsedMs": 1348,
+    "calls": [
+      {
+        "event": "SessionStart",
+        "authenticated": true
+      },
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "transport": "command",
+    "scenario": "http-error",
+    "exitCode": 0,
+    "elapsedMs": 952,
+    "calls": [
+      {
+        "event": "SessionStart",
+        "authenticated": true
+      },
+      {
+        "event": "SessionEnd",
+        "authenticated": true
+      }
+    ],
+    "stdout": "",
+    "stderr": ""
+  }
+]

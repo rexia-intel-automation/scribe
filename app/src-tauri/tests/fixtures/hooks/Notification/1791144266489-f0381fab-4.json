@@ -1,0 +1,9 @@
+{
+  "session_id": "session_id-e34a6d8fe72a",
+  "transcript_path": "/anonymous/path-6d543daa2b42/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7fb8e39b4386",
+  "hook_event_name": "Notification",
+  "message": "[content omitted]",
+  "notification_type": "permission_prompt"
+}

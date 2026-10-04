@@ -1,0 +1,52 @@
+{
+  "runId": "1791144266489-f0381fab",
+  "mode": "interactive",
+  "transport": "command",
+  "cliVersion": "2.1.286 (Claude Code)",
+  "exitCode": null,
+  "elapsedMs": 182075,
+  "captured": [
+    {
+      "event": "UserPromptSubmit",
+      "file": "app/src-tauri/tests/fixtures/hooks/UserPromptSubmit/1791144266489-f0381fab-1.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144266489-f0381fab-2.json",
+      "authenticated": true
+    },
+    {
+      "event": "PermissionRequest",
+      "file": "app/src-tauri/tests/fixtures/hooks/PermissionRequest/1791144266489-f0381fab-3.json",
+      "authenticated": true
+    },
+    {
+      "event": "Notification",
+      "file": "app/src-tauri/tests/fixtures/hooks/Notification/1791144266489-f0381fab-4.json",
+      "authenticated": true
+    },
+    {
+      "event": "UserPromptSubmit",
+      "file": "app/src-tauri/tests/fixtures/hooks/UserPromptSubmit/1791144266489-f0381fab-5.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144266489-f0381fab-6.json",
+      "authenticated": true
+    },
+    {
+      "event": "PermissionRequest",
+      "file": "app/src-tauri/tests/fixtures/hooks/PermissionRequest/1791144266489-f0381fab-7.json",
+      "authenticated": true
+    },
+    {
+      "event": "Notification",
+      "file": "app/src-tauri/tests/fixtures/hooks/Notification/1791144266489-f0381fab-8.json",
+      "authenticated": true
+    }
+  ],
+  "stdout": "",
+  "stderr": ""
+}

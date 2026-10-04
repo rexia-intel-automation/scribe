@@ -1,0 +1,16 @@
+{
+  "runId": "1791143725217-7fd88f25",
+  "mode": "init",
+  "cliVersion": "2.1.286",
+  "exitCode": 0,
+  "elapsedMs": 1132,
+  "captured": [
+    {
+      "event": "SessionEnd",
+      "file": "app/src-tauri/tests/fixtures/hooks/SessionEnd/1791143725217-7fd88f25-1.json",
+      "authenticated": true
+    }
+  ],
+  "stdout": "",
+  "stderr": ""
+}

@@ -1,0 +1,9 @@
+{
+  "session_id": "session_id-840318512fbd",
+  "transcript_path": "/anonymous/path-1d37c4a6eda8/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7a118b3b7c19",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "[content omitted]"
+}

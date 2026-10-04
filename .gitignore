@@ -1,0 +1,11 @@
+.verification/
+node_modules/
+dist/
+target/
+coverage/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.DS_Store
+Thumbs.db

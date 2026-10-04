@@ -1,0 +1,19 @@
+{
+  "session_id": "session_id-e0fb15f662d2",
+  "transcript_path": "/anonymous/path-8dbc32f151bd/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-69150ee8ae40",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "[content omitted]",
+    "prompt": "[content omitted]",
+    "subagent_type": "Explore",
+    "run_in_background": false
+  },
+  "tool_use_id": "tool_use_id-dde0f576c7ed"
+}

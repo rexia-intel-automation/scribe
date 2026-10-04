@@ -1,0 +1,19 @@
+{
+  "probe": "MCP Streamable HTTP + skill session substitution",
+  "validation": {
+    "exitCode": 0,
+    "stdout": "[content omitted]",
+    "stderr": ""
+  },
+  "execution": {
+    "exitCode": 0,
+    "stdout": "[content omitted]",
+    "stderr": ""
+  },
+  "hookSession": "session_id-228b25509054",
+  "calls": [],
+  "passed": false,
+  "limitations": [
+    "Question answer is intentionally timeout; this does not validate a real user choice or ten-minute wait."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-04",
+  "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+  "executable": "rustc",
+  "arguments": [
+    "--edition", "2021", "-O", "scripts/verification/native-observer.rs",
+    "-o", ".verification/native-observer.exe"
+  ],
+  "exitCode": 1,
+  "failureClass": "msvc_linker_missing",
+  "safeDiagnostic": "linker link.exe not found",
+  "nativeFailureMatrixExecuted": false
+}

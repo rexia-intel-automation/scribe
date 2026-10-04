@@ -1,0 +1,22 @@
+{
+  "runId": "1791144078237-b3476057",
+  "mode": "init",
+  "transport": "command",
+  "cliVersion": "2.1.286 (Claude Code)",
+  "exitCode": 0,
+  "elapsedMs": 1137,
+  "captured": [
+    {
+      "event": "SessionStart",
+      "file": "app/src-tauri/tests/fixtures/hooks/SessionStart/1791144078237-b3476057-1.json",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "file": "app/src-tauri/tests/fixtures/hooks/SessionEnd/1791144078237-b3476057-2.json",
+      "authenticated": true
+    }
+  ],
+  "stdout": "",
+  "stderr": ""
+}

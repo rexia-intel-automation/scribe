@@ -1,0 +1,92 @@
+{
+  "runId": "1791144222333-408dc3f2",
+  "mode": "turn",
+  "transport": "command",
+  "cliVersion": "2.1.286 (Claude Code)",
+  "exitCode": 0,
+  "elapsedMs": 17661,
+  "captured": [
+    {
+      "event": "SessionStart",
+      "file": "app/src-tauri/tests/fixtures/hooks/SessionStart/1791144222333-408dc3f2-1.json",
+      "authenticated": true
+    },
+    {
+      "event": "UserPromptSubmit",
+      "file": "app/src-tauri/tests/fixtures/hooks/UserPromptSubmit/1791144222333-408dc3f2-2.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144222333-408dc3f2-3.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144222333-408dc3f2-4.json",
+      "authenticated": true
+    },
+    {
+      "event": "PostToolUseFailure",
+      "file": "app/src-tauri/tests/fixtures/hooks/PostToolUseFailure/1791144222333-408dc3f2-5.json",
+      "authenticated": true
+    },
+    {
+      "event": "PostToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PostToolUse/1791144222333-408dc3f2-6.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144222333-408dc3f2-7.json",
+      "authenticated": true
+    },
+    {
+      "event": "SubagentStart",
+      "file": "app/src-tauri/tests/fixtures/hooks/SubagentStart/1791144222333-408dc3f2-8.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144222333-408dc3f2-9.json",
+      "authenticated": true
+    },
+    {
+      "event": "PostToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PostToolUse/1791144222333-408dc3f2-10.json",
+      "authenticated": true
+    },
+    {
+      "event": "SubagentStop",
+      "file": "app/src-tauri/tests/fixtures/hooks/SubagentStop/1791144222333-408dc3f2-11.json",
+      "authenticated": true
+    },
+    {
+      "event": "PostToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PostToolUse/1791144222333-408dc3f2-12.json",
+      "authenticated": true
+    },
+    {
+      "event": "PreToolUse",
+      "file": "app/src-tauri/tests/fixtures/hooks/PreToolUse/1791144222333-408dc3f2-13.json",
+      "authenticated": true
+    },
+    {
+      "event": "PermissionRequest",
+      "file": "app/src-tauri/tests/fixtures/hooks/PermissionRequest/1791144222333-408dc3f2-14.json",
+      "authenticated": true
+    },
+    {
+      "event": "Stop",
+      "file": "app/src-tauri/tests/fixtures/hooks/Stop/1791144222333-408dc3f2-15.json",
+      "authenticated": true
+    },
+    {
+      "event": "SessionEnd",
+      "file": "app/src-tauri/tests/fixtures/hooks/SessionEnd/1791144222333-408dc3f2-16.json",
+      "authenticated": true
+    }
+  ],
+  "stdout": "[content omitted]",
+  "stderr": ""
+}

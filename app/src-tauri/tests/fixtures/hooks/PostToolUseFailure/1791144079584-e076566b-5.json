@@ -1,0 +1,19 @@
+{
+  "session_id": "session_id-840318512fbd",
+  "transcript_path": "/anonymous/path-1d37c4a6eda8/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7a118b3b7c19",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "/anonymous/path-d091c7a182b4/[name omitted]"
+  },
+  "tool_use_id": "tool_use_id-245db0294d28",
+  "error": "[content omitted]",
+  "is_interrupt": false,
+  "duration_ms": 11
+}

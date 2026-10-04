@@ -1,0 +1,17 @@
+{
+  "session_id": "session_id-e34a6d8fe72a",
+  "transcript_path": "/anonymous/path-6d543daa2b42/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7fb8e39b4386",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/anonymous/path-dddb996c3760/[name omitted]",
+    "content": "[content omitted]"
+  },
+  "tool_use_id": "tool_use_id-528b6b55baa4"
+}

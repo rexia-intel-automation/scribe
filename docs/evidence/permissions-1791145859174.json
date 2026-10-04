@@ -1,0 +1,160 @@
+[
+  {
+    "scenario": "healthy",
+    "permissionMode": "auto",
+    "temporaryAskRule": "Write",
+    "exitCode": 0,
+    "elapsedMs": 5824,
+    "targetEvents": [
+      "/v1/hooks/PermissionRequest"
+    ],
+    "witnessEvents": [
+      {
+        "session_id": "session_id-7d780e45f08d",
+        "transcript_path": "/anonymous/path-5f7b903629a5/transcript.jsonl",
+        "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+        "prompt_id": "prompt_id-03b6b9b9adb7",
+        "permission_mode": "auto",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/anonymous/path-b96196219e88/[name omitted]",
+          "content": "[content omitted]"
+        }
+      }
+    ],
+    "destinationExists": false,
+    "stdout": "[content omitted]",
+    "stderr": "",
+    "passed": true
+  },
+  {
+    "scenario": "closed",
+    "permissionMode": "auto",
+    "temporaryAskRule": "Write",
+    "exitCode": 0,
+    "elapsedMs": 4265,
+    "targetEvents": [],
+    "witnessEvents": [
+      {
+        "session_id": "session_id-3f179c73b448",
+        "transcript_path": "/anonymous/path-b746fcbed179/transcript.jsonl",
+        "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+        "prompt_id": "prompt_id-ce0f185ce191",
+        "permission_mode": "auto",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/anonymous/path-c79ab5ef5a9b/[name omitted]",
+          "content": "[content omitted]"
+        }
+      }
+    ],
+    "destinationExists": false,
+    "stdout": "[content omitted]",
+    "stderr": "",
+    "passed": true
+  },
+  {
+    "scenario": "stalled",
+    "permissionMode": "auto",
+    "temporaryAskRule": "Write",
+    "exitCode": 0,
+    "elapsedMs": 5040,
+    "targetEvents": [
+      "/v1/hooks/PermissionRequest"
+    ],
+    "witnessEvents": [
+      {
+        "session_id": "session_id-c97175fcfe71",
+        "transcript_path": "/anonymous/path-fff2daa759aa/transcript.jsonl",
+        "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+        "prompt_id": "prompt_id-0f637613c3b0",
+        "permission_mode": "auto",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/anonymous/path-2cbbfcb7597e/[name omitted]",
+          "content": "[content omitted]"
+        }
+      }
+    ],
+    "destinationExists": false,
+    "stdout": "[content omitted]",
+    "stderr": "",
+    "passed": true
+  },
+  {
+    "scenario": "invalid-json",
+    "permissionMode": "auto",
+    "temporaryAskRule": "Write",
+    "exitCode": 0,
+    "elapsedMs": 6248,
+    "targetEvents": [
+      "/v1/hooks/PermissionRequest"
+    ],
+    "witnessEvents": [
+      {
+        "session_id": "session_id-7645a248c5d0",
+        "transcript_path": "/anonymous/path-ce970bf86a52/transcript.jsonl",
+        "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+        "prompt_id": "prompt_id-83783149dcee",
+        "permission_mode": "auto",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/anonymous/path-ecf339340266/[name omitted]",
+          "content": "[content omitted]"
+        }
+      }
+    ],
+    "destinationExists": false,
+    "stdout": "[content omitted]",
+    "stderr": "",
+    "passed": true
+  },
+  {
+    "scenario": "http-error",
+    "permissionMode": "auto",
+    "temporaryAskRule": "Write",
+    "exitCode": 0,
+    "elapsedMs": 4589,
+    "targetEvents": [
+      "/v1/hooks/PermissionRequest"
+    ],
+    "witnessEvents": [
+      {
+        "session_id": "session_id-c8937f61749d",
+        "transcript_path": "/anonymous/path-1bf3b12a15e1/transcript.jsonl",
+        "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+        "prompt_id": "prompt_id-5d838299e2af",
+        "permission_mode": "auto",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PermissionRequest",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/anonymous/path-3dcde0fd845c/[name omitted]",
+          "content": "[content omitted]"
+        }
+      }
+    ],
+    "destinationExists": false,
+    "stdout": "[content omitted]",
+    "stderr": "",
+    "passed": true
+  }
+]

@@ -1,0 +1,3 @@
+SCRIBE PUBLIC PROTOCOL TEST
+This file contains artificial public text only.
+No source code, credentials, personal data, or customer data.

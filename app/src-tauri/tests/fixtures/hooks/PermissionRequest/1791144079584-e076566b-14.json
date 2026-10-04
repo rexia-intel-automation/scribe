@@ -1,0 +1,23 @@
+{
+  "session_id": "session_id-840318512fbd",
+  "transcript_path": "/anonymous/path-1d37c4a6eda8/transcript.jsonl",
+  "cwd": "/anonymous/path-195f68fa110e/[name omitted]",
+  "prompt_id": "prompt_id-7a118b3b7c19",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/anonymous/path-34ffa4d77ad5/[name omitted]",
+    "content": "[content omitted]"
+  },
+  "permission_suggestions": [
+    {
+      "type": "setMode",
+      "mode": "acceptEdits",
+      "destination": "session"
+    }
+  ]
+}
