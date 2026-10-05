@@ -22,6 +22,11 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Correções da segunda revisão da Fase 2: atribuições omitem o restante ambíguo,
+  incluindo valores dotenv com espaços e múltiplas linhas. Mudanças no prazo de
+  concluídas recarregam o histórico sem reiniciar, preservando sessões vivas;
+  falhas permanecem em Mancha até novo evento. Ambos os relatórios reprovados
+  foram preservados; dezessete testes Rust passam antes da terceira rodada.
 - Correções da primeira revisão da Fase 2: cabeçalhos Authorization com chaves
   entre aspas, valores com escapes e nomes minúsculos de variáveis .env redigidos.
   Regressões verificam snapshot e SQLite; cobertura do núcleo >=85% exigida no CI.

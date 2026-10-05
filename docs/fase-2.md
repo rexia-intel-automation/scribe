@@ -37,12 +37,21 @@ PowerShell 7 e Windows PowerShell não misturem seus módulos.
 Só projeto, caminho encurtado, origem documentada, forma/ação, horários e até
 vinte passos são persistidos. Prompt, transcript, ambiente, conteúdo de arquivo
 e saída de ferramenta são ignorados. Segredos comuns e valores de variáveis
-inline são redigidos antes de truncar; caminhos em comandos e relatos também
-são encurtados. Retenção de quatorze dias configurável entre 1 e 365; visibilidade
+inline são redigidos antes de truncar. Após a primeira atribuição, o restante
+do texto é omitido: sem interpretar shell, não há como distinguir argumentos
+seguintes de valores dotenv com espaços ou múltiplas linhas. O prefixo e o nome
+da ferramenta permanecem; comandos sem atribuições mantêm seus alvos úteis.
+Caminhos em comandos e relatos também são encurtados. Retenção de quatorze
+dias configurável entre 1 e 365; visibilidade
 de concluídas de dez minutos configurável entre 1 e 1440. Apagar histórico
-remove registros, compacta o banco e publica snapshot vazio.
+remove registros, compacta o banco e publica snapshot vazio. Alterar a janela
+de concluídas recarrega imediatamente os registros visíveis do banco, com até
+256 sessões e prioridade para as vivas. O setter recebe o horário atual como
+o setter de retenção, conserva o estado em memória das vivas e seus subagentes,
+e só aplica a mudança após persistir a política.
 
-Sem notícias por dez minutos produz Ampulheta. Reinício conserva histórico,
+Sem notícias por dez minutos produz Ampulheta, exceto Mancha: uma falha
+permanece nessa forma até novo evento. Reinício conserva histórico,
 mas coloca sessões não encerradas em espera, sem fingir subagentes ativos.
 Sessões concluídas saem da memória e não são reabertas por eventos atrasados.
 Até 256 sessões visíveis e 256 subagentes por sessão; excesso rejeitado sem
@@ -71,8 +80,9 @@ se faltar, falha em vez de pular. O CI constrói o helper antes desses testes
 e repete a biblioteca em Windows, macOS e Ubuntu, com lockfile e auditoria.
 No Linux, cargo-llvm-cov 0.9.1 exige pelo menos 85% de linhas da biblioteca;
 usa somente o alvo de integração `--test core`, excluindo arquivos de teste
-do relatório e não compilando módulos unitários no denominador. As regressões dos formatos de
-segredo, histórico e retomada encontrados na primeira revisão são exigidas.
+do relatório e não compilando módulos unitários no denominador. As regressões
+dos formatos de segredo, histórico, retomada, visibilidade e silêncio encontrados
+nas duas primeiras revisões são exigidas.
 
 Os testes cobrem estado de cada fixture real, onze eventos, silêncio, limite
 de vinte passos, reinício, retenção e limpeza; concorrência, falha/recuperação
@@ -98,10 +108,20 @@ e transporte continuam locais, sem requisição a modelos ou atualização remot
 [ADR 0007](adr/0007-servidor-local.md) registra arquitetura, limites e fontes.
 O [relatório da primeira rodada](reviews/fase-2-rodada-1.md) está preservado:
 reprovou três formatos de segredo e dois casos de histórico/retomada. Foram
-adicionadas regressões para os cinco casos; quatorze testes Rust e os nove
-testes do harness independente passaram após corrigir. Cobertura de produção
-local: 93,51% (764/817 linhas), usando somente testes de integração e omitindo
-arquivos de teste. A [evidência](evidence/local-server-phase-2.json) separa esse
-resultado de uma aprovação ainda dependente da segunda rodada e do novo CI.
+adicionadas regressões para os cinco casos. A
+[segunda rodada](reviews/fase-2-rodada-2.md) reprovou valores dotenv com espaços,
+mudança de visibilidade sem reinício e perda da forma Mancha por silêncio.
+As correções têm regressões versionadas; dezessete testes Rust passaram.
+Os nove testes independentes antigos e os oito da segunda rodada também
+passaram contra as correções. O harness original da segunda rodada foi
+preservado; numa cópia, somente a chamada ao setter recebeu o timestamp atual
+exigido pela nova assinatura. Isso é uma verificação do construtor, não uma
+nova aprovação independente.
+Cobertura de produção local: 95,30% (791/830 linhas), usando somente testes
+de integração e omitindo arquivos de teste. O CLI Claude Code real conectou ao
+MCP em um ensaio com configuração isolada, sem chamar modelo nem modificar a
+configuração pessoal; isso não comprova decisões humanas.
+A [evidência](evidence/local-server-phase-2.json) separa esses resultados de
+uma aprovação ainda dependente da terceira rodada e do novo CI.
 A revisão de segurança dedicada e cobertura do núcleo de decisões pertencem
 às Fases 4 e 5; os instaladores, instalação limpa e release pertencem à Fase 6.

@@ -84,6 +84,108 @@ fn quoted_headers_escaped_secret_values_and_lowercase_env_never_enter_state_or_s
 }
 
 #[test]
+fn spaced_and_multiline_env_values_are_omitted_before_persistence() {
+    for text in [
+        "printf 'GREETING=hello PUBLIC_ENV_TAIL\\n' > .env",
+        "GREETING=hello PUBLIC_ENV_TAIL",
+        "export greeting=hello PUBLIC_ENV_TAIL # comment",
+        "printf 'GREETING=hello\nPUBLIC_ENV_TAIL\n' > .env.local",
+        "cat > .env <<'EOF'\nGREETING=hello PUBLIC_ENV_TAIL\nEOF",
+        "GREETING='hello\nPUBLIC_ENV_TAIL'",
+        "GREETING=hello; PUBLIC_ENV_TAIL",
+    ] {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, 0).unwrap();
+        let mut input = payload("PreToolUse");
+        input["tool_name"] = json!("Bash");
+        input["tool_input"] = json!({"command":text});
+        apply(&core, input, 0);
+        let hook_state = serde_json::to_string(&core.snapshot(0).unwrap()).unwrap();
+        assert!(hook_state.contains("Bash"));
+        assert!(!hook_state.contains("PUBLIC_ENV_TAIL"));
+        core.report("public-session", text, 1).unwrap();
+        let report_state = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
+        assert!(!report_state.contains("PUBLIC_ENV_TAIL"));
+        assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_ENV_TAIL"));
+    }
+}
+
+#[test]
+fn completed_visibility_changes_recover_history_and_preserve_live_state() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, 0).unwrap();
+    let mut end = payload("SessionEnd");
+    end["session_id"] = json!("old-done");
+    apply(&core, end, 0);
+    let at = 600_001;
+    apply(&core, payload("SessionStart"), at);
+    let mut agent = payload("SubagentStart");
+    agent["agent_id"] = json!("agent-one");
+    apply(&core, agent.clone(), at);
+    assert_eq!(core.snapshot(at).unwrap().sessions.len(), 1);
+    core.set_completed_minutes(60, at).unwrap();
+    assert_eq!(core.snapshot(at).unwrap().sessions.len(), 2);
+    core.set_completed_minutes(1, at).unwrap();
+    assert_eq!(core.snapshot(at).unwrap().sessions.len(), 1);
+    core.set_completed_minutes(60, at).unwrap();
+    assert_eq!(core.snapshot(at).unwrap().sessions.len(), 2);
+    agent["agent_id"] = json!("agent-two");
+    apply(&core, agent, at);
+    let before = core.snapshot(at).unwrap();
+    assert_eq!(before.sessions[0].state, SessionState::Divisao);
+    assert_eq!(before.sessions[0].action, "2 subagentes");
+    let restored = Core::open(&path, at).unwrap();
+    assert_eq!(restored.snapshot(at).unwrap().sessions.len(), 2);
+    restored.set_completed_minutes(60, at).unwrap();
+    assert_eq!(
+        restored.snapshot(at).unwrap().sessions[0].state,
+        SessionState::Ampulheta
+    );
+    let locked = rusqlite::Connection::open(&path).unwrap();
+    locked.execute_batch("BEGIN IMMEDIATE").unwrap();
+    assert!(core.set_completed_minutes(1, at).is_err());
+    assert_eq!(
+        serde_json::to_value(core.snapshot(at).unwrap()).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    locked.execute_batch("ROLLBACK").unwrap();
+    core.set_completed_minutes(1, at).unwrap();
+    assert_eq!(
+        Core::open(&path, at)
+            .unwrap()
+            .snapshot(at)
+            .unwrap()
+            .sessions
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn failure_form_survives_silence_until_another_event() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    apply(&core, payload("PostToolUseFailure"), 0);
+    let failed = core.snapshot(0).unwrap().sessions.remove(0);
+    for at in [600_000, 3_600_000] {
+        let quiet = core.snapshot(at).unwrap().sessions.remove(0);
+        assert_eq!(quiet.state, SessionState::Mancha);
+        assert_eq!(quiet.action, failed.action);
+    }
+    apply(&core, payload("UserPromptSubmit"), 3_600_001);
+    assert_eq!(
+        core.snapshot(3_600_001).unwrap().sessions[0].state,
+        SessionState::Orbita
+    );
+    assert_eq!(
+        core.snapshot(4_200_001).unwrap().sessions[0].state,
+        SessionState::Ampulheta
+    );
+}
+
+#[test]
 fn restart_loads_visible_live_sessions_before_retained_completed_history() {
     let temp = TempDir::new().unwrap();
     let path = temp.path().join("state.db");
@@ -158,6 +260,12 @@ fn session_restart_resets_agents_and_completed_sessions_do_not_exhaust_capacity(
     late["session_id"] = json!("completed-0");
     apply(&core, late, 1_200_001);
     assert_eq!(core.snapshot(1_200_001).unwrap().sessions.len(), 1);
+    core.set_completed_minutes(60, 1_200_001).unwrap();
+    let expanded = core.snapshot(1_200_001).unwrap();
+    assert_eq!(expanded.sessions.len(), 256);
+    assert!(expanded.sessions.iter().any(|s| s.id == "public-session"));
+    core.set_completed_minutes(1, 1_200_001).unwrap();
+    assert_eq!(core.snapshot(1_200_001).unwrap().sessions.len(), 1);
 }
 
 #[test]
@@ -204,8 +312,8 @@ fn concurrent_commits_database_failure_and_capacity_are_bounded() {
     );
     assert!(core.set_retention_days(0, 4).is_err());
     assert!(core.set_retention_days(366, 4).is_err());
-    assert!(core.set_completed_minutes(0).is_err());
-    assert!(core.set_completed_minutes(1441).is_err());
+    assert!(core.set_completed_minutes(0, 0).is_err());
+    assert!(core.set_completed_minutes(1441, 0).is_err());
 }
 
 #[test]
@@ -342,7 +450,7 @@ fn persistence_sanitization_retention_restart_and_clear() {
     {
         let core = Core::open(&path, 0).unwrap();
         core.set_retention_days(365, 0).unwrap();
-        core.set_completed_minutes(2).unwrap();
+        core.set_completed_minutes(2, 0).unwrap();
         let mut input = payload("PreToolUse");
         input["tool_name"] = json!("Bash");
         input["tool_input"] = json!({"command":"SECRET_VAR=PUBLIC_CREDENTIAL echo PUBLIC_TARGET; token=PUBLIC_TOKEN_VALUE",
@@ -370,7 +478,8 @@ fn persistence_sanitization_retention_restart_and_clear() {
         ] {
             assert!(!stored.contains(sensitive), "Database leaked {sensitive}");
         }
-        assert!(stored.contains("PUBLIC_TARGET"));
+        // Following shell arguments are ambiguous with spaced dotenv values.
+        assert!(!stored.contains("PUBLIC_TARGET"));
     }
     let core = Core::open(&path, 30 * 86_400_000).unwrap();
     assert_eq!(

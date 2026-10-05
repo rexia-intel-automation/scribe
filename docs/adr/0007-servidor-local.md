@@ -53,6 +53,13 @@ padrão desde 3.38. Novos eventos atualizam cwd/projeto mantendo os passos.
 Valores de atribuições reconhecem nomes válidos em ambos os casos, aspas
 escapadas e chaves delimitadas de Authorization. Atribuições ambíguas são
 redigidas conservadoramente; uma aspa não terminada omite o restante do valor.
+Depois da primeira atribuição de variável, todo o restante do texto é omitido,
+inclusive múltiplas linhas: sem executar ou interpretar o shell, os argumentos
+seguintes são ambíguos com valores dotenv que contêm espaços. Esta opção perde
+detalhe de alguns comandos em favor de não persistir caudas de credenciais.
+Mudar a duração das concluídas recarrega a lista limitada diretamente do banco,
+sem exigir reinício e preservando o estado atual das vivas e seus subagentes.
+Mancha não é substituída pelo silêncio; continua até novo evento.
 
 scribe_report requer sessão conhecida e texto de até 140 caracteres.
 scribe_ask valida 200/40 caracteres e duas a quatro opções, mas retorna

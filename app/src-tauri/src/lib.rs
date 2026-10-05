@@ -276,13 +276,26 @@ impl Core {
         Ok(())
     }
 
-    /// Persist how long completed sessions remain in the live list.
-    pub fn set_completed_minutes(&self, minutes: u16) -> Result<()> {
+    /// Reevaluate the bounded live list immediately when its visibility changes.
+    /// The caller supplies the current timestamp, as for retention changes.
+    pub fn set_completed_minutes(&self, minutes: u16, at: u64) -> Result<()> {
         if !(1..=1440).contains(&minutes) {
             return Err("Completed visibility must be 1 to 1440 minutes".into());
         }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let sessions = data
+            .store
+            .load(at, minutes)?
+            .into_iter()
+            .map(|stored| {
+                let current = data.sessions.get(&stored.id).cloned().unwrap_or(stored);
+                (current.id.clone(), current)
+            })
+            .collect();
         data.store.set_policy("completed_minutes", minutes)?;
+        data.sessions = sessions;
+        let session_ids: HashSet<_> = data.sessions.keys().cloned().collect();
+        data.agents.retain(|id, _| session_ids.contains(id));
         data.completed_minutes = minutes;
         Ok(())
     }

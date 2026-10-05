@@ -15,11 +15,9 @@ static ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r#"(?i)((?:\\?["'])?(?:[a-z0-9_-]*(?:password|passwd|token|secret|api[_-]?key|access[_-]?key))(?:\\?["'])?\s*[:=]\s*)(?:{}|{})+"#, QUOTED_VALUE, WORD_VALUE)).unwrap()
 });
 static ENV_ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(
-        r#"(\b[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(?:{}|{})+"#,
-        QUOTED_VALUE, WORD_VALUE
-    ))
-    .unwrap()
+    // Without interpreting the shell, spaces/newlines/quotes cannot distinguish
+    // a dotenv value from following arguments. Omit the ambiguous remainder.
+    Regex::new(r"(?s)(\b[A-Za-z_][A-Za-z0-9_]*\s*=\s*).*").unwrap()
 });
 static AUTHORIZATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(

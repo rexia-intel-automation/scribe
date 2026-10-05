@@ -111,7 +111,10 @@ impl Session {
         {
             session.state = SessionState::Gota;
         }
-        if session.ended_at.is_none() && now.saturating_sub(session.last_event_at) >= TEN_MINUTES {
+        if session.ended_at.is_none()
+            && session.state != SessionState::Mancha
+            && now.saturating_sub(session.last_event_at) >= TEN_MINUTES
+        {
             session.state = SessionState::Ampulheta;
             session.action = format!(
                 "sem notícias há {} min",
