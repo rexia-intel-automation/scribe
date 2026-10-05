@@ -66,5 +66,8 @@ A Fase 0 foi aprovada na rodada 5: A9 B8 C8 D8 F8 J8. Quatorze testes passaram,
 Build Tools foi instalado; observador Rust compilou e passou seis cenários,
 com os limites descritos no ADR 0005. A Fase 1 foi aprovada na rodada 3:
 A9 B8 C8 D8 E8 F8 J8 K8. Dezoito testes Node e um Rust passaram; CI verde
-em três plataformas e auditoria de dependências. O próximo passo é a Fase 2.
+em três plataformas e auditoria de dependências. A Fase 2 está em implementação
+e revisão: onze testes Rust passaram no PowerShell, com 46 fixtures públicos,
+Clippy sem avisos e auditoria sem vulnerabilidades. O p95 local entre evento
+HTTP e estado gravado foi 11 ms em 32 amostras; a janela ainda não é medida.
 O app de produção ainda não existe e nenhuma versão está publicada.

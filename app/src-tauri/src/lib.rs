@@ -1,0 +1,300 @@
+//! Scribe's local session core. Original hook payloads never enter persistence.
+mod mcp;
+mod model;
+mod private_fs;
+mod sanitize;
+mod server;
+mod store;
+
+use model::Hook;
+pub use model::{Session, SessionState, Snapshot, StateEvent, Step};
+pub use server::LocalServer;
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::broadcast;
+
+/// Errors stay inside Rust; HTTP handlers expose only fixed status codes.
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+/// Fallible local storage and state operations.
+pub type Result<T> = std::result::Result<T, Error>;
+
+struct Data {
+    store: store::Store,
+    sessions: HashMap<String, Session>,
+    agents: HashMap<String, HashSet<String>>,
+    retention_days: u16,
+    completed_minutes: u16,
+}
+
+/// Shared state serializes commits and publishes only successfully stored changes.
+#[derive(Clone)]
+pub struct Core {
+    data: Arc<Mutex<Data>>,
+    events: broadcast::Sender<StateEvent>,
+}
+
+/// Current Unix time used by the live server; tests supply explicit timestamps.
+pub fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+impl Core {
+    /// Open a database inside a dedicated private app directory. Do not pass
+    /// a directory shared with other projects: its permissions are restricted.
+    pub fn open(path: &Path, at: u64) -> Result<Self> {
+        let store = store::Store::open(path)?;
+        let retention_days = store.policy("retention_days", 14)?;
+        let completed_minutes = store.policy("completed_minutes", 10)?;
+        store.prune(at.saturating_sub(u64::from(retention_days) * 86_400_000))?;
+        let mut sessions = HashMap::new();
+        for mut session in store.load()? {
+            if session.ended_at.is_none() {
+                session.state = SessionState::Ampulheta;
+                session.action = "Esperando notícias após reinício".into();
+            }
+            sessions.insert(session.id.clone(), session);
+        }
+        let (events, _) = broadcast::channel(64);
+        Ok(Self {
+            data: Arc::new(Mutex::new(Data {
+                store,
+                sessions,
+                agents: HashMap::new(),
+                retention_days,
+                completed_minutes,
+            })),
+            events,
+        })
+    }
+
+    /// Subscribe before taking a snapshot to avoid losing concurrent deltas.
+    pub fn subscribe(&self) -> broadcast::Receiver<StateEvent> {
+        self.events.subscribe()
+    }
+
+    /// Snapshot hides completed sessions after ten minutes and derives quiet states.
+    pub fn snapshot(&self, at: u64) -> Result<Snapshot> {
+        let data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let mut sessions: Vec<_> = data
+            .sessions
+            .values()
+            .filter(|s| s.visible(at, data.completed_minutes))
+            .map(|s| s.at_time(at))
+            .collect();
+        sessions.sort_by_key(|s| {
+            (
+                std::cmp::Reverse(s.state.priority()),
+                std::cmp::Reverse(s.started_at),
+                s.id.clone(),
+            )
+        });
+        Ok(Snapshot { sessions })
+    }
+
+    /// Apply a verified hook. Extra payload fields are ignored, never serialized.
+    pub fn hook(&self, route: &str, body: &[u8], at: u64) -> Result<()> {
+        let hook: Hook = serde_json::from_slice(body)?;
+        if !hook.valid(route) {
+            return Err("Invalid hook contract".into());
+        }
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let retention = u64::from(data.retention_days) * 86_400_000;
+        data.store.prune(at.saturating_sub(retention))?;
+        data.sessions
+            .retain(|_, s| at.saturating_sub(s.last_event_at) <= retention);
+        let completed_minutes = data.completed_minutes;
+        data.sessions
+            .retain(|_, s| s.visible(at, completed_minutes));
+        let session_ids: HashSet<_> = data.sessions.keys().cloned().collect();
+        data.agents.retain(|id, _| session_ids.contains(id));
+        let mut session = match data.sessions.get(&hook.session_id) {
+            Some(session) => session.clone(),
+            None => data
+                .store
+                .session(&hook.session_id)?
+                .unwrap_or_else(|| Session::new(hook.session_id.clone(), &hook.cwd, at)),
+        };
+        // An ended session is immutable until an explicit new SessionStart.
+        if session.ended_at.is_some() && route != "SessionStart" {
+            return Ok(());
+        }
+        if !data.sessions.contains_key(&hook.session_id) && data.sessions.len() >= 256 {
+            return Err("Live session capacity reached".into());
+        }
+        if route == "SessionStart" && session.ended_at.is_some() {
+            session = Session::new(hook.session_id.clone(), &hook.cwd, at);
+        }
+        session.last_event_at = at;
+        let tool = hook.tool();
+        let target = sanitize::target(&hook.tool_input);
+        let mut agents = data.agents.get(&session.id).cloned().unwrap_or_default();
+        match route {
+            "SessionStart" => {
+                agents.clear();
+                session.started_at = at;
+                session.state = SessionState::Respingo;
+                session.action = "Sessão iniciada".into();
+                session.origin = hook.origin();
+            }
+            "UserPromptSubmit" => {
+                session.state = SessionState::Orbita;
+                session.action = "Pensando".into();
+            }
+            "PreToolUse" => {
+                let editing = matches!(
+                    hook.tool_name.as_deref(),
+                    Some("Edit" | "Write" | "NotebookEdit")
+                );
+                session.state = if editing {
+                    SessionState::Pena
+                } else {
+                    SessionState::Orbita
+                };
+                session.action = if editing {
+                    format!("Editando {target}")
+                } else {
+                    format!("{}: {target}", tool.as_deref().unwrap_or("Ferramenta"))
+                };
+            }
+            "PostToolUse" => {
+                session.state = SessionState::Orbita;
+                session.action = format!("{} concluída", tool.as_deref().unwrap_or("Ferramenta"));
+            }
+            "PostToolUseFailure" => {
+                session.state = SessionState::Mancha;
+                session.action = format!("Falhou: {}", tool.as_deref().unwrap_or("Ferramenta"));
+            }
+            "PermissionRequest" => {
+                session.state = SessionState::Interrogacao;
+                session.action = "Esperando sua permissão".into();
+            }
+            "Notification" => {
+                if matches!(
+                    hook.notification_type.as_deref(),
+                    Some("idle_prompt" | "permission_prompt")
+                ) {
+                    session.state = SessionState::Ampulheta;
+                    session.action = "Esperando você".into();
+                }
+            }
+            "SubagentStart" => {
+                if let Some(id) = hook.agent_id {
+                    if agents.len() >= 256 && !agents.contains(&id) {
+                        return Err("Subagent capacity reached".into());
+                    }
+                    agents.insert(id);
+                }
+                session.state = SessionState::Divisao;
+                session.action = format!("{} subagentes", agents.len());
+            }
+            "SubagentStop" => {
+                if let Some(id) = hook.agent_id {
+                    agents.remove(&id);
+                }
+                session.state = if agents.is_empty() {
+                    SessionState::Orbita
+                } else {
+                    SessionState::Divisao
+                };
+                session.action = format!("{} subagentes", agents.len());
+            }
+            "Stop" => {
+                agents.clear();
+                session.state = SessionState::Gota;
+                session.action = "Terminou o turno".into();
+            }
+            "SessionEnd" => {
+                agents.clear();
+                session.state = SessionState::Selo;
+                session.action = "Concluída".into();
+                session.ended_at = Some(at);
+            }
+            _ => unreachable!("validated event"),
+        }
+        session.action = sanitize::summary(&session.action, 240);
+        session.step(
+            tool,
+            if route == "PostToolUseFailure" {
+                Some(false)
+            } else if route == "PostToolUse" {
+                Some(true)
+            } else {
+                None
+            },
+            at,
+        );
+        data.store.save(&session)?;
+        data.agents.insert(session.id.clone(), agents);
+        data.sessions.insert(session.id.clone(), session.clone());
+        let _ = self.events.send(StateEvent::Session(session));
+        Ok(())
+    }
+
+    /// Record a sanitized milestone only for a known live session.
+    pub fn report(&self, session_id: &str, text: &str, at: u64) -> Result<()> {
+        if text.is_empty() || text.chars().count() > 140 {
+            return Err("Invalid report length".into());
+        }
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let mut session = data
+            .sessions
+            .get(session_id)
+            .filter(|s| s.ended_at.is_none())
+            .cloned()
+            .ok_or("Unknown live session")?;
+        session.action = sanitize::summary(text, 140);
+        session.last_event_at = at;
+        session.step(None, None, at);
+        data.store.save(&session)?;
+        data.sessions.insert(session.id.clone(), session.clone());
+        let _ = self.events.send(StateEvent::Session(session));
+        Ok(())
+    }
+
+    /// Configure retention without exposing any raw event history.
+    pub fn set_retention_days(&self, days: u16, at: u64) -> Result<()> {
+        if !(1..=365).contains(&days) {
+            return Err("Retention must be 1 to 365 days".into());
+        }
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.store
+            .prune(at.saturating_sub(u64::from(days) * 86_400_000))?;
+        data.store.set_policy("retention_days", days)?;
+        data.sessions
+            .retain(|_, s| at.saturating_sub(s.last_event_at) <= u64::from(days) * 86_400_000);
+        let session_ids: HashSet<_> = data.sessions.keys().cloned().collect();
+        data.agents.retain(|id, _| session_ids.contains(id));
+        data.retention_days = days;
+        Ok(())
+    }
+
+    /// Persist how long completed sessions remain in the live list.
+    pub fn set_completed_minutes(&self, minutes: u16) -> Result<()> {
+        if !(1..=1440).contains(&minutes) {
+            return Err("Completed visibility must be 1 to 1440 minutes".into());
+        }
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.store.set_policy("completed_minutes", minutes)?;
+        data.completed_minutes = minutes;
+        Ok(())
+    }
+
+    /// Remove stored and in-memory history. The app supplies the explicit UI gesture.
+    pub fn clear_history(&self) -> Result<()> {
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.store.clear()?;
+        data.sessions.clear();
+        data.agents.clear();
+        let _ = self
+            .events
+            .send(StateEvent::Snapshot(Snapshot { sessions: vec![] }));
+        Ok(())
+    }
+}

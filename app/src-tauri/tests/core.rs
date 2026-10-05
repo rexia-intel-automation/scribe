@@ -1,0 +1,751 @@
+use scribe_core::{Core, LocalServer, SessionState, StateEvent};
+use serde_json::{json, Value};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+use tempfile::TempDir;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
+
+const TOKEN: &str = "publicTestToken01234567890123456789";
+const EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PermissionRequest",
+    "Notification",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
+    "SessionEnd",
+];
+
+fn payload(event: &str) -> Value {
+    json!({"hook_event_name":event,"session_id":"public-session","cwd":"/public/project"})
+}
+
+fn apply(core: &Core, input: Value, at: u64) {
+    let event = input["hook_event_name"].as_str().unwrap();
+    core.hook(event, &serde_json::to_vec(&input).unwrap(), at)
+        .unwrap();
+}
+
+#[test]
+fn session_restart_resets_agents_and_completed_sessions_do_not_exhaust_capacity() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    let mut start = payload("SubagentStart");
+    start["agent_id"] = json!("public-agent-1");
+    apply(&core, start.clone(), 0);
+    apply(&core, payload("SessionStart"), 10_000);
+    assert_eq!(
+        core.snapshot(11_499).unwrap().sessions[0].state,
+        SessionState::Respingo
+    );
+    start["agent_id"] = json!("public-agent-2");
+    apply(&core, start, 12_000);
+    assert_eq!(
+        core.snapshot(12_000).unwrap().sessions[0].action,
+        "1 subagentes"
+    );
+    apply(&core, payload("SessionEnd"), 0);
+    for n in 0..256 {
+        let mut end = payload("SessionEnd");
+        end["session_id"] = json!(format!("completed-{n}"));
+        apply(&core, end, 600_000);
+    }
+    apply(&core, payload("SessionStart"), 1_200_000);
+    assert_eq!(core.snapshot(1_200_000).unwrap().sessions.len(), 1);
+    let mut late = payload("PreToolUse");
+    late["session_id"] = json!("completed-0");
+    apply(&core, late, 1_200_001);
+    assert_eq!(core.snapshot(1_200_001).unwrap().sessions.len(), 1);
+}
+
+#[test]
+fn concurrent_commits_database_failure_and_capacity_are_bounded() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, 0).unwrap();
+    apply(&core, payload("SessionStart"), 0);
+    std::thread::scope(|scope| {
+        for n in 0..32 {
+            let core = core.clone();
+            scope.spawn(move || {
+                core.report("public-session", &format!("PUBLIC {n}"), 1)
+                    .unwrap()
+            });
+        }
+    });
+    assert_eq!(core.snapshot(1).unwrap().sessions[0].steps.len(), 20);
+    let locked = rusqlite::Connection::open(&path).unwrap();
+    locked.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let before = serde_json::to_value(core.snapshot(1).unwrap()).unwrap();
+    let mut changes = core.subscribe();
+    assert!(core.report("public-session", "MUST NOT COMMIT", 2).is_err());
+    assert_eq!(
+        serde_json::to_value(core.snapshot(1).unwrap()).unwrap(),
+        before
+    );
+    assert!(changes.try_recv().is_err());
+    locked.execute_batch("ROLLBACK").unwrap();
+    core.report("public-session", "RECOVERED", 2).unwrap();
+    for n in 0..256 {
+        let mut start = payload("SubagentStart");
+        start["agent_id"] = json!(format!("agent-{n}"));
+        apply(&core, start, 3);
+    }
+    let mut extra = payload("SubagentStart");
+    extra["agent_id"] = json!("extra-agent");
+    assert!(core
+        .hook("SubagentStart", &serde_json::to_vec(&extra).unwrap(), 4)
+        .is_err());
+    assert_eq!(
+        core.snapshot(4).unwrap().sessions[0].action,
+        "256 subagentes"
+    );
+    assert!(core.set_retention_days(0, 4).is_err());
+    assert!(core.set_retention_days(366, 4).is_err());
+    assert!(core.set_completed_minutes(0).is_err());
+    assert!(core.set_completed_minutes(1441).is_err());
+}
+
+#[test]
+fn storage_is_restricted_to_the_current_os_user() {
+    let temp = TempDir::new().unwrap();
+    let directory = temp.path().join("private");
+    let file = directory.join("state.db");
+    let _core = Core::open(&file, 0).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
+            "$ErrorActionPreference='Stop'; try {$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; $a=Get-Acl -LiteralPath $env:SCRIBE_TEST_PRIVATE_FILE; $rules=@($a.Access); $same=($rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq $sid); @{protected=$a.AreAccessRulesProtected; count=$rules.Count; currentUser=$same} | ConvertTo-Json -Compress; if (!$a.AreAccessRulesProtected -or $rules.Count -ne 1 -or !$same) {exit 1}} catch {$_.Exception.GetType().Name; $_.InvocationInfo.MyCommand.Name; exit 2}"])
+            .env_remove("PSModulePath")
+            .env("SCRIBE_TEST_PRIVATE_FILE", &file).output().unwrap();
+        assert!(
+            output.status.success(),
+            "Private file ACL must grant only the current user: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+}
+
+#[test]
+fn state_mapping_quiet_timeout_completed_visibility_and_steps() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    let mut updates = core.subscribe();
+    apply(&core, payload("SessionStart"), 0);
+    assert_eq!(
+        core.snapshot(1499).unwrap().sessions[0].state,
+        SessionState::Respingo
+    );
+    assert_eq!(
+        core.snapshot(1500).unwrap().sessions[0].state,
+        SessionState::Gota
+    );
+    for (event, fields, state) in [
+        ("UserPromptSubmit", json!({}), SessionState::Orbita),
+        (
+            "PreToolUse",
+            json!({"tool_name":"Write","tool_input":{"file_path":"/public/project/file.rs","content":"PUBLIC_CONTENT"}}),
+            SessionState::Pena,
+        ),
+        (
+            "PreToolUse",
+            json!({"tool_name":"Bash","tool_input":{"command":"echo PUBLIC"}}),
+            SessionState::Orbita,
+        ),
+        (
+            "PostToolUseFailure",
+            json!({"tool_name":"Bash"}),
+            SessionState::Mancha,
+        ),
+        (
+            "PermissionRequest",
+            json!({"tool_name":"Bash"}),
+            SessionState::Interrogacao,
+        ),
+        (
+            "Notification",
+            json!({"notification_type":"idle_prompt"}),
+            SessionState::Ampulheta,
+        ),
+        (
+            "SubagentStart",
+            json!({"agent_id":"public-agent"}),
+            SessionState::Divisao,
+        ),
+        (
+            "SubagentStop",
+            json!({"agent_id":"public-agent"}),
+            SessionState::Orbita,
+        ),
+        (
+            "PostToolUse",
+            json!({"tool_name":"Read"}),
+            SessionState::Orbita,
+        ),
+        ("Stop", json!({}), SessionState::Gota),
+    ] {
+        let mut input = payload(event);
+        input
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        apply(&core, input, 2000);
+        assert_eq!(
+            core.snapshot(2000).unwrap().sessions[0].state,
+            state,
+            "{event}"
+        );
+    }
+    assert_eq!(
+        core.snapshot(602_000).unwrap().sessions[0].state,
+        SessionState::Ampulheta
+    );
+    for i in 0..30 {
+        core.report("public-session", &format!("PUBLIC STEP {i}"), 3000 + i)
+            .unwrap();
+    }
+    let session = &core.snapshot(3030).unwrap().sessions[0];
+    assert_eq!(session.steps.len(), 20);
+    assert!(session.steps[0].summary.ends_with("10"));
+    assert!(matches!(updates.try_recv(), Ok(StateEvent::Session(_))));
+    apply(&core, payload("SessionEnd"), 4000);
+    assert_eq!(
+        core.snapshot(603_999).unwrap().sessions[0].state,
+        SessionState::Selo
+    );
+    assert!(core.snapshot(604_000).unwrap().sessions.is_empty());
+    apply(&core, payload("PreToolUse"), 4050);
+    assert_eq!(
+        core.snapshot(4050).unwrap().sessions[0].state,
+        SessionState::Selo
+    );
+}
+
+#[test]
+fn persistence_sanitization_retention_restart_and_clear() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    {
+        let core = Core::open(&path, 0).unwrap();
+        core.set_retention_days(365, 0).unwrap();
+        core.set_completed_minutes(2).unwrap();
+        let mut input = payload("PreToolUse");
+        input["tool_name"] = json!("Bash");
+        input["tool_input"] = json!({"command":"SECRET_VAR=PUBLIC_CREDENTIAL echo PUBLIC_TARGET; token=PUBLIC_TOKEN_VALUE",
+            "env":{"ANY":"PUBLIC_ENV_VALUE"},"content":"PUBLIC_FILE_CONTENT"});
+        input["prompt"] = json!("PUBLIC_PROMPT");
+        input["transcript_path"] = json!("/private/PUBLIC_TRANSCRIPT");
+        input["tool_response"] = json!("PUBLIC_OUTPUT");
+        apply(&core, input, 0);
+        core.report(
+            "public-session",
+            "Authorization: Bearer PUBLIC_BEARER_VALUE",
+            1,
+        )
+        .unwrap();
+        let stored = String::from_utf8_lossy(&fs::read(&path).unwrap()).into_owned();
+        for sensitive in [
+            "PUBLIC_CREDENTIAL",
+            "PUBLIC_TOKEN_VALUE",
+            "PUBLIC_ENV_VALUE",
+            "PUBLIC_FILE_CONTENT",
+            "PUBLIC_PROMPT",
+            "PUBLIC_TRANSCRIPT",
+            "PUBLIC_OUTPUT",
+            "PUBLIC_BEARER_VALUE",
+        ] {
+            assert!(!stored.contains(sensitive), "Database leaked {sensitive}");
+        }
+        assert!(stored.contains("PUBLIC_TARGET"));
+    }
+    let core = Core::open(&path, 30 * 86_400_000).unwrap();
+    assert_eq!(
+        core.snapshot(2).unwrap().sessions[0].state,
+        SessionState::Ampulheta
+    );
+    apply(&core, payload("SessionEnd"), 3);
+    assert!(core.snapshot(120_003).unwrap().sessions.is_empty());
+    core.set_retention_days(1, 2 * 86_400_000).unwrap();
+    assert!(core.snapshot(2 * 86_400_000).unwrap().sessions.is_empty());
+    apply(&core, payload("SessionStart"), 2 * 86_400_000);
+    core.clear_history().unwrap();
+    assert!(core.snapshot(2 * 86_400_000).unwrap().sessions.is_empty());
+    drop(core);
+    assert!(Core::open(&path, 2 * 86_400_000)
+        .unwrap()
+        .snapshot(2 * 86_400_000)
+        .unwrap()
+        .sessions
+        .is_empty());
+}
+
+#[test]
+fn rejected_inputs_do_not_change_state_and_public_real_fixtures_have_contracts() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    for body in [b"null".as_slice(), b"[]", b"{}", b"invalid",
+        br#"{"hook_event_name":"Stop","session_id":"public","cwd":"/public"}"#,
+        br#"{"hook_event_name":"SessionStart","session_id":true,"cwd":"/public"}"#,
+        br#"{"hook_event_name":"SessionStart","session_id":"sk-ant-PUBLIC123456789","cwd":"/public"}"#] {
+        assert!(core.hook("SessionStart", body, 0).is_err());
+    }
+    assert!(core.snapshot(0).unwrap().sessions.is_empty());
+    assert!(core.report("unknown", "PUBLIC", 0).is_err());
+    let fixture_root = std::env::var_os("SCRIBE_TEST_FIXTURES_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hooks"));
+    let mut total = 0;
+    for event in EVENTS {
+        let files: Vec<_> = fs::read_dir(fixture_root.join(event))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e == "json"))
+            .collect();
+        assert!(files.len() >= 2, "real evidence missing: {event}");
+        for path in files {
+            let isolated = TempDir::new().unwrap();
+            let fixture_core = Core::open(&isolated.path().join("state.db"), 0).unwrap();
+            let bytes = fs::read(path).unwrap();
+            let input: Value = serde_json::from_slice(&bytes).unwrap();
+            fixture_core.hook(event, &bytes, 1).unwrap();
+            let expected = match *event {
+                "SessionStart" => SessionState::Respingo,
+                "PreToolUse"
+                    if matches!(
+                        input["tool_name"].as_str(),
+                        Some("Write" | "Edit" | "NotebookEdit")
+                    ) =>
+                {
+                    SessionState::Pena
+                }
+                "PostToolUseFailure" => SessionState::Mancha,
+                "PermissionRequest" => SessionState::Interrogacao,
+                "Notification"
+                    if matches!(
+                        input["notification_type"].as_str(),
+                        Some("idle_prompt" | "permission_prompt")
+                    ) =>
+                {
+                    SessionState::Ampulheta
+                }
+                "SubagentStart" => SessionState::Divisao,
+                "Stop" | "Notification" => SessionState::Gota,
+                "SessionEnd" => SessionState::Selo,
+                _ => SessionState::Orbita,
+            };
+            assert_eq!(
+                fixture_core.snapshot(1).unwrap().sessions[0].state,
+                expected,
+                "{event}"
+            );
+            total += 1;
+        }
+    }
+    assert_eq!(total, 46, "Use only the committed public Phase 0 fixtures");
+}
+
+struct Reply {
+    code: u16,
+    headers: String,
+    body: String,
+}
+
+async fn request(
+    port: u16,
+    token: &str,
+    method: &str,
+    path: &str,
+    extra: &str,
+    body: &str,
+) -> Reply {
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let data = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}", body.len());
+    socket.write_all(data.as_bytes()).await.unwrap();
+    let mut bytes = vec![];
+    tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    let (headers, body) = text.split_once("\r\n\r\n").unwrap();
+    Reply {
+        code: headers.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        headers: headers.into(),
+        body: body.into(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    for extra in [
+        "Origin: https://malicious.invalid\r\n",
+        "Origin:\r\n",
+        "Host: malicious.invalid\r\n",
+        "Host: localhost:1\r\n",
+        "Authorization: Bearer duplicate\r\n",
+    ] {
+        let reply = request(port, TOKEN, "GET", "/v1/health", extra, "").await;
+        assert!(matches!(reply.code, 401 | 403 | 400));
+        assert!(!reply
+            .headers
+            .to_lowercase()
+            .contains("access-control-allow-origin"));
+    }
+    assert_eq!(
+        request(port, "wrong", "GET", "/v1/health", "", "")
+            .await
+            .code,
+        401
+    );
+    assert_eq!(
+        request(port, TOKEN, "GET", "/v1/state", "", "").await.code,
+        403
+    );
+    assert_eq!(
+        request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/decisions/public",
+            "",
+            "{\"action\":\"allow\"}"
+        )
+        .await
+        .code,
+        404
+    );
+    let oversized = "x".repeat(1024 * 1024 + 1);
+    assert_eq!(
+        request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/hooks/SessionStart",
+            "",
+            &oversized
+        )
+        .await
+        .code,
+        413
+    );
+    assert_eq!(
+        request(port, TOKEN, "POST", "/v1/hooks/SessionStart", "", "null")
+            .await
+            .code,
+        400
+    );
+    let body = payload("SessionStart").to_string();
+    assert_eq!(
+        request(port, TOKEN, "POST", "/v1/hooks/SessionStart", "", &body)
+            .await
+            .code,
+        204
+    );
+    let ui = format!("X-Scribe-UI: {}\r\n", server.ui_token());
+    let reply = request(port, TOKEN, "GET", "/v1/state", &ui, "").await;
+    assert_eq!(reply.code, 200);
+    assert!(reply.body.contains("public-session"));
+    assert!(!reply.body.contains(TOKEN));
+    assert!(!reply.body.contains(server.ui_token()));
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"public-test","version":"1"}}}).to_string();
+    assert_eq!(
+        request(port, TOKEN, "POST", "/mcp", "", &initialize)
+            .await
+            .code,
+        200
+    );
+    let tools = request(
+        port,
+        TOKEN,
+        "POST",
+        "/mcp",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
+    )
+    .await;
+    assert!(tools.body.contains("scribe_report"));
+    assert!(tools.body.contains("scribe_ask"));
+    let listing: Value = serde_json::from_str(&tools.body).unwrap();
+    let listed = listing["result"]["tools"].as_array().unwrap();
+    assert_eq!(listed.len(), 2);
+    let question_schema =
+        &listed.iter().find(|t| t["name"] == "scribe_ask").unwrap()["inputSchema"];
+    assert_eq!(question_schema["properties"]["options"]["minItems"], 2);
+    assert_eq!(question_schema["properties"]["options"]["maxItems"], 4);
+    assert!(question_schema.to_string().contains("\"maxLength\":40"));
+    let report =
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"scribe_report",
+        "arguments":{"session_id":"public-session","text":"PUBLIC MILESTONE"}}})
+        .to_string();
+    let result = request(
+        port,
+        TOKEN,
+        "POST",
+        "/mcp",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &report,
+    )
+    .await;
+    assert!(result.body.contains("ok"), "report dispatch failed");
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms()).unwrap().sessions[0].action,
+        "PUBLIC MILESTONE"
+    );
+    let ask = json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"scribe_ask",
+        "arguments":{"session_id":"public-session","question":"PUBLIC QUESTION","options":["YES","NO"]}}}).to_string();
+    let result = request(
+        port,
+        TOKEN,
+        "POST",
+        "/mcp",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &ask,
+    )
+    .await;
+    assert!(result.body.contains("scribe_unavailable"));
+    for (name, arguments) in [
+        (
+            "scribe_report",
+            json!({"session_id":"public-session","text":"x".repeat(141)}),
+        ),
+        (
+            "scribe_report",
+            json!({"session_id":"public-session","text":"MUST NOT COMMIT","allow":true}),
+        ),
+        (
+            "scribe_report",
+            json!({"session_id":"unknown","text":"MUST NOT COMMIT"}),
+        ),
+        (
+            "scribe_ask",
+            json!({"session_id":"public-session","question":"x".repeat(201),"options":["A","B"]}),
+        ),
+        (
+            "scribe_ask",
+            json!({"session_id":"public-session","question":"PUBLIC","options":["x".repeat(41),"B"]}),
+        ),
+        (
+            "scribe_ask",
+            json!({"session_id":"public-session","question":"PUBLIC","options":["A"]}),
+        ),
+        (
+            "scribe_ask",
+            json!({"session_id":"public-session","question":"PUBLIC","options":["A","B","C","D","E"]}),
+        ),
+    ] {
+        let call = json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":name,"arguments":arguments}}).to_string();
+        let result = request(
+            port,
+            TOKEN,
+            "POST",
+            "/mcp",
+            "MCP-Protocol-Version: 2025-11-25\r\n",
+            &call,
+        )
+        .await;
+        let rpc: Value = serde_json::from_str(&result.body).unwrap();
+        assert!(
+            rpc.get("error").is_some() || rpc["result"]["isError"] == true,
+            "Invalid MCP arguments must fail"
+        );
+        assert_eq!(
+            core.snapshot(scribe_core::now_ms()).unwrap().sessions[0].action,
+            "PUBLIC MILESTONE"
+        );
+    }
+    let mut limited = false;
+    for _ in 0..55 {
+        if request(port, TOKEN, "GET", "/v1/health", "", "").await.code == 429 {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited);
+    server.stop().await.unwrap();
+    assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+        .await
+        .unwrap();
+    let mut socket = TcpStream::connect(("127.0.0.1", server.port()))
+        .await
+        .unwrap();
+    socket.write_all(format!("GET /v1/events HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {TOKEN}\r\nX-Scribe-UI: {}\r\nAccept: text/event-stream\r\n\r\n", server.port(), server.ui_token()).as_bytes()).await.unwrap();
+    let mut buffer = [0u8; 8192];
+    let length = tokio::time::timeout(Duration::from_secs(2), socket.read(&mut buffer))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&buffer[..length]).contains("snapshot"));
+    apply(&core, payload("SessionStart"), 0);
+    let mut seen = String::new();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !seen.contains("public-session") {
+            let n = socket.read(&mut buffer).await.unwrap();
+            assert!(n > 0);
+            seen.push_str(&String::from_utf8_lossy(&buffer[..n]));
+        }
+    })
+    .await
+    .unwrap();
+    assert!(seen.contains("session"));
+    drop(socket);
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn real_release_helper_reaches_the_production_server_with_silent_output() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+        .await
+        .unwrap();
+    let connection = temp.path().join("connection.json");
+    fs::write(
+        &connection,
+        json!({"port":server.port(),"token":TOKEN}).to_string(),
+    )
+    .unwrap();
+    let executable = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../hook-client/target/release")
+        .join(if cfg!(windows) {
+            "scribe-hook.exe"
+        } else {
+            "scribe-hook"
+        });
+    assert!(
+        executable.is_file(),
+        "Build the release hook client before core integration tests"
+    );
+    let start = Instant::now();
+    let output = tokio::task::spawn_blocking(move || {
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
+        let mut child = Command::new(executable)
+            .args(["--hook", "SessionStart"])
+            .env("SCRIBE_CONNECTION_FILE", connection)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(payload("SessionStart").to_string().as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    })
+    .await
+    .unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
+        1
+    );
+    assert!(start.elapsed() < Duration::from_secs(1));
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    assert!(LocalServer::start(core.clone(), 0, "short".into())
+        .await
+        .is_err());
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    assert!(LocalServer::start(core.clone(), port, TOKEN.into())
+        .await
+        .is_err());
+    let mut samples = vec![];
+    for _ in 0..32 {
+        let started = Instant::now();
+        let reply = request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/hooks/SessionStart",
+            "",
+            &payload("SessionStart").to_string(),
+        )
+        .await;
+        assert_eq!(reply.code, 204);
+        assert_eq!(
+            core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
+            1
+        );
+        samples.push(started.elapsed());
+    }
+    samples.sort();
+    let p95 = samples[30];
+    eprintln!(
+        "phase2 HTTP event-to-committed-state p95={}ms samples=32",
+        p95.as_millis()
+    );
+    assert!(p95 < Duration::from_millis(200));
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    socket.write_all(format!("POST /v1/hooks/SessionStart HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {TOKEN}\r\nContent-Length: 100\r\n\r\nx").as_bytes()).await.unwrap();
+    let mut buffer = [0u8; 1024];
+    let read = tokio::time::timeout(Duration::from_secs(2), socket.read(&mut buffer))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&buffer[..read]).starts_with("HTTP/1.1 408"));
+    drop(socket);
+    drop(server);
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if let Ok(listener) = tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+                drop(listener);
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let restarted = LocalServer::start(core, port, TOKEN.into()).await.unwrap();
+    restarted.stop().await.unwrap();
+}

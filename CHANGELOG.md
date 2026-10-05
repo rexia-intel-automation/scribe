@@ -6,6 +6,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Núcleo da Fase 2 em implementação: HTTP local autenticado, onze contratos,
+  estados, SSE, MCP oficial e persistência SQLite de metadados higienizados.
+  A revisão independente ainda não foi concluída; não é um app publicado.
 - Aprovação independente da Fase 0 na rodada 5; preparo nativo Windows verificado.
 - Aprovação independente da Fase 1 na rodada 3; esqueleto instalável, dezoito
   testes Node, um Rust e CI verde em três plataformas com auditoria.
