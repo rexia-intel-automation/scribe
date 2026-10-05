@@ -2,17 +2,31 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::LazyLock;
 
+// Quoted values recognize escaped quotes. An unterminated quote consumes the
+// remaining value rather than leaving a credential fragment visible.
+const QUOTED_VALUE: &str =
+    r#"(?:\\?")(?:\\.|[^"\\])*(?:\\?"|$)|(?:\\?')(?:\\.|''|[^'\\])*(?:\\?'|$)"#;
+const WORD_VALUE: &str = r#"\\[^\r\n]|[^\s,;}&|"'\\]"#;
+
 static SECRETS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9_]{8,}|github_pat_[a-z0-9_]{8,}|xox[a-z]-[a-z0-9-]{8,}|AKIA[A-Z0-9]{16}|eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+)\b").unwrap()
 });
 static ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)([\"']?(?:[a-z0-9_-]*(?:password|passwd|token|secret|api[_-]?key|access[_-]?key))[\"']?\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;}&|]+)"#).unwrap()
+    Regex::new(&format!(r#"(?i)((?:\\?["'])?(?:[a-z0-9_-]*(?:password|passwd|token|secret|api[_-]?key|access[_-]?key))(?:\\?["'])?\s*[:=]\s*)(?:{}|{})+"#, QUOTED_VALUE, WORD_VALUE)).unwrap()
 });
 static ENV_ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(\b[A-Z][A-Z0-9_]*\s*=\s*)(?:\"[^\"]*\"|'[^']*'|[^\s;&|]+)"#).unwrap()
+    Regex::new(&format!(
+        r#"(\b[A-Za-z_][A-Za-z0-9_]*\s*=\s*)(?:{}|{})+"#,
+        QUOTED_VALUE, WORD_VALUE
+    ))
+    .unwrap()
 });
 static AUTHORIZATION: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)(authorization\s*[:=]\s*[\"']?)(?:(?:bearer|basic)\s+)?[^\s\"',;]+"#).unwrap()
+    Regex::new(&format!(
+        r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*)(?:{}|[^\r\n"',;}}]+)"#,
+        QUOTED_VALUE
+    ))
+    .unwrap()
 });
 static QUOTED_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?P<quote>["'])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^"'\r\n]+)["']"#).unwrap()

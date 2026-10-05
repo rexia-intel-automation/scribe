@@ -37,6 +37,98 @@ fn apply(core: &Core, input: Value, at: u64) {
 }
 
 #[test]
+fn quoted_headers_escaped_secret_values_and_lowercase_env_never_enter_state_or_storage() {
+    for (text, marker) in [
+        (
+            r#"{"Authorization":"Bearer PUBLIC_JSON_AUTH"}"#,
+            "PUBLIC_JSON_AUTH",
+        ),
+        (
+            r#"pwsh -Command 'Invoke-RestMethod -Headers @{"Authorization"="Bearer PUBLIC_JSON_AUTH"}'"#,
+            "PUBLIC_JSON_AUTH",
+        ),
+        (r#"token="head\"PUBLIC_TOKEN_TAIL""#, "PUBLIC_TOKEN_TAIL"),
+        (
+            r#"printf 'database_url=PUBLIC_ENV_VALUE\n' > .env"#,
+            "PUBLIC_ENV_VALUE",
+        ),
+        (
+            r#"_database_url='head''PUBLIC_ENV_VALUE'"#,
+            "PUBLIC_ENV_VALUE",
+        ),
+        (
+            r#"{\"Authorization\":\"Bearer PUBLIC_ESCAPED_AUTH\"}"#,
+            "PUBLIC_ESCAPED_AUTH",
+        ),
+        (r#"token="PUBLIC_UNTERMINATED"#, "PUBLIC_UNTERMINATED"),
+    ] {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, 0).unwrap();
+        let mut input = payload("PreToolUse");
+        input["tool_name"] = json!("Bash");
+        input["tool_input"] = json!({"command":text});
+        apply(&core, input, 0);
+        core.report("public-session", text, 1).unwrap();
+        let snapshot = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
+        let stored = String::from_utf8_lossy(&fs::read(path).unwrap()).into_owned();
+        assert!(
+            !snapshot.contains(marker),
+            "State leaked synthetic marker {marker}"
+        );
+        assert!(
+            !stored.contains(marker),
+            "Storage leaked synthetic marker {marker}"
+        );
+    }
+}
+
+#[test]
+fn restart_loads_visible_live_sessions_before_retained_completed_history() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let at = 600_001 * 257;
+    {
+        let core = Core::open(&path, 0).unwrap();
+        apply(&core, payload("SessionStart"), 0);
+        for n in 1..=256 {
+            let mut end = payload("SessionEnd");
+            end["session_id"] = json!(format!("completed-{n}"));
+            apply(&core, end, 600_001 * n);
+        }
+        assert_eq!(core.snapshot(at).unwrap().sessions.len(), 1);
+    }
+    let restored = Core::open(&path, at).unwrap();
+    assert_eq!(restored.snapshot(at).unwrap().sessions.len(), 1);
+    assert_eq!(
+        restored.snapshot(at).unwrap().sessions[0].id,
+        "public-session"
+    );
+}
+
+#[test]
+fn resumed_and_active_sessions_follow_current_cwd_without_losing_steps() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    apply(&core, payload("SessionStart"), 0);
+    let mut resumed = payload("SessionStart");
+    resumed["cwd"] = json!("/public/new-project");
+    resumed["source"] = json!("resume");
+    apply(&core, resumed, 1);
+    let session = core.snapshot(1).unwrap().sessions.remove(0);
+    assert_eq!(session.project, "new-project");
+    assert_eq!(session.origin.as_deref(), Some("resume"));
+    assert_eq!(session.steps.len(), 2);
+    let mut event = payload("UserPromptSubmit");
+    event["cwd"] = json!("/public/another-project");
+    apply(&core, event, 2);
+    assert_eq!(
+        core.snapshot(2).unwrap().sessions[0].project,
+        "another-project"
+    );
+}
+
+#[test]
 fn session_restart_resets_agents_and_completed_sessions_do_not_exhaust_capacity() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();

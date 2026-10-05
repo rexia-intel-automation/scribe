@@ -47,6 +47,12 @@ estar fora do diretório pessoal. Caminhos em comandos e relatos também são
 encurtados; URLs permanecem úteis. O alvo completo de permissões pertence à
 Fase 4 e será higienizado sem truncar antes de oferecê-lo para expansão.
 Reinício não restaura pedidos pendentes nem subagentes como se ainda ativos.
+O filtro de visibilidade é aplicado no SQLite antes do limite de carga, com
+sessões vivas primeiro. Usa json_extract do SQLite embarcado, disponível por
+padrão desde 3.38. Novos eventos atualizam cwd/projeto mantendo os passos.
+Valores de atribuições reconhecem nomes válidos em ambos os casos, aspas
+escapadas e chaves delimitadas de Authorization. Atribuições ambíguas são
+redigidas conservadoramente; uma aspa não terminada omite o restante do valor.
 
 scribe_report requer sessão conhecida e texto de até 140 caracteres.
 scribe_ask valida 200/40 caracteres e duas a quatro opções, mas retorna
@@ -68,4 +74,5 @@ do processo ou depuração pelo mesmo usuário do sistema operacional.
 [rmcp 3.5.0](https://docs.rs/rmcp/3.5.0/rmcp/),
 [axum 0.8.9](https://docs.rs/axum/0.8.9/axum/),
 [rusqlite 0.40.2](https://docs.rs/rusqlite/0.40.2/rusqlite/),
+[funções JSON do SQLite](https://www.sqlite.org/json1.html),
 [comparação constante](https://docs.rs/subtle/latest/subtle/trait.ConstantTimeEq.html).

@@ -54,7 +54,7 @@ impl Core {
         let completed_minutes = store.policy("completed_minutes", 10)?;
         store.prune(at.saturating_sub(u64::from(retention_days) * 86_400_000))?;
         let mut sessions = HashMap::new();
-        for mut session in store.load()? {
+        for mut session in store.load(at, completed_minutes)? {
             if session.ended_at.is_none() {
                 session.state = SessionState::Ampulheta;
                 session.action = "Esperando notícias após reinício".into();
@@ -131,6 +131,7 @@ impl Core {
         if route == "SessionStart" && session.ended_at.is_some() {
             session = Session::new(hook.session_id.clone(), &hook.cwd, at);
         }
+        session.update_cwd(&hook.cwd);
         session.last_event_at = at;
         let tool = hook.tool();
         let target = sanitize::target(&hook.tool_input);

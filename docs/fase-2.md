@@ -69,6 +69,10 @@ Em checkout limpo, omitir a variável: o caminho padrão contém os mesmos
 fixtures versionados. O teste do helper usa o executável de release real;
 se faltar, falha em vez de pular. O CI constrói o helper antes desses testes
 e repete a biblioteca em Windows, macOS e Ubuntu, com lockfile e auditoria.
+No Linux, cargo-llvm-cov 0.9.1 exige pelo menos 85% de linhas da biblioteca;
+usa somente o alvo de integração `--test core`, excluindo arquivos de teste
+do relatório e não compilando módulos unitários no denominador. As regressões dos formatos de
+segredo, histórico e retomada encontrados na primeira revisão são exigidas.
 
 Os testes cobrem estado de cada fixture real, onze eventos, silêncio, limite
 de vinte passos, reinício, retenção e limpeza; concorrência, falha/recuperação
@@ -92,5 +96,12 @@ Payloads com segredos são reduzidos antes de armazenamento/publicação. Binár
 e transporte continuam locais, sem requisição a modelos ou atualização remota.
 
 [ADR 0007](adr/0007-servidor-local.md) registra arquitetura, limites e fontes.
+O [relatório da primeira rodada](reviews/fase-2-rodada-1.md) está preservado:
+reprovou três formatos de segredo e dois casos de histórico/retomada. Foram
+adicionadas regressões para os cinco casos; quatorze testes Rust e os nove
+testes do harness independente passaram após corrigir. Cobertura de produção
+local: 93,51% (764/817 linhas), usando somente testes de integração e omitindo
+arquivos de teste. A [evidência](evidence/local-server-phase-2.json) separa esse
+resultado de uma aprovação ainda dependente da segunda rodada e do novo CI.
 A revisão de segurança dedicada e cobertura do núcleo de decisões pertencem
 às Fases 4 e 5; os instaladores, instalação limpa e release pertencem à Fase 6.

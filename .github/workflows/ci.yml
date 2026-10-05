@@ -37,6 +37,12 @@ jobs:
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture
+      - name: Enforce local core line coverage
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked --version 0.9.1
+          cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --locked --test core --ignore-filename-regex '/tests/' --fail-under-lines 85
       - run: node --test scripts/verification/*.test.mjs
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs

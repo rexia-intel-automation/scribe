@@ -73,16 +73,10 @@ pub struct Session {
 
 impl Session {
     pub(crate) fn new(id: String, cwd: &str, at: u64) -> Self {
-        let normalized = cwd.replace('\\', "/");
-        let project = normalized
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or("?");
-        Self {
+        let mut session = Self {
             id,
-            project: summary(project, 80),
-            cwd: shorten_path(cwd),
+            project: String::new(),
+            cwd: String::new(),
             origin: None,
             state: SessionState::Gota,
             action: "Sessão iniciada".into(),
@@ -90,7 +84,20 @@ impl Session {
             last_event_at: at,
             steps: vec![],
             ended_at: None,
-        }
+        };
+        session.update_cwd(cwd);
+        session
+    }
+
+    pub(crate) fn update_cwd(&mut self, cwd: &str) {
+        let normalized = cwd.replace('\\', "/");
+        let project = normalized
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("?");
+        self.project = summary(project, 80);
+        self.cwd = shorten_path(cwd);
     }
 
     pub(crate) fn visible(&self, now: u64, completed_minutes: u16) -> bool {

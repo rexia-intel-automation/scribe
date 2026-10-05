@@ -22,6 +22,11 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Correções da primeira revisão da Fase 2: cabeçalhos Authorization com chaves
+  entre aspas, valores com escapes e nomes minúsculos de variáveis .env redigidos.
+  Regressões verificam snapshot e SQLite; cobertura do núcleo >=85% exigida no CI.
+- Reabertura prioriza sessões visíveis antes do limite de carga; eventos atualizam
+  cwd/projeto sem apagar passos. Relatório reprovado da primeira rodada preservado.
 - Auditoria cargo no CI e Dependabot para crates/actions; limpeza do teste de
   instalação prossegue e registra falhas mesmo quando o CLI de remoção falha.
 - Timer do subprocesso é liberado também em falha de spawn, com regressão

@@ -32,11 +32,18 @@ impl Store {
         Ok(Self(db))
     }
 
-    pub(crate) fn load(&self) -> Result<Vec<Session>> {
-        let mut statement = self
-            .0
-            .prepare("SELECT data FROM sessions ORDER BY last_event_at DESC LIMIT 256")?;
-        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    pub(crate) fn load(&self, at: u64, completed_minutes: u16) -> Result<Vec<Session>> {
+        let mut statement = self.0.prepare(
+            "SELECT data FROM sessions
+                WHERE json_extract(data, '$.endedAt') IS NULL
+                   OR (?1 - json_extract(data, '$.endedAt')) < ?2
+                ORDER BY (json_extract(data, '$.endedAt') IS NULL) DESC,
+                         last_event_at DESC LIMIT 256",
+        )?;
+        let rows = statement.query_map(
+            params![i64::try_from(at)?, i64::from(completed_minutes) * 60_000],
+            |row| row.get::<_, String>(0),
+        )?;
         rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
     }
 
