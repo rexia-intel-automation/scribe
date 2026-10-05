@@ -2,17 +2,11 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::LazyLock;
 
-// Quoted values recognize escaped quotes. An unterminated quote consumes the
-// remaining value rather than leaving a credential fragment visible.
-const QUOTED_VALUE: &str =
-    r#"(?:\\?")(?:\\.|[^"\\])*(?:\\?"|$)|(?:\\?')(?:\\.|''|[^'\\])*(?:\\?'|$)"#;
-const WORD_VALUE: &str = r#"\\[^\r\n]|[^\s,;}&|"'\\]"#;
-
 static SECRETS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9_]{8,}|github_pat_[a-z0-9_]{8,}|xox[a-z]-[a-z0-9-]{8,}|AKIA[A-Z0-9]{16}|eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+)\b").unwrap()
 });
 static ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(r#"(?i)((?:\\?["'])?(?:[a-z0-9_-]*(?:password|passwd|token|secret|api[_-]?key|access[_-]?key))(?:\\?["'])?\s*[:=]\s*)(?:{}|{})+"#, QUOTED_VALUE, WORD_VALUE)).unwrap()
+    Regex::new(r#"(?is)(\b[a-z0-9_-]*(?:password|passwd|token|secret|api[_-]?key|access[_-]?key)[\\"'`]*\s*(?:[:=]|\s)\s*).*"#).unwrap()
 });
 static ENV_ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
     // Without interpreting the shell, spaces/newlines/quotes cannot distinguish
@@ -20,17 +14,15 @@ static ENV_ASSIGNMENTS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?s)(\b[A-Za-z_][A-Za-z0-9_]*\s*=\s*).*").unwrap()
 });
 static AUTHORIZATION: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(
-        r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*)(?:{}|[^\r\n"',;}}]+)"#,
-        QUOTED_VALUE
-    ))
-    .unwrap()
+    // Quotes, escapes and shell concatenation never delimit a safe remainder.
+    Regex::new(r"(?is)(\bauthorization\b).*").unwrap()
 });
 static QUOTED_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?P<quote>["'])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^"'\r\n]+)["']"#).unwrap()
 });
 static INLINE_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?P<prefix>^|[\s=])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)"#).unwrap()
+    Regex::new(r#"(?P<prefix>^|[\s=<>|&;(\[\{,])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)"#)
+        .unwrap()
 });
 
 pub(crate) fn redact(text: &str) -> String {
@@ -42,7 +34,7 @@ pub(crate) fn redact(text: &str) -> String {
     let text = SECRETS.replace_all(text, "••••");
     let text = ASSIGNMENTS.replace_all(&text, "${1}••••");
     let text = ENV_ASSIGNMENTS.replace_all(&text, "${1}••••");
-    AUTHORIZATION.replace_all(&text, "${1}••••").into_owned()
+    AUTHORIZATION.replace_all(&text, "${1}: ••••").into_owned()
 }
 
 pub(crate) fn shorten_path(text: &str) -> String {

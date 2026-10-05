@@ -22,6 +22,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Correções da terceira revisão da Fase 2: Authorization e chaves sensíveis
+  omitem o restante ambíguo, protegendo concatenação Bash, escapes PowerShell e
+  flags de comandos. Caminhos colados a operadores são encurtados. Dezenove
+  testes Rust passam; os três relatórios reprovados permanecem preservados.
 - Correções da segunda revisão da Fase 2: atribuições omitem o restante ambíguo,
   incluindo valores dotenv com espaços e múltiplas linhas. Mudanças no prazo de
   concluídas recarregam o histórico sem reiniciar, preservando sessões vivas;

@@ -46,6 +46,10 @@ literal: comandos podem codificar ou construir o sinal de igual, e podem
 escrever valores vindos de argumentos. Não se executa nem interpreta shell
 para higienizar. A omissão se aplica também a caminhos `.env.local`/`.env.example`
 e a relatos; pode esconder textos inofensivos que mencionam esses arquivos.
+Authorization e chaves sensíveis também omitem todo o restante do texto,
+incluindo aspas concatenadas, escapes PowerShell e argumentos de linha de
+comando. O núcleo não tenta descobrir onde termina a credencial. Caminhos
+colados a operadores como `<`/`>` são encurtados, além dos entre aspas.
 Caminhos em comandos e relatos também são encurtados. Retenção de quatorze
 dias configurável entre 1 e 365; visibilidade
 de concluídas de dez minutos configurável entre 1 e 1440. Apagar histórico
@@ -87,7 +91,7 @@ No Linux, cargo-llvm-cov 0.9.1 exige pelo menos 85% de linhas da biblioteca;
 usa somente o alvo de integração `--test core`, excluindo arquivos de teste
 do relatório e não compilando módulos unitários no denominador. As regressões
 dos formatos de segredo, histórico, retomada, visibilidade e silêncio encontrados
-nas duas primeiras revisões são exigidas.
+nas três primeiras revisões são exigidas.
 
 Os testes cobrem estado de cada fixture real, onze eventos, silêncio, limite
 de vinte passos, reinício, retenção e limpeza; concorrência, falha/recuperação
@@ -116,7 +120,7 @@ reprovou três formatos de segredo e dois casos de histórico/retomada. Foram
 adicionadas regressões para os cinco casos. A
 [segunda rodada](reviews/fase-2-rodada-2.md) reprovou valores dotenv com espaços,
 mudança de visibilidade sem reinício e perda da forma Mancha por silêncio.
-As correções têm regressões versionadas; dezessete testes Rust passaram.
+As correções têm regressões versionadas.
 Antes do veredito da terceira rodada, um ensaio do construtor reproduziu outro
 caso: escrita de `.env` com `=` codificado. A omissão completa acima e quatro
 variantes no teste de integração cobrem essa lacuna; a revisão usa o novo commit.
@@ -125,11 +129,17 @@ passaram contra as correções. O harness original da segunda rodada foi
 preservado; numa cópia, somente a chamada ao setter recebeu o timestamp atual
 exigido pela nova assinatura. Isso é uma verificação do construtor, não uma
 nova aprovação independente.
-Cobertura de produção local: 95,32% (794/833 linhas), usando somente testes
+A [terceira rodada](reviews/fase-2-rodada-3.md) encontrou Authorization
+concatenado em Bash, escape por crase em relato e caminhos junto a
+redirecionamento. As correções têm regressões nos caminhos de hook, relato e
+SQLite, incluindo outras chaves e operadores; dezenove testes Rust passaram.
+Os oito testes do harness da terceira rodada também passaram sem alteração
+do harness, numa verificação do construtor após a revisão reprovada.
+Cobertura de produção local: 95,66% (794/830 linhas), usando somente testes
 de integração e omitindo arquivos de teste. O CLI Claude Code real conectou ao
 MCP em um ensaio com configuração isolada, sem chamar modelo nem modificar a
 configuração pessoal; isso não comprova decisões humanas.
 A [evidência](evidence/local-server-phase-2.json) separa esses resultados de
-uma aprovação ainda dependente da terceira rodada e do novo CI.
+uma aprovação ainda dependente da quarta rodada e do novo CI.
 A revisão de segurança dedicada e cobertura do núcleo de decisões pertencem
 às Fases 4 e 5; os instaladores, instalação limpa e release pertencem à Fase 6.

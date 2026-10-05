@@ -50,9 +50,7 @@ Reinício não restaura pedidos pendentes nem subagentes como se ainda ativos.
 O filtro de visibilidade é aplicado no SQLite antes do limite de carga, com
 sessões vivas primeiro. Usa json_extract do SQLite embarcado, disponível por
 padrão desde 3.38. Novos eventos atualizam cwd/projeto mantendo os passos.
-Valores de atribuições reconhecem nomes válidos em ambos os casos, aspas
-escapadas e chaves delimitadas de Authorization. Atribuições ambíguas são
-redigidas conservadoramente; uma aspa não terminada omite o restante do valor.
+Valores de atribuições reconhecem nomes válidos em ambos os casos.
 Depois da primeira atribuição de variável, todo o restante do texto é omitido,
 inclusive múltiplas linhas: sem executar ou interpretar o shell, os argumentos
 seguintes são ambíguos com valores dotenv que contêm espaços. Esta opção perde
@@ -61,6 +59,10 @@ Texto que menciona `.env` é omitido por inteiro, sem diferenciar maiúsculas:
 escritas podem construir/codificar a atribuição, sem `=` literal reconhecível.
 Inclui `.env.local`/`.env.example` e menções inofensivas; esta perda de detalhe
 evita depender de interpretar comandos para não persistir valores dotenv.
+Authorization e chaves sensíveis delimitadas, inclusive flags de comandos,
+omitem todo o texto seguinte em vez de tentar reconhecer o fim de um valor
+por aspas/escapes. Concatenação Bash e escapes PowerShell não deixam caudas
+visíveis. Caminhos após operadores de shell também são encurtados.
 Mudar a duração das concluídas recarrega a lista limitada diretamente do banco,
 sem exigir reinício e preservando o estado atual das vivas e seus subagentes.
 Mancha não é substituída pelo silêncio; continua até novo evento.

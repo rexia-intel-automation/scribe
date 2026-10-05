@@ -84,6 +84,66 @@ fn quoted_headers_escaped_secret_values_and_lowercase_env_never_enter_state_or_s
 }
 
 #[test]
+fn credentials_with_shell_escapes_and_concatenation_never_leave_value_tails() {
+    for text in [
+        r#"Invoke-RestMethod -Headers @{"Authorization"="Bearer head`"PUBLIC_CREDENTIAL_TAIL"}"#,
+        r#"curl -H "Authorization: Bearer head"'PUBLIC_CREDENTIAL_TAIL' https://example.invalid"#,
+        r#"curl -H 'Authorization: Bearer head'"PUBLIC_CREDENTIAL_TAIL""#,
+        r#"Authorization: Bearer head`"PUBLIC_CREDENTIAL_TAIL"#,
+        r#"{"password":"head"'PUBLIC_CREDENTIAL_TAIL'}"#,
+        r#"{"apiKey":"head`"PUBLIC_CREDENTIAL_TAIL"}"#,
+        r#"{\"password\":\"head\"'PUBLIC_CREDENTIAL_TAIL'}"#,
+        r#"{\\\"apiKey\\\":\\\"head\\\"'PUBLIC_CREDENTIAL_TAIL'}"#,
+        "deploy --token PUBLIC_CREDENTIAL_TAIL",
+        "Authorization: head\nPUBLIC_CREDENTIAL_TAIL",
+    ] {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, 0).unwrap();
+        let mut input = payload("PreToolUse");
+        input["tool_name"] = json!("Bash");
+        input["tool_input"] = json!({"command":text});
+        apply(&core, input, 0);
+        let hook = serde_json::to_string(&core.snapshot(0).unwrap()).unwrap();
+        assert!(!hook.contains("PUBLIC_CREDENTIAL_TAIL"));
+        core.report("public-session", text, 1).unwrap();
+        let report = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
+        assert!(!report.contains("PUBLIC_CREDENTIAL_TAIL"));
+        assert!(
+            !String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_CREDENTIAL_TAIL")
+        );
+    }
+}
+
+#[test]
+fn paths_next_to_shell_operators_are_shortened_in_state_and_storage() {
+    for text in [
+        "cat</private/PUBLIC_PARENT/project/file.rs",
+        "cp /tmp/file >/private/PUBLIC_PARENT/project/file.rs",
+        "type<C:\\private\\PUBLIC_PARENT\\project\\file.rs",
+        "echo hi>>/private/PUBLIC_PARENT/project/file.rs",
+        "cat(/private/PUBLIC_PARENT/project/file.rs)",
+        "cat<\\\\server\\PUBLIC_PARENT\\project\\file.rs",
+    ] {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, 0).unwrap();
+        let mut input = payload("PreToolUse");
+        input["tool_name"] = json!("Bash");
+        input["tool_input"] = json!({"command":text});
+        apply(&core, input, 0);
+        let hook = serde_json::to_string(&core.snapshot(0).unwrap()).unwrap();
+        assert!(!hook.contains("PUBLIC_PARENT"));
+        assert!(hook.contains("project/file.rs"));
+        core.report("public-session", text, 1).unwrap();
+        assert!(!serde_json::to_string(&core.snapshot(1).unwrap())
+            .unwrap()
+            .contains("PUBLIC_PARENT"));
+        assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_PARENT"));
+    }
+}
+
+#[test]
 fn spaced_and_multiline_env_values_are_omitted_before_persistence() {
     for text in [
         "printf 'GREETING=hello PUBLIC_ENV_TAIL\\n' > .env",

@@ -67,14 +67,18 @@ Build Tools foi instalado; observador Rust compilou e passou seis cenários,
 com os limites descritos no ADR 0005. A Fase 1 foi aprovada na rodada 3:
 A9 B8 C8 D8 E8 F8 J8 K8. Dezoito testes Node e um Rust passaram; CI verde
 em três plataformas e auditoria de dependências. A Fase 2 está em implementação
-e revisão: dezessete testes Rust passaram no PowerShell, com 46 fixtures públicos,
+e revisão: dezenove testes Rust passaram no PowerShell, com 46 fixtures públicos,
 Clippy sem avisos e auditoria sem vulnerabilidades. O p95 local entre evento
-HTTP e estado gravado foi 29 ms em 32 amostras; a janela ainda não é medida.
+HTTP e estado gravado foi 24 ms em 32 amostras; a janela ainda não é medida.
 Primeira revisão reprovou cinco casos; correções e regressões passaram, inclusive
 o harness independente. A segunda rodada encontrou valor dotenv com espaços,
 prazo de concluídas que exigia reinício e Mancha substituída pelo silêncio.
 Os três casos foram corrigidos, com regressões para ambos os caminhos de
 higienização, redução/ampliação de prazo, falha de banco e capacidade limitada.
-Cobertura de produção local 95,32%, sem código de testes. A terceira rodada
+A terceira rodada encontrou Authorization concatenado/escapado e caminhos
+após redirecionamento. Foi adotada omissão do restante após cabeçalho/chave
+sensível e encurtamento junto a operadores; novas regressões e os oito casos
+do harness da rodada passaram. Os três relatórios reprovados estão preservados.
+Cobertura de produção local 95,66%, sem código de testes. A quarta rodada
 e o CI do novo commit ainda são necessários para aprovar a fase.
 O app de produção ainda não existe e nenhuma versão está publicada.
