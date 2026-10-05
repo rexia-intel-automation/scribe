@@ -93,6 +93,10 @@ fn spaced_and_multiline_env_values_are_omitted_before_persistence() {
         "cat > .env <<'EOF'\nGREETING=hello PUBLIC_ENV_TAIL\nEOF",
         "GREETING='hello\nPUBLIC_ENV_TAIL'",
         "GREETING=hello; PUBLIC_ENV_TAIL",
+        "printf 'GREETING\\x3dhello PUBLIC_ENV_TAIL\\n' > .env",
+        "printf '%s%s%s' GREETING = PUBLIC_ENV_TAIL > .env.local",
+        "echo PUBLIC_ENV_TAIL | Set-Content .ENV",
+        "echo PUBLIC_ENV_TAIL > config/.env.example",
     ] {
         let temp = TempDir::new().unwrap();
         let path = temp.path().join("state.db");

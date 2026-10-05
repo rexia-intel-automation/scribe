@@ -27,6 +27,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   concluídas recarregam o histórico sem reiniciar, preservando sessões vivas;
   falhas permanecem em Mancha até novo evento. Ambos os relatórios reprovados
   foram preservados; dezessete testes Rust passam antes da terceira rodada.
+- Menções a arquivos `.env` omitem o texto completo: ensaio adicional do
+  construtor reproduziu vazamento quando o comando codificava o sinal de igual.
+  Regressões incluem codificação, construção por argumentos e variantes do nome.
 - Correções da primeira revisão da Fase 2: cabeçalhos Authorization com chaves
   entre aspas, valores com escapes e nomes minúsculos de variáveis .env redigidos.
   Regressões verificam snapshot e SQLite; cobertura do núcleo >=85% exigida no CI.

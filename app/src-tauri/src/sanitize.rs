@@ -34,6 +34,11 @@ static INLINE_PATH: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 pub(crate) fn redact(text: &str) -> String {
+    // A dotenv write can construct/encode '=' or expand variables. Recognizing
+    // literal assignments alone cannot safely summarize commands targeting it.
+    if text.to_ascii_lowercase().contains(".env") {
+        return "••••".into();
+    }
     let text = SECRETS.replace_all(text, "••••");
     let text = ASSIGNMENTS.replace_all(&text, "${1}••••");
     let text = ENV_ASSIGNMENTS.replace_all(&text, "${1}••••");

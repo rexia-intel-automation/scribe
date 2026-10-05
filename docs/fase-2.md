@@ -41,6 +41,11 @@ inline são redigidos antes de truncar. Após a primeira atribuição, o restant
 do texto é omitido: sem interpretar shell, não há como distinguir argumentos
 seguintes de valores dotenv com espaços ou múltiplas linhas. O prefixo e o nome
 da ferramenta permanecem; comandos sem atribuições mantêm seus alvos úteis.
+Texto que menciona `.env` é omitido por inteiro, inclusive sem atribuição
+literal: comandos podem codificar ou construir o sinal de igual, e podem
+escrever valores vindos de argumentos. Não se executa nem interpreta shell
+para higienizar. A omissão se aplica também a caminhos `.env.local`/`.env.example`
+e a relatos; pode esconder textos inofensivos que mencionam esses arquivos.
 Caminhos em comandos e relatos também são encurtados. Retenção de quatorze
 dias configurável entre 1 e 365; visibilidade
 de concluídas de dez minutos configurável entre 1 e 1440. Apagar histórico
@@ -112,12 +117,15 @@ adicionadas regressões para os cinco casos. A
 [segunda rodada](reviews/fase-2-rodada-2.md) reprovou valores dotenv com espaços,
 mudança de visibilidade sem reinício e perda da forma Mancha por silêncio.
 As correções têm regressões versionadas; dezessete testes Rust passaram.
+Antes do veredito da terceira rodada, um ensaio do construtor reproduziu outro
+caso: escrita de `.env` com `=` codificado. A omissão completa acima e quatro
+variantes no teste de integração cobrem essa lacuna; a revisão usa o novo commit.
 Os nove testes independentes antigos e os oito da segunda rodada também
 passaram contra as correções. O harness original da segunda rodada foi
 preservado; numa cópia, somente a chamada ao setter recebeu o timestamp atual
 exigido pela nova assinatura. Isso é uma verificação do construtor, não uma
 nova aprovação independente.
-Cobertura de produção local: 95,30% (791/830 linhas), usando somente testes
+Cobertura de produção local: 95,32% (794/833 linhas), usando somente testes
 de integração e omitindo arquivos de teste. O CLI Claude Code real conectou ao
 MCP em um ensaio com configuração isolada, sem chamar modelo nem modificar a
 configuração pessoal; isso não comprova decisões humanas.
