@@ -66,5 +66,27 @@ A Fase 0 foi aprovada na rodada 5: A9 B8 C8 D8 F8 J8. Quatorze testes passaram,
 Build Tools foi instalado; observador Rust compilou e passou seis cenários,
 com os limites descritos no ADR 0005. A Fase 1 foi aprovada na rodada 3:
 A9 B8 C8 D8 E8 F8 J8 K8. Dezoito testes Node e um Rust passaram; CI verde
-em três plataformas e auditoria de dependências. O próximo passo é a Fase 2.
+em três plataformas e auditoria de dependências. A Fase 2 está em implementação
+e revisão: vinte e dois testes Rust passaram no PowerShell, com 46 fixtures públicos,
+Clippy sem avisos e auditoria sem vulnerabilidades. O p95 local entre evento
+HTTP e estado gravado foi 11 ms em 32 amostras; a janela ainda não é medida.
+Primeira revisão reprovou cinco casos; correções e regressões passaram, inclusive
+o harness independente. A segunda rodada encontrou valor dotenv com espaços,
+prazo de concluídas que exigia reinício e Mancha substituída pelo silêncio.
+Os três casos foram corrigidos, com regressões para ambos os caminhos de
+higienização, redução/ampliação de prazo, falha de banco e capacidade limitada.
+A terceira rodada encontrou Authorization concatenado/escapado e caminhos
+após redirecionamento. Foi adotada omissão do restante após cabeçalho/chave
+sensível e encurtamento junto a operadores; novas regressões e os oito casos
+do harness da rodada passaram. A quarta rodada encontrou caminhos junto a
+flags de compilador e retenção de sessões/passos vencidos. As correções
+incluem limpeza ociosa e transação única para política e histórico; os oito
+testes dessa rodada passaram em verificação do construtor. Os quatro
+relatórios reprovados estão preservados.
+Cobertura de produção local 95,82%, sem código de testes. A quinta rodada
+aprovou a Fase 2 em 2026-10-06: A9 B9 C9 D9 E8 F9 I8 J8, 33 regressões
+e nove tentativas novas passaram. Ambos os CIs do commit final passaram
+em três plataformas. Falhas temporais anteriores do Windows foram registradas
+e corrigidas na execução dos testes, mantendo limites e concorrência interna.
+A Fase 3 pode começar, usando as referências locais e a gota em argila.
 O app de produção ainda não existe e nenhuma versão está publicada.

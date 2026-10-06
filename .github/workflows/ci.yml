@@ -15,6 +15,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
+      - run: cargo audit --file app/src-tauri/Cargo.lock --deny warnings
   native-and-plugin:
     strategy:
       fail-fast: false
@@ -33,6 +34,15 @@ jobs:
       - run: cargo clippy --manifest-path app/hook-client/Cargo.toml --locked -- -D warnings
       - run: cargo test --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
+      - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture --test-threads=1
+      - name: Enforce local core line coverage
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked --version 0.9.1
+          cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --locked --test core --ignore-filename-regex '/tests/' --fail-under-lines 85
       - run: node --test scripts/verification/*.test.mjs
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs

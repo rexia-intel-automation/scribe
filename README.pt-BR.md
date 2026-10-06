@@ -4,7 +4,7 @@ App local para acompanhar sessões do Claude Code e decisões humanas.
 
 [English](README.md)
 
-**Estado:** Fases 0 e 1 aprovadas; próxima etapa é o servidor local.
+**Estado:** Fases 0, 1 e 2 aprovadas; a próxima etapa é a interface desktop.
 Ainda não há release do app desktop. O cliente nativo somente observa eventos;
 decisões de permissão ainda não foram implementadas.
 
@@ -14,7 +14,8 @@ exigir Node separado. A primeira versão mostrará sessões e permitirá ao huma
 responder permissões e perguntas curtas localmente.
 
 Consulte [o plano verificável](docs/plano-v0.1.md), [a Fase 0](docs/fase-0.md) e
-[a verificação da Fase 1](docs/fase-1.md). Configure o plugin nas sessões diárias
+[a verificação da Fase 1](docs/fase-1.md) e [do servidor local](docs/fase-2.md).
+Configure o plugin nas sessões diárias
 quando o app e os fluxos de decisão tiverem passado pelas respectivas catracas.
 
 MIT © 2026 RexIA Tecnologia e Automação Digital LTDA.
