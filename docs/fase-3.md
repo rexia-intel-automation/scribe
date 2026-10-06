@@ -322,3 +322,35 @@ escuro, pt-BR, sem alertas, preferências graváveis e zero violações axe A/AA
 Evidências `desktop-current-startup.json`, `native-a11y-current.json` e
 `native-current.png`. Esse ensaio confirma inicialização do binário atual;
 não simula aceite humano nem prova o arraste e todas as corridas assíncronas.
+
+## Integração real no PowerShell do PC
+
+Em 2026-10-06, Claude Code 2.1.289 autenticado pela assinatura executou dois
+ensaios contra o release Windows 9b64918 aberto: ciclo `--init-only` e conversa
+em modo `auto`, limitada a uma leitura de `PUBLIC-TEST.txt` no diretório de
+teste. O cliente nativo de produção recebeu os hooks copiados do manifesto
+por `--settings`, somente nesses processos, com a conexão isolada do app.
+O ensaio não instalou o plug-in nem alterou a configuração da sessão pessoal.
+
+Ambos terminaram com código zero e stderr vazio. O ciclo persistiu dois passos;
+a conversa persistiu seis passos, incluindo Read, e devolveu a linha pública
+esperada. As duas sessões chegaram a `selo`, com término registrado, e apareceram
+na interface nativa. A observação registrou respingo, órbita e gota durante o
+turno; não mediu p95 entre disparo de hook e renderização. As três sessões antigas
+na captura continuam sendo fixtures sintéticas; as quatro concluídas `workspace`
+vieram das duas tentativas reais, incluindo a tentativa inicial.
+
+O primeiro coletor interpretou incorretamente o JSON do CLI como objeto, quando
+era um array, e falhou na asserção da resposta final. Sua evidência foi preservada.
+Após normalizar o último elemento do array, os dois ensaios passaram. Evidências:
+`docs/evidence/native-claude-real.json`,
+`docs/evidence/native-claude-first-instrumentation-error.json` e
+`docs/public/phase-3/native-real-claude.png`. Instrumento e logs locais em
+`D:/RexIA/projetos/scribe/app/.artifacts/phase-3-claude-live`.
+
+A janela Windows Terminal indicada pelo humano existia, mas não era exposta
+pelo controle de janelas. Foram usados processos separados via PowerShell;
+a sessão interativa aberta não foi controlada. Este teste comprova o caminho
+Claude real → cliente nativo → servidor → interface para observação de sessão.
+Não comprova instalação nessa sessão, decisões de permissão, aceite visual ou
+arraste físico. A catraca da Fase 3 continua pendente.
