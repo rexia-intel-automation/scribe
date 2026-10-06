@@ -89,6 +89,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   o novo editor nem descarta seu rascunho. Regressões falham antes da correção;
   33 Vitest e onze Playwright passam. Cobertura Rust no CI passa a executar
   testes serialmente, mantendo os limites de latência e cobertura.
+- Rodada 8 da Fase 3 não confirmou defeitos novos: H9 e demais áreas8;
+  G9 ainda depende dos aceites visual/arraste. Release Windows atual recompilado
+  e observado sem alertas/violações axe A/AA; a fase não foi aprovada.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

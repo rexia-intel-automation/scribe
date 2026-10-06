@@ -300,3 +300,25 @@ Foi solicitada uma reexecução dos jobs falhos do SHA anterior para observar
 recorrência, sem descartar seus logs nem atribuir a falha ao ambiente sem prova.
 O novo candidato ainda precisa de CI e revisão aprovados, além dos aceites
 humanos. A janela nativa antiga permanece reservada ao arraste manual.
+
+## Rodada 8 e estado atual
+
+Revisão independente do 9b64918: A8 B8 C8 D8 E8 F8 G8 H9 I8 J8.
+Nenhum defeito novo confirmado; oito tentativas adversariais válidas passaram.
+O seletor inicial de R8-07 não acompanhava a tradução para inglês; controle
+com seletor corrigido passou, mantendo o log e o trace iniciais. G9 continua
+pendente do aceite visual humano e da demonstração do arraste físico. A fase
+não está aprovada; não há fundamento para repetir revisão técnica idêntica
+enquanto apenas essas evidências externas faltarem.
+
+A reexecução do CI 3d8c6a9, attempt 2, terminou verde: p95 Windows 22 ms e
+Linux 2 ms no teste serial, com 92,05% de linhas na cobertura do núcleo.
+Os logs vermelhos da primeira execução foram preservados; a causa da variação
+Windows não foi determinada. Isso não substitui CI do candidato mais recente.
+
+O release Windows do 9b64918 foi compilado novamente no PC e reaberto no
+servidor de teste isolado. Observação somente de leitura confirmou 372×784,
+escuro, pt-BR, sem alertas, preferências graváveis e zero violações axe A/AA.
+Evidências `desktop-current-startup.json`, `native-a11y-current.json` e
+`native-current.png`. Esse ensaio confirma inicialização do binário atual;
+não simula aceite humano nem prova o arraste e todas as corridas assíncronas.
