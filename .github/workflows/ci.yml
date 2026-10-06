@@ -36,7 +36,7 @@ jobs:
       - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
-      - run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture
+      - run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture --test-threads=1
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'
         run: |

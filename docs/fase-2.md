@@ -85,7 +85,7 @@ versionados, evitando capturas históricas extras da pasta de runtime.
 $env:SCRIBE_TEST_FIXTURES_ROOT = 'C:/Users/engmo/OneDrive/RexIA/RexIA/projetos/scribe/app/src-tauri/tests/fixtures/hooks'
 cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
 cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
-cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture
+cargo test --manifest-path app/src-tauri/Cargo.toml --locked -- --nocapture --test-threads=1
 cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo audit --file app/src-tauri/Cargo.lock --deny warnings
 ```
@@ -94,6 +94,10 @@ Em checkout limpo, omitir a variável: o caminho padrão contém os mesmos
 fixtures versionados. O teste do helper usa o executável de release real;
 se faltar, falha em vez de pular. O CI constrói o helper antes desses testes
 e repete a biblioteca em Windows, macOS e Ubuntu, com lockfile e auditoria.
+Os testes da biblioteca são executados em sequência para que medições de
+latência e abertura do helper não disputem disco/CPU com outros testes de
+capacidade e SQLite. Os cenários de concorrência dentro dos testes continuam
+concorrentes; os limites de 200 ms e um segundo não foram alterados.
 No Linux, cargo-llvm-cov 0.9.1 exige pelo menos 85% de linhas da biblioteca;
 usa somente o alvo de integração `--test core`, excluindo arquivos de teste
 do relatório e não compilando módulos unitários no denominador. As regressões
