@@ -1,0 +1,10 @@
+{
+  "stage": "focus-after-expand",
+  "width": 372,
+  "height": 784,
+  "theme": "dark",
+  "alerts": [],
+  "badgeVisible": false,
+  "collapsed": false,
+  "focusedButton": "Recolher janela"
+}

@@ -60,6 +60,13 @@ novas após recuperação removem avisos locais somente quando o Rust não
 reporta erro persistente. A dica de conexão considera hooks após a abertura,
 preservando essa informação mesmo quando a sessão recebida deixa de aparecer.
 
+A troca de modo transfere foco DOM ao controle equivalente, sem refocar cada
+snapshot nem alterar a ativação nativa do aplicativo externo. O modal mantém
+seu gerenciamento de foco. Formas estacionárias sem olhos ignoram o prazo de
+piscada; transições, órbita e piscadas efetivas continuam desenhando. O job
+de auditoria também bloqueia vulnerabilidades npm desde nível baixo, incluindo
+dependências de desenvolvimento; não há execução de scripts de instalação.
+
 ## Verificação e limites
 
 Testes Rust de transação/validação/origem/gravação privada, Vitest, Playwright e

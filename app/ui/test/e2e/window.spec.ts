@@ -120,6 +120,71 @@ test("empty preview, keyboard dialog, language and theme survive real browser la
   expect(errors).toEqual([]);
 });
 
+test("stationary forms without eyes remain settled after the longest blink interval", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1080, height: 1550 });
+  await page.addInitScript(() => {
+    const counts = new Map<HTMLCanvasElement, number>();
+    const original = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      counts.set(this.canvas, (counts.get(this.canvas) ?? 0) + 1);
+      return original.apply(this, args);
+    };
+    Object.assign(window, { scribeDraws: counts });
+  });
+  await page.goto("/test/formas-24px.html");
+  await page.waitForTimeout(6500);
+  const snapshot = () =>
+    page.evaluate(() => {
+      const counts = (
+        window as unknown as { scribeDraws: Map<HTMLCanvasElement, number> }
+      ).scribeDraws;
+      return [
+        ...document.querySelectorAll<HTMLCanvasElement>(".forms-grid canvas"),
+      ]
+        .filter((canvas) => {
+          const form = canvas
+            .closest(".form-row")
+            ?.querySelector("h2")?.textContent;
+          return (
+            form !== "Órbita" &&
+            (parseInt(canvas.style.width) === 24 ||
+              ["Interrogação", "Selo", "Ponto final"].includes(form ?? ""))
+          );
+        })
+        .map((canvas) => ({
+          size: parseInt(canvas.style.width),
+          form: canvas.closest(".form-row")?.querySelector("h2")?.textContent,
+          draws: counts.get(canvas) ?? 0,
+        }));
+    });
+  const before = await snapshot();
+  await page.waitForTimeout(1100);
+  const after = await snapshot();
+  expect(before).toHaveLength(15);
+  expect(after).toEqual(before);
+  await mkdir(evidence, { recursive: true });
+  await import("node:fs/promises").then((fs) =>
+    fs.writeFile(
+      path.join(evidence, "browser-settled-forms.json"),
+      JSON.stringify(
+        {
+          intervalMs: 1100,
+          afterLongestBlink: true,
+          samples: after.map((item, index) => ({
+            form: item.form,
+            size: item.size,
+            redraws: item.draws - before[index].draws,
+          })),
+        },
+        null,
+        2,
+      ) + "\n",
+    ),
+  );
+});
+
 for (const theme of ["light", "dark"] as const) {
   test(`state glyph contrast ${theme}: question and seal at 24/40/56/96 px`, async ({
     page,

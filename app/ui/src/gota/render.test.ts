@@ -76,6 +76,29 @@ describe("canvas scheduling and accessibility", () => {
     for (let i = 1; i <= 120; i++) renderer.draw(1000 + (i * 1000) / 120);
     expect(context.clearRect).not.toHaveBeenCalled();
   });
+  it.each([
+    ["gota", 24],
+    ["interrogacao", 56],
+    ["selo", 56],
+    ["ponto", 56],
+  ] as const)(
+    "keeps eyeless %s at %i px settled after the blink interval",
+    (form, size) => {
+      const { renderer, context } = avatar(size);
+      renderer.update(form, size, false);
+      vi.mocked(context.clearRect).mockClear();
+      for (let i = 1; i <= 120; i++) renderer.draw(10000 + (i * 1000) / 120);
+      expect(context.clearRect).not.toHaveBeenCalled();
+    },
+  );
+  it("still repaints a blink and its reopening on forms with eyes", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { renderer, context } = avatar(96);
+    renderer.draw(3500);
+    renderer.draw(3640);
+    renderer.draw(3700);
+    expect(context.clearRect).toHaveBeenCalledTimes(2);
+  });
   it("omits eyes and highlight below the specified radius", () => {
     const { renderer, context } = avatar(24);
     vi.mocked(context.ellipse).mockClear();

@@ -199,13 +199,16 @@ export class Renderer {
     )
       return;
     this.last = now;
+    const hasEyes =
+      this.size * 0.32 > 9 &&
+      !["interrogacao", "selo", "ponto"].includes(this.form);
     // Stationary forms only repaint for morphs or blinking; orbit keeps moving.
     if (
       !force &&
       this.form !== "orbita" &&
       now - this.changed >= 450 &&
-      now < this.nextBlink &&
-      !(this.blink > 0 && now - this.blink < 150)
+      (!hasEyes ||
+        (now < this.nextBlink && !(this.blink > 0 && now - this.blink < 150)))
     )
       return;
     const ctx = this.context;
@@ -313,7 +316,7 @@ export class Renderer {
       ctx.lineTo(radius * 0.4, -radius * 0.28);
       ctx.stroke();
     }
-    if (radius > 9 && !["interrogacao", "selo", "ponto"].includes(this.form)) {
+    if (hasEyes) {
       if (!this.reduced && now >= this.nextBlink) {
         this.blink = now;
         this.nextBlink = now + 2500 + Math.random() * 3500;

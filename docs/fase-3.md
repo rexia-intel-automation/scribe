@@ -56,11 +56,12 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Vinte e dois testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Vinte e oito testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
-- Seis Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
+- Sete Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
   interrogação/selo em 24/40/56/96 px.
+  O repouso sem olhos é medido após 6,5 s, além do prazo máximo da primeira piscada.
 - UI build, ESLint, Prettier e Clippy desktop passaram. npm audit: zero
   vulnerabilidades. Cargo audit: dois avisos GTK avaliados publicamente em
   [dependências desktop](dependencias-desktop.md); não chamar isso de auditoria
@@ -187,3 +188,27 @@ sessões e nesse estado de erro; isso continua sem avaliar pixels do canvas.
 A nova amostra de 32 hooks públicos em produção, preservando tema escuro,
 registrou p95 **23,46 ms**, DPR 1,25 e 372×784 sem overflow; evidência
 `desktop-native-round3.json`. Os resultados anteriores permanecem históricos.
+
+## Correções após a rodada 3
+
+Rodada 3, candidato b26bc89: reprovada (A–J 8, mínimas G/H 9), com três
+problemas baixos; relatório preservado. Trocar o modo transfere o foco DOM
+ao controle equivalente, sem repetir esse foco a cada captura. O modal mantém
+seu próprio gerenciamento. Em produção, Enter recolheu e reabriu sem outro Tab:
+`desktop-focus-collapse.json` e `desktop-focus-expand.json`. Recolher pelo atalho
+enquanto a Calculadora tinha foco manteve `document.hasFocus()=false` no Scribe,
+com o botão interno preparado; `desktop-focus-external.json`.
+
+O retorno de repouso agora considera se há olhos: interrogação/selo/ponto e
+formas pequenas sem olhos não despertam para uma piscada impossível. As formas
+com olhos continuam piscando e a órbita continua animada. O E2E espera 6,5 s e
+mede mais 1,1 s: quinze variantes relevantes ficaram em **zero redraws**;
+`browser-settled-forms.json`. Não confundir isso com ausência total de RAF.
+O recheck do harness independente R3 passou **39/39** no candidato corrigido
+(28 testes de produto e 11 adversariais), sem reescrever o log da reprovação.
+
+O job dependency-audit instala o lockfile sem scripts e executa
+`npm audit --audit-level=low`, incluindo dependências de desenvolvimento.
+Nenhum `continue-on-error` é usado. O mesmo comando local teve zero
+vulnerabilidades; o CI do novo candidato ainda precisa passar. Os testes,
+builds e correções não dispensam o aceite visual e a confirmação do arraste.

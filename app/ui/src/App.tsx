@@ -311,6 +311,8 @@ export default function App({
     ),
   );
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const panelToggle = useRef<HTMLButtonElement>(null);
+  const previousMode = useRef(initialView.preferences.collapsed);
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
   const receive = (next: View) => {
@@ -325,6 +327,11 @@ export default function App({
     setError(
       (typeof cause === "string" ? cause : "bridgeUnavailable") as Message,
     );
+  useEffect(() => {
+    if (previousMode.current === view.preferences.collapsed) return;
+    previousMode.current = view.preferences.collapsed;
+    if (view.preferences.collapsed || !settings) panelToggle.current?.focus();
+  }, [view.preferences.collapsed, settings]);
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -368,6 +375,7 @@ export default function App({
   if (view.preferences.collapsed)
     return (
       <button
+        ref={panelToggle}
         className="collapsed"
         aria-label={t(language, "open")}
         title={problem ? t(language, problem) : t(language, "moveHint")}
@@ -444,6 +452,7 @@ export default function App({
           </p>
         </div>
         <button
+          ref={panelToggle}
           className="icon-button collapse-button"
           onClick={toggle}
           aria-label={t(language, "collapse")}

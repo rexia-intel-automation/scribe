@@ -210,10 +210,36 @@ describe("session window", () => {
       t("pt-BR", "configUnavailable"),
     );
     await user.keyboard("{Enter}");
-    (await screen.findByRole("button", { name: "Abrir Scribe" })).focus();
+    expect(
+      await screen.findByRole("button", { name: "Abrir Scribe" }),
+    ).toHaveFocus();
     await user.keyboard("{Enter}");
-    await screen.findByRole("button", { name: "Recolher janela" });
+    expect(
+      await screen.findByRole("button", { name: "Recolher janela" }),
+    ).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("transfers focus when a native snapshot changes the panel mode", async () => {
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    render(<App initialView={data} />);
+    screen.getByRole("button", { name: "Configurações" }).focus();
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        preferences: { ...data.preferences, collapsed: true },
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Abrir Scribe" })).toHaveFocus();
+    act(() => receive!({ ...data, revision: 3 }));
+    expect(
+      screen.getByRole("button", { name: "Recolher janela" }),
+    ).toHaveFocus();
   });
   it("announces a failed move while collapsed and preserves the specific cause", async () => {
     const user = userEvent.setup();
