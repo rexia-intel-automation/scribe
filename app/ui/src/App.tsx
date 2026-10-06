@@ -113,6 +113,8 @@ function Settings({
   const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const historyToggle = useRef<HTMLButtonElement>(null);
+  const previousConfirm = useRef(confirm);
   const [notice, setNotice] = useState(false);
   const language = view.preferences.language;
   useEffect(() => {
@@ -131,6 +133,12 @@ function Settings({
       });
     };
   }, [returnFocus]);
+  useEffect(() => {
+    if (previousConfirm.current !== confirm) {
+      previousConfirm.current = confirm;
+      historyToggle.current?.focus();
+    }
+  }, [confirm]);
   const change = <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
     setPreferences((previous) => ({ ...previous, [key]: value }));
   async function save(event: React.FormEvent) {
@@ -281,13 +289,13 @@ function Settings({
               <button disabled={busy} onClick={clear}>
                 {t(language, "confirmClear")}
               </button>
-              <button onClick={() => setConfirm(false)}>
+              <button ref={historyToggle} onClick={() => setConfirm(false)}>
                 {t(language, "cancel")}
               </button>
             </div>
           </>
         ) : (
-          <button onClick={() => setConfirm(true)}>
+          <button ref={historyToggle} onClick={() => setConfirm(true)}>
             {t(language, "clearHistory")}
           </button>
         )}

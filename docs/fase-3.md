@@ -56,9 +56,9 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Vinte e nove testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Trinta e um testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
-- Sete Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
+- Oito Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
   interrogação/selo em 24/40/56/96 px.
   O repouso sem olhos é medido após 6,5 s, além do prazo máximo da primeira piscada.
@@ -230,3 +230,23 @@ reabrir pelo atalho global e fechar por Escape devolveu o foco ao botão
 Configurações. Janela ficou 372×784, escura, sem modal/alerta e arquivo de
 preferências gravável; `desktop-modal-focus-native.json`. Este ensaio do
 implementador é separado da reprodução de navegador feita pelo revisor.
+
+## Correções após a rodada 5
+
+Rodada 5, candidato e98bd21: reprovada (A–J 8, mínimas G/H 9), com um
+defeito baixo de foco ao abrir/cancelar a confirmação de histórico. O relatório
+e seus logs vermelhos permanecem preservados. A troca do conteúdo agora move
+o foco para Cancelar ao abrir e para Apagar histórico ao voltar. A abertura
+inicial do modal e capturas sem essa troca não refocam o controle de histórico.
+Os testes de produto passaram: 31 Vitest e oito Playwright. O novo E2E percorre
+três ciclos de abrir/cancelar pelo teclado, verificando o foco e seu contorno
+visível, sem executar limpeza. O teste de sucesso usa somente a ponte simulada.
+O recheck R5 passou 39/39 (31 produto + oito adversariais), e suas duas
+reproduções Chromium passaram 2/2. Logs novos do implementador ficam em
+`D:/RexIA/projetos/scribe/app/.artifacts/phase-3-history-fix`, separados dos
+originais da revisão.
+
+A janela Windows em execução continua no candidato e98bd21, reservada ao
+arraste humano; esta correção ainda não foi observada em um novo binário nativo.
+CI desse candidato anterior terminou verde nos três sistemas; isso não aprova
+o candidato corrigido nem substitui os aceites visual/arraste pendentes.

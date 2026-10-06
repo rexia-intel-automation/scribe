@@ -120,6 +120,36 @@ test("empty preview, keyboard dialog, language and theme survive real browser la
   expect(errors).toEqual([]);
 });
 
+test("history confirmation keeps visible keyboard focus without deleting data", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Configurações", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await page
+    .getByRole("button", { name: "Apagar histórico", exact: true })
+    .focus();
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await page.keyboard.press("Enter");
+    const cancel = page.getByRole("button", { name: "Cancelar", exact: true });
+    await expect(cancel).toBeFocused();
+    await expect(cancel).toHaveCSS("outline-style", "solid");
+    await page.keyboard.press("Enter");
+    const clear = page.getByRole("button", {
+      name: "Apagar histórico",
+      exact: true,
+    });
+    await expect(clear).toBeFocused();
+    await expect(clear).toHaveCSS("outline-style", "solid");
+  }
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Configurações", exact: true }),
+  ).toBeFocused();
+});
+
 test("stationary forms without eyes remain settled after the longest blink interval", async ({
   page,
 }) => {

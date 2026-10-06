@@ -79,6 +79,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 - Correção da quarta revisão da Fase 3: fechar Configurações após recolher e
   reabrir devolve o foco ao botão atual. 29 Vitest, sete Playwright e recheck
   R4 com 38/38 passaram; reprodução Chromium do defeito também passou.
+- Correção da quinta revisão da Fase 3: abrir/cancelar a confirmação do
+  histórico mantém foco no controle atual. 31 Vitest e oito Playwright passaram,
+  incluindo três ciclos pelo teclado sem apagar dados. Aceites humanos pendentes.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

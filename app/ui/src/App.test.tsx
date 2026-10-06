@@ -138,6 +138,43 @@ describe("session window", () => {
     );
     expect(screen.getByText("public-project")).toBeVisible();
   });
+  it("keeps keyboard focus when opening and cancelling history confirmation", async () => {
+    const user = userEvent.setup();
+    render(<App initialView={fixture()} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const clear = screen.getByRole("button", { name: "Apagar histórico" });
+    clear.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Cancelar" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen.getByRole("button", { name: "Apagar histórico" }),
+    ).toHaveFocus();
+    expect(bridge.clearHistory).not.toHaveBeenCalled();
+    expect(screen.getByText("public-project")).toBeVisible();
+  });
+  it("returns focus after confirmed history clearing finishes", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    vi.mocked(bridge.clearHistory).mockResolvedValue({
+      ...data,
+      revision: data.revision + 1,
+      sessions: [],
+    });
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: "Apagar histórico" }));
+    await user.click(
+      screen.getByRole("button", { name: t("pt-BR", "confirmClear") }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Apagar histórico" }),
+      ).toHaveFocus(),
+    );
+    expect(bridge.clearHistory).toHaveBeenCalledOnce();
+    expect(screen.queryByText("public-project")).not.toBeInTheDocument();
+  });
   it("ignores reordered snapshots with identical timestamps and releases its listener", async () => {
     let receive: ((value: View) => void) | undefined;
     const stop = vi.fn();
