@@ -70,6 +70,9 @@ e atualizações sem troca da confirmação não interrompem a navegação.
 Limpeza e salvamento registram o controle que iniciou a ação antes de
 desabilitá-lo. Ao terminar a espera, o foco é restaurado somente se ficou
 no BODY e o controle ainda existe; a navegação posterior do usuário é preservada.
+Sucesso de salvamento só fecha o modal que ainda está montado. Se o humano
+fechou e abriu outro editor durante a espera, o snapshot salvo atualiza o App,
+preservando o rascunho e a presença do novo modal.
 Formas estacionárias sem olhos ignoram o
 prazo de piscada; transições, órbita e piscadas efetivas continuam desenhando. O job
 de auditoria também bloqueia vulnerabilidades npm desde nível baixo, incluindo

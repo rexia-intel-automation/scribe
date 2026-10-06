@@ -213,6 +213,54 @@ for (const operation of ["clear", "save"] as const) {
   });
 }
 
+test("a closed modal finishing its save preserves the new settings draft", async ({
+  page,
+}) => {
+  await page.route("**/src/bridge.ts", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `
+      export const desktop = false;
+      export const defaults = {language:'pt-BR',theme:'light',shortcut:'Control+Shift+Space',notifications:true,retentionDays:14,completedMinutes:10,port:7717,collapsed:false,side:'right',y:null,monitor:null};
+      export const initial = {at:0,revision:1,sessions:[],preferences:defaults,error:null};
+      export async function observe() { return () => {}; }
+      export function savePreferences() { return new Promise(resolve => window.addEventListener('scribe-test-save-ok', () => resolve({...initial, revision:2, preferences:{...defaults,theme:'dark'}}), {once:true})); }
+      export async function clearHistory() { return initial; }
+      export async function toggle() { return initial; }
+      export async function move() { return initial; }
+      export async function drag() {}
+      export async function openHelp() {}
+    `,
+    }),
+  );
+  await page.goto("/");
+  const settings = page.getByRole("button", {
+    name: "Configurações",
+    exact: true,
+  });
+  await settings.click();
+  await page
+    .getByRole("button", { name: "Salvar alterações", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Salvar alterações", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await settings.click();
+  const retention = page.getByRole("spinbutton", {
+    name: "Manter histórico (dias)",
+    exact: true,
+  });
+  await retention.fill("27");
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("scribe-test-save-ok")),
+  );
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(retention).toHaveValue("27");
+  await expect(retention).toBeFocused();
+});
+
 test("stationary forms without eyes remain settled after the longest blink interval", async ({
   page,
 }) => {

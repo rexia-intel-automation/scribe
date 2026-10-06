@@ -1,4 +1,11 @@
-import { act, render, screen, within, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
@@ -197,6 +204,37 @@ describe("session window", () => {
     );
     expect(language).toHaveFocus();
     expect(screen.getByText("public-project")).toBeVisible();
+  });
+  it("keeps a new settings draft open when a closed modal finishes saving", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    let resolve!: (next: View) => void;
+    vi.mocked(bridge.savePreferences).mockReturnValue(
+      new Promise<View>((done) => {
+        resolve = done;
+      }),
+    );
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: t("pt-BR", "save") }));
+    await user.click(
+      screen.getByRole("button", { name: "Fechar configurações" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const retention = screen.getByLabelText(t("pt-BR", "retention"));
+    retention.focus();
+    fireEvent.change(retention, { target: { value: "27" } });
+    await act(async () =>
+      resolve({
+        ...data,
+        revision: 2,
+        preferences: { ...data.preferences, theme: "dark" },
+      }),
+    );
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(retention).toHaveValue(27);
+    expect(retention).toHaveFocus();
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
   it("ignores reordered snapshots with identical timestamps and releases its listener", async () => {
     let receive: ((value: View) => void) | undefined;

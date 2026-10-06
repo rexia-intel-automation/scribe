@@ -56,9 +56,9 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Trinta e dois testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Trinta e três testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
-- Dez Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
+- Onze Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
   interrogação/selo em 24/40/56/96 px.
   O repouso sem olhos é medido após 6,5 s, além do prazo máximo da primeira piscada.
@@ -275,3 +275,28 @@ CI do 41194b9 terminou verde nos três sistemas. A janela Windows permanece
 no e98bd21 para o ensaio humano; essas regressões ainda não foram repetidas
 em um novo binário nativo. Revisão do novo candidato e aceites humanos
 continuam necessários antes de avançar.
+
+## Correções após a rodada 7
+
+Rodada 7, candidato 3d8c6a9: reprovada (A–J 8, mínimas G/H 9), com um
+defeito baixo: um salvamento pendente de modal desmontado fechava o novo
+editor e descartava seu rascunho. O modal agora registra sua montagem; sucesso
+do salvamento só fecha a instância ainda montada. A preferência efetivamente
+salva continua chegando ao App com sua revisão, preservando o rascunho novo.
+
+Os testes novos Vitest/Chromium falharam no candidato anterior e passaram
+com a correção. Produto: 33 Vitest e onze Playwright, lint, formatação e build
+UI passaram. Recheck R7: oito ensaios válidos passaram; o caso de Tab com
+expectativa corrigida e seu controle HTML mínimo passaram 2/2 separadamente.
+Logs originais da revisão não foram alterados. Artefatos novos do implementador:
+`D:/RexIA/projetos/scribe/app/.artifacts/phase-3-modal-save-fix`.
+
+O CI do 3d8c6a9 falhou em latência Rust: Windows p95 604 ms no teste serial e
+Linux p95 377 ms na execução instrumentada de cobertura, com testes paralelos.
+O limite de 200 ms foi mantido. A cobertura agora usa `--test-threads=1`,
+como a execução principal, mantendo a catraca de 85% e todas as asserções.
+Isso alinha o isolamento dos testes; não comprova a causa do atraso Windows.
+Foi solicitada uma reexecução dos jobs falhos do SHA anterior para observar
+recorrência, sem descartar seus logs nem atribuir a falha ao ambiente sem prova.
+O novo candidato ainda precisa de CI e revisão aprovados, além dos aceites
+humanos. A janela nativa antiga permanece reservada ao arraste manual.

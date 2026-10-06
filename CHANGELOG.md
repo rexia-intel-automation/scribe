@@ -85,6 +85,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 - Correção da sexta revisão da Fase 3: limpeza/salvamento recuperam foco perdido
   após falha assíncrona, preservando navegação posterior e controles desmontados.
   Regressões falham no candidato anterior; 32 Vitest e dez Playwright passam.
+- Correção da sétima revisão da Fase 3: salvamento de modal fechado não encerra
+  o novo editor nem descarta seu rascunho. Regressões falham antes da correção;
+  33 Vitest e onze Playwright passam. Cobertura Rust no CI passa a executar
+  testes serialmente, mantendo os limites de latência e cobertura.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

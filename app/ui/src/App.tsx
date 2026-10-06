@@ -104,6 +104,7 @@ function Settings({
   returnFocus: RefObject<HTMLButtonElement | null>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const mounted = useRef(false);
   const opener = useRef(
     document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -119,11 +120,13 @@ function Settings({
   const [notice, setNotice] = useState(false);
   const language = view.preferences.language;
   useEffect(() => {
+    mounted.current = true;
     const modal = dialog.current;
     const source = opener.current;
     const fallback = returnFocus.current;
     modal?.showModal();
     return () => {
+      mounted.current = false;
       modal?.close();
       queueMicrotask(() => {
         if (!modal?.isConnected) {
@@ -161,7 +164,7 @@ function Settings({
     setError(null);
     try {
       receive(await bridge.savePreferences(preferences));
-      close();
+      if (mounted.current) close();
     } catch (cause) {
       setError(
         (typeof cause === "string" ? cause : "configUnavailable") as Message,
