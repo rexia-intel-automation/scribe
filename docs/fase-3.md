@@ -67,6 +67,9 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
 - Janela Windows real abriu; configuração/Escape, expansão de sessão, atalho
   global e clique para reabrir foram observados via Computer Use. Inputs do
   servidor são fixtures públicas de teste, não sessões reais de Claude Code.
+- Porta ocupada no formulário nativo foi rejeitada com alerta em português;
+  conexão e preferências conservaram a porta anterior (7717). Evidência em
+  `docs/evidence/desktop-port-conflict.json`.
 - Build de produção abriu `http://tauri.localhost/`, com fontes locais. Janela
   372×784, DPR 1,25, sem overflow. Em 32 eventos até o DOM, p95 **17,46 ms**;
   o teste inclui HTTP, gravação, ponte e renderização. Limite: 200 ms.
@@ -112,3 +115,8 @@ sem evidência adicional.
 Notificações, cartões de permissão/pergunta, instaladores e site ficam nas fases
 seguintes. O link de ajuda aponta para o site de documentação ainda a publicar.
 Os dois avisos GTK precisam da avaliação do revisor e da auditoria da Fase 5.
+
+O primeiro job Linux do candidato 3a12b86 falhou ao iniciar Playwright:
+`webServer` procurava `package.json` em `app/ui`. O servidor Vite já aberto
+mascarava essa falha localmente. Foi definido `cwd` absoluto a partir do arquivo
+de configuração; quatro testes passaram com `CI=true`, sem servidor existente.

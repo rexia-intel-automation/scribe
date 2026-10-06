@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 export default defineConfig({
   testDir: "./test/e2e",
   outputDir: "../../.artifacts/phase-3-browser/results",
@@ -17,6 +18,7 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run dev",
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     url: "http://127.0.0.1:1420",
     reuseExistingServer: !process.env.CI,
   },
