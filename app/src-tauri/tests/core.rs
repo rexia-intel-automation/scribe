@@ -124,6 +124,11 @@ fn paths_next_to_shell_operators_are_shortened_in_state_and_storage() {
         "echo hi>>/private/PUBLIC_PARENT/project/file.rs",
         "cat(/private/PUBLIC_PARENT/project/file.rs)",
         "cat<\\\\server\\PUBLIC_PARENT\\project\\file.rs",
+        "cc -I/private/PUBLIC_PARENT/project/file.rs",
+        "cc -L/private/PUBLIC_PARENT/project/file.rs",
+        "cc -isystem/private/PUBLIC_PARENT/project/file.rs",
+        "cc -oC:\\private\\PUBLIC_PARENT\\project\\file.rs",
+        "cc @/private/PUBLIC_PARENT/project/file.rs",
     ] {
         let temp = TempDir::new().unwrap();
         let path = temp.path().join("state.db");
@@ -141,6 +146,140 @@ fn paths_next_to_shell_operators_are_shortened_in_state_and_storage() {
             .contains("PUBLIC_PARENT"));
         assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_PARENT"));
     }
+}
+
+#[test]
+fn retention_removes_old_steps_from_live_and_archived_sessions() {
+    const DAY: u64 = 86_400_000;
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, 0).unwrap();
+    apply(&core, payload("SessionStart"), 0);
+    core.report("public-session", "PUBLIC_OLD_STEP", 1).unwrap();
+    let mut archived = payload("SessionStart");
+    archived["session_id"] = json!("archived");
+    apply(&core, archived, 0);
+    core.report("archived", "PUBLIC_ARCHIVED_STEP", 1).unwrap();
+    let mut end = payload("SessionEnd");
+    end["session_id"] = json!("archived");
+    apply(&core, end, 13 * DAY);
+    apply(&core, payload("UserPromptSubmit"), 13 * DAY);
+    apply(&core, payload("UserPromptSubmit"), 15 * DAY);
+    core.report("public-session", "PUBLIC_RECENT_STEP", 15 * DAY + 1)
+        .unwrap();
+    let snapshot = core.snapshot(15 * DAY + 1).unwrap();
+    assert_eq!(snapshot.sessions.len(), 1);
+    assert_eq!(
+        snapshot.sessions[0]
+            .steps
+            .iter()
+            .map(|s| s.at)
+            .collect::<Vec<_>>(),
+        vec![13 * DAY, 15 * DAY, 15 * DAY + 1]
+    );
+    let rows = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        rows.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    for marker in ["PUBLIC_OLD_STEP", "PUBLIC_ARCHIVED_STEP"] {
+        assert!(!String::from_utf8_lossy(&fs::read(&path).unwrap()).contains(marker));
+        assert!(!serde_json::to_string(&snapshot).unwrap().contains(marker));
+    }
+    let restored = Core::open(&path, 15 * DAY + 1).unwrap();
+    assert_eq!(
+        restored.snapshot(15 * DAY + 1).unwrap().sessions[0]
+            .steps
+            .len(),
+        3
+    );
+    assert!(core.snapshot(30 * DAY + 2).unwrap().sessions.is_empty());
+    assert_eq!(
+        rows.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_RECENT_STEP"));
+}
+
+#[test]
+fn failed_retention_setting_rolls_back_history_and_policy() {
+    const DAY: u64 = 86_400_000;
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, 0).unwrap();
+    core.set_retention_days(14, 0).unwrap();
+    apply(&core, payload("SessionStart"), 13 * DAY);
+    let before = serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch("CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
+    assert!(core.set_retention_days(1, 15 * DAY).is_err());
+    assert_eq!(
+        serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT value FROM settings WHERE key='retention_days'",
+            [],
+            |r| r.get::<_, u16>(0)
+        )
+        .unwrap(),
+        14
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    db.execute_batch("DROP TRIGGER refuse_policy;").unwrap();
+    core.set_retention_days(1, 15 * DAY).unwrap();
+    assert!(core.snapshot(15 * DAY).unwrap().sessions.is_empty());
+    assert_eq!(
+        db.query_row(
+            "SELECT value FROM settings WHERE key='retention_days'",
+            [],
+            |r| r.get::<_, u16>(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let old = scribe_core::now_ms() - 15 * 86_400_000;
+    let core = Core::open(&path, old).unwrap();
+    apply(&core, payload("SessionStart"), old);
+    core.report("public-session", "PUBLIC_IDLE_METADATA", old + 1)
+        .unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if matches!(
+                db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0)),
+                Ok(0)
+            ) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_IDLE_METADATA"));
+    assert!(core
+        .snapshot(scribe_core::now_ms())
+        .unwrap()
+        .sessions
+        .is_empty());
+    server.stop().await.unwrap();
 }
 
 #[test]
@@ -348,9 +487,9 @@ fn concurrent_commits_database_failure_and_capacity_are_bounded() {
         }
     });
     assert_eq!(core.snapshot(1).unwrap().sessions[0].steps.len(), 20);
+    let before = serde_json::to_value(core.snapshot(1).unwrap()).unwrap();
     let locked = rusqlite::Connection::open(&path).unwrap();
     locked.execute_batch("BEGIN IMMEDIATE").unwrap();
-    let before = serde_json::to_value(core.snapshot(1).unwrap()).unwrap();
     let mut changes = core.subscribe();
     assert!(core.report("public-session", "MUST NOT COMMIT", 2).is_err());
     assert_eq!(
@@ -876,7 +1015,7 @@ async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
         .unwrap()
         .unwrap();
     assert!(String::from_utf8_lossy(&buffer[..length]).contains("snapshot"));
-    apply(&core, payload("SessionStart"), 0);
+    apply(&core, payload("SessionStart"), scribe_core::now_ms());
     let mut seen = String::new();
     tokio::time::timeout(Duration::from_secs(2), async {
         while !seen.contains("public-session") {

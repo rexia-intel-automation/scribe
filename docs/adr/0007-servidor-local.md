@@ -62,7 +62,15 @@ evita depender de interpretar comandos para não persistir valores dotenv.
 Authorization e chaves sensíveis delimitadas, inclusive flags de comandos,
 omitem todo o texto seguinte em vez de tentar reconhecer o fim de um valor
 por aspas/escapes. Concatenação Bash e escapes PowerShell não deixam caudas
-visíveis. Caminhos após operadores de shell também são encurtados.
+visíveis. Caminhos após operadores de shell e flags de compilador como
+`-I`/`-L` também são encurtados.
+Retenção usa o horário de cada passo: renovar a sessão não renova passos
+antigos. O SQLite filtra o array JSON mantendo a ordem e elimina sessões
+vencidas, na mesma transação da mudança de política. A memória só muda após
+sucesso. Uma consulta de existência evita escrita sem dados vencidos.
+Snapshots e operações do núcleo fazem a limpeza; o servidor também executa
+manutenção ao iniciar e a cada minuto, sem depender de novos hooks ou da UI.
+O desligamento cancela essa tarefa junto com o serviço HTTP.
 Mudar a duração das concluídas recarrega a lista limitada diretamente do banco,
 sem exigir reinício e preservando o estado atual das vivas e seus subagentes.
 Mancha não é substituída pelo silêncio; continua até novo evento.

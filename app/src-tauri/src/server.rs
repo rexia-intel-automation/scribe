@@ -84,6 +84,7 @@ impl LocalServer {
             .with_legacy_session_mode(false)
             .with_json_response(true)
             .with_cancellation_token(cancel.child_token());
+        let maintenance_core = core.clone();
         let service: StreamableHttpService<ScribeMcp, LocalSessionManager> =
             StreamableHttpService::new(
                 move || Ok(ScribeMcp::new(core.clone())),
@@ -99,10 +100,29 @@ impl LocalServer {
             .with_state(state.clone())
             .layer(middleware::from_fn_with_state(state, defend));
         let shutdown = cancel.clone();
+        let maintenance_cancel = cancel.child_token();
+        let http_finished = cancel.clone();
         let task = tokio::spawn(async move {
-            axum::serve(listener, router)
-                .with_graceful_shutdown(shutdown.cancelled_owned())
-                .await
+            let http = async {
+                let result = axum::serve(listener, router)
+                    .with_graceful_shutdown(shutdown.cancelled_owned())
+                    .await;
+                http_finished.cancel();
+                result
+            };
+            let maintenance = async {
+                let mut tick = tokio::time::interval(Duration::from_secs(60));
+                loop {
+                    tokio::select! {
+                        _ = maintenance_cancel.cancelled() => break,
+                        _ = tick.tick() => {
+                            let _ = read_snapshot(maintenance_core.clone()).await;
+                        }
+                    }
+                }
+            };
+            let (result, ()) = tokio::join!(http, maintenance);
+            result
         });
         Ok(Self {
             port,

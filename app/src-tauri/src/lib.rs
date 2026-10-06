@@ -30,6 +30,24 @@ struct Data {
     completed_minutes: u16,
 }
 
+impl Data {
+    fn prune(&mut self, at: u64) -> Result<()> {
+        let before = at.saturating_sub(u64::from(self.retention_days) * 86_400_000);
+        self.store.prune(before)?;
+        self.prune_memory(before);
+        Ok(())
+    }
+
+    fn prune_memory(&mut self, before: u64) {
+        self.sessions.retain(|_, session| {
+            session.steps.retain(|step| step.at >= before);
+            session.last_event_at >= before
+        });
+        let session_ids: HashSet<_> = self.sessions.keys().cloned().collect();
+        self.agents.retain(|id, _| session_ids.contains(id));
+    }
+}
+
 /// Shared state serializes commits and publishes only successfully stored changes.
 #[derive(Clone)]
 pub struct Core {
@@ -79,9 +97,10 @@ impl Core {
         self.events.subscribe()
     }
 
-    /// Snapshot hides completed sessions after ten minutes and derives quiet states.
+    /// Enforce session/step retention, hide completed sessions and derive quiet states.
     pub fn snapshot(&self, at: u64) -> Result<Snapshot> {
-        let data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.prune(at)?;
         let mut sessions: Vec<_> = data
             .sessions
             .values()
@@ -105,10 +124,7 @@ impl Core {
             return Err("Invalid hook contract".into());
         }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
-        let retention = u64::from(data.retention_days) * 86_400_000;
-        data.store.prune(at.saturating_sub(retention))?;
-        data.sessions
-            .retain(|_, s| at.saturating_sub(s.last_event_at) <= retention);
+        data.prune(at)?;
         let completed_minutes = data.completed_minutes;
         data.sessions
             .retain(|_, s| s.visible(at, completed_minutes));
@@ -244,6 +260,7 @@ impl Core {
             return Err("Invalid report length".into());
         }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.prune(at)?;
         let mut session = data
             .sessions
             .get(session_id)
@@ -265,13 +282,9 @@ impl Core {
             return Err("Retention must be 1 to 365 days".into());
         }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
-        data.store
-            .prune(at.saturating_sub(u64::from(days) * 86_400_000))?;
-        data.store.set_policy("retention_days", days)?;
-        data.sessions
-            .retain(|_, s| at.saturating_sub(s.last_event_at) <= u64::from(days) * 86_400_000);
-        let session_ids: HashSet<_> = data.sessions.keys().cloned().collect();
-        data.agents.retain(|id, _| session_ids.contains(id));
+        let before = at.saturating_sub(u64::from(days) * 86_400_000);
+        data.store.set_retention(days, before)?;
+        data.prune_memory(before);
         data.retention_days = days;
         Ok(())
     }
@@ -283,6 +296,7 @@ impl Core {
             return Err("Completed visibility must be 1 to 1440 minutes".into());
         }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        data.prune(at)?;
         let sessions = data
             .store
             .load(at, minutes)?

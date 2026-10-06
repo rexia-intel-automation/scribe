@@ -3,6 +3,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::{fs::OpenOptions, path::Path, time::Duration};
 
 pub(crate) struct Store(Connection);
+const SET_POLICY: &str = "INSERT INTO settings(key,value) VALUES(?1,?2)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value";
 
 impl Store {
     pub(crate) fn open(path: &Path) -> Result<Self> {
@@ -72,10 +74,44 @@ impl Store {
     }
 
     pub(crate) fn prune(&self, before: u64) -> Result<()> {
-        self.0.execute(
-            "DELETE FROM sessions WHERE last_event_at < ?1",
+        let expired: bool = self.0.query_row(
+            "SELECT EXISTS (SELECT 1 FROM sessions WHERE last_event_at < ?1 OR EXISTS (
+                SELECT 1 FROM json_each(sessions.data, '$.steps')
+                WHERE json_extract(value, '$.at') < ?1
+            ))",
             [i64::try_from(before)?],
+            |row| row.get(0),
         )?;
+        if !expired {
+            return Ok(());
+        }
+        let transaction = self.0.unchecked_transaction()?;
+        Self::prune_records(&transaction, before)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn prune_records(db: &Connection, before: u64) -> Result<()> {
+        let before = i64::try_from(before)?;
+        db.execute("DELETE FROM sessions WHERE last_event_at < ?1", [before])?;
+        db.execute(
+            "UPDATE sessions SET data = json_set(data, '$.steps', json((
+                SELECT json_group_array(json(value)) FROM json_each(sessions.data, '$.steps')
+                WHERE json_extract(value, '$.at') >= ?1
+            ))) WHERE EXISTS (
+                SELECT 1 FROM json_each(sessions.data, '$.steps')
+                WHERE json_extract(value, '$.at') < ?1
+            )",
+            [before],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn set_retention(&self, days: u16, before: u64) -> Result<()> {
+        let transaction = self.0.unchecked_transaction()?;
+        transaction.execute(SET_POLICY, params!["retention_days", days])?;
+        Self::prune_records(&transaction, before)?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -95,11 +131,7 @@ impl Store {
     }
 
     pub(crate) fn set_policy(&self, key: &str, value: u16) -> Result<()> {
-        self.0.execute(
-            "INSERT INTO settings(key,value) VALUES(?1,?2)
-            ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            params![key, value],
-        )?;
+        self.0.execute(SET_POLICY, params![key, value])?;
         Ok(())
     }
 }

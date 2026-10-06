@@ -21,7 +21,7 @@ static QUOTED_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?P<quote>["'])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^"'\r\n]+)["']"#).unwrap()
 });
 static INLINE_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?P<prefix>^|[\s=<>|&;(\[\{,])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)"#)
+    Regex::new(r#"(?P<prefix>(?:^|[\s=<>|&;(\[\{,@])(?:-[A-Za-z]+)?)(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)"#)
         .unwrap()
 });
 

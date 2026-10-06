@@ -49,9 +49,16 @@ e a relatos; pode esconder textos inofensivos que mencionam esses arquivos.
 Authorization e chaves sensíveis também omitem todo o restante do texto,
 incluindo aspas concatenadas, escapes PowerShell e argumentos de linha de
 comando. O núcleo não tenta descobrir onde termina a credencial. Caminhos
-colados a operadores como `<`/`>` são encurtados, além dos entre aspas.
-Caminhos em comandos e relatos também são encurtados. Retenção de quatorze
-dias configurável entre 1 e 365; visibilidade
+colados a operadores como `<`/`>` e flags como `-I`/`-L` são encurtados,
+além dos entre aspas. Caminhos em comandos e relatos também são encurtados.
+Retenção de quatorze dias configurável entre 1 e 365, aplicada ao horário
+de cada passo e da última atividade da sessão. Eventos recentes não renovam
+o prazo dos passos antigos. Snapshots, relatos e mudanças de política limpam
+dados vencidos; com o servidor aberto, manutenção ao iniciar e a cada minuto
+limpa o SQLite mesmo sem hooks ou conexões da interface. Alterar a retenção
+grava política e limpeza na mesma transação; falhas preservam ambas. Uma
+consulta inicial evita transações de escrita quando não há dados vencidos.
+Visibilidade
 de concluídas de dez minutos configurável entre 1 e 1440. Apagar histórico
 remove registros, compacta o banco e publica snapshot vazio. Alterar a janela
 de concluídas recarrega imediatamente os registros visíveis do banco, com até
@@ -91,7 +98,7 @@ No Linux, cargo-llvm-cov 0.9.1 exige pelo menos 85% de linhas da biblioteca;
 usa somente o alvo de integração `--test core`, excluindo arquivos de teste
 do relatório e não compilando módulos unitários no denominador. As regressões
 dos formatos de segredo, histórico, retomada, visibilidade e silêncio encontrados
-nas três primeiras revisões são exigidas.
+nas quatro primeiras revisões são exigidas.
 
 Os testes cobrem estado de cada fixture real, onze eventos, silêncio, limite
 de vinte passos, reinício, retenção e limpeza; concorrência, falha/recuperação
@@ -132,14 +139,20 @@ nova aprovação independente.
 A [terceira rodada](reviews/fase-2-rodada-3.md) encontrou Authorization
 concatenado em Bash, escape por crase em relato e caminhos junto a
 redirecionamento. As correções têm regressões nos caminhos de hook, relato e
-SQLite, incluindo outras chaves e operadores; dezenove testes Rust passaram.
+SQLite, incluindo outras chaves e operadores.
 Os oito testes do harness da terceira rodada também passaram sem alteração
 do harness, numa verificação do construtor após a revisão reprovada.
-Cobertura de produção local: 95,66% (794/830 linhas), usando somente testes
+A [quarta rodada](reviews/fase-2-rodada-4.md) reprovou caminhos junto a flags
+de compilador e retenção sem hooks ou com passos antigos em sessões ativas.
+As correções têm regressões para caminhos, expiração por passo, limpeza ociosa
+e rollback da política e do histórico. Vinte e dois testes Rust passaram;
+os oito casos do harness original da quarta rodada passaram sem alterações
+em verificação do construtor, sem substituir a nova revisão independente.
+Cobertura de produção local: 95,82% (849/886 linhas), usando somente testes
 de integração e omitindo arquivos de teste. O CLI Claude Code real conectou ao
 MCP em um ensaio com configuração isolada, sem chamar modelo nem modificar a
 configuração pessoal; isso não comprova decisões humanas.
 A [evidência](evidence/local-server-phase-2.json) separa esses resultados de
-uma aprovação ainda dependente da quarta rodada e do novo CI.
+uma aprovação ainda dependente da quinta rodada e do novo CI.
 A revisão de segurança dedicada e cobertura do núcleo de decisões pertencem
 às Fases 4 e 5; os instaladores, instalação limpa e release pertencem à Fase 6.

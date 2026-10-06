@@ -22,6 +22,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Correções da quarta revisão da Fase 2: caminhos junto a flags de compilador
+  são encurtados; retenção elimina sessões e passos vencidos sem depender de
+  novos hooks. Servidor ocioso limpa o banco a cada minuto. Política e limpeza
+  são atômicas. Vinte e dois testes Rust passam; relatórios anteriores preservados.
 - Correções da terceira revisão da Fase 2: Authorization e chaves sensíveis
   omitem o restante ambíguo, protegendo concatenação Bash, escapes PowerShell e
   flags de comandos. Caminhos colados a operadores são encurtados. Dezenove
