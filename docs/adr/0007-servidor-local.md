@@ -1,7 +1,7 @@
 # ADR 0007 — servidor local e persistência
 
 - Data: 2026-10-04.
-- Estado: implementação da Fase 2; ainda não aprovado.
+- Estado: aprovado na quinta revisão da Fase 2, em 2026-10-06.
 
 ## Contexto
 

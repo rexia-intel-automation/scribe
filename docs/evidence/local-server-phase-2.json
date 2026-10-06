@@ -1,7 +1,10 @@
 {
   "date": "2026-10-06",
   "phase": 2,
-  "status": "rounds_1_2_3_4_rejected_corrected_round_5_pending",
+  "status": "approved_independent_round_5",
+  "reviewedCommit": "e374e1ebbad40e38b54c1fc323f40e4cd524f140",
+  "independentReview": {"report": "docs/reviews/fase-2-rodada-5.md", "officialTests": 22, "priorRegressions": 33, "newAttempts": 9, "scores": {"A":9,"B":9,"C":9,"D":9,"E":8,"F":9,"I":8,"J":8}},
+  "finalCiRuns": [37462919510, 37462926164],
   "shell": "PowerShell 7.6.6 on Windows",
   "rustTests": {"unit": 1, "integration": 21, "failed": 0},
   "independentRound1HarnessAfterFix": {"passed": 9, "failed": 0},

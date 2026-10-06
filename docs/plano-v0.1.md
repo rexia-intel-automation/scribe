@@ -84,5 +84,9 @@ incluem limpeza ociosa e transação única para política e histórico; os oito
 testes dessa rodada passaram em verificação do construtor. Os quatro
 relatórios reprovados estão preservados.
 Cobertura de produção local 95,82%, sem código de testes. A quinta rodada
-e o CI do novo commit ainda são necessários para aprovar a fase.
+aprovou a Fase 2 em 2026-10-06: A9 B9 C9 D9 E8 F9 I8 J8, 33 regressões
+e nove tentativas novas passaram. Ambos os CIs do commit final passaram
+em três plataformas. Falhas temporais anteriores do Windows foram registradas
+e corrigidas na execução dos testes, mantendo limites e concorrência interna.
+A Fase 3 pode começar, usando as referências locais e a gota em argila.
 O app de produção ainda não existe e nenhuma versão está publicada.

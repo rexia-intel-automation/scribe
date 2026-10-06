@@ -1,6 +1,7 @@
 # Fase 2 — servidor local
 
-Estado: implementação em revisão; ainda não aprovada. As Fases 0 e 1 passaram.
+Estado: aprovada na quinta revisão independente, em 2026-10-06.
+Notas: A9 B9 C9 D9 E8 F9 I8 J8. As Fases 0 e 1 passaram.
 O núcleo Rust existe, mas a janela Tauri e decisões humanas continuam pendentes.
 
 ## Entrega e limites
@@ -157,6 +158,12 @@ de integração e omitindo arquivos de teste. O CLI Claude Code real conectou ao
 MCP em um ensaio com configuração isolada, sem chamar modelo nem modificar a
 configuração pessoal; isso não comprova decisões humanas.
 A [evidência](evidence/local-server-phase-2.json) separa esses resultados de
-uma aprovação ainda dependente da quinta rodada e do novo CI.
+as verificações do construtor da aprovação independente.
+A [quinta rodada](reviews/fase-2-rodada-5.md) aprovou o commit
+`e374e1ebbad40e38b54c1fc323f40e4cd524f140`: 22 testes oficiais,
+33 regressões e nove tentativas novas passaram, incluindo um minuto real
+de manutenção ociosa. Ambos os CIs finais passaram nas três plataformas.
+A falha temporal anterior no Windows permanece no relatório: a execução
+sequencial dos testes foi avaliada sem alterar limites nem produção.
 A revisão de segurança dedicada e cobertura do núcleo de decisões pertencem
 às Fases 4 e 5; os instaladores, instalação limpa e release pertencem à Fase 6.

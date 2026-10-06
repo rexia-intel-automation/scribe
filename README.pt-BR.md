@@ -4,7 +4,7 @@ App local para acompanhar sessões do Claude Code e decisões humanas.
 
 [English](README.md)
 
-**Estado:** Fases 0 e 1 aprovadas; servidor local em implementação e revisão.
+**Estado:** Fases 0, 1 e 2 aprovadas; a próxima etapa é a interface desktop.
 Ainda não há release do app desktop. O cliente nativo somente observa eventos;
 decisões de permissão ainda não foram implementadas.
 
