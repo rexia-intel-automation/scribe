@@ -11,7 +11,9 @@ if (
   !["sessions", "details", "settings", "error", "collapsed"].includes(stage)
 )
   throw new Error("Isolated output and explicit accessibility stage required");
-const browser = await chromium.connectOverCDP("http://127.0.0.1:9223");
+const browser = await chromium.connectOverCDP("http://127.0.0.1:9223", {
+  noDefaults: true,
+});
 try {
   const page = browser
     .contexts()
@@ -43,7 +45,7 @@ try {
   });
   await mkdir(output, { recursive: true });
   await writeFile(
-    path.join(output, `native-a11y-${stage}.json`),
+    path.join(output, `native-a11y-${stage}-${result.theme}.json`),
     JSON.stringify({ stage, ...result }, null, 2) + "\n",
   );
   console.log(JSON.stringify({ stage, violations: result.violations }));

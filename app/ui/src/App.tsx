@@ -304,12 +304,26 @@ export default function App({
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<Message | null>(null);
   const opened = useRef(Date.now());
+  const revision = useRef(initialView.revision);
+  const [heardHook, setHeardHook] = useState(
+    initialView.sessions.some(
+      (session) => session.lastEventAt >= opened.current,
+    ),
+  );
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
-  const receive = (next: View) =>
-    setView((previous) =>
-      next.revision > previous.revision ? next : previous,
+  const receive = (next: View) => {
+    if (next.revision <= revision.current) return;
+    revision.current = next.revision;
+    setView(next);
+    if (!next.error) setError(null);
+    if (next.sessions.some((session) => session.lastEventAt >= opened.current))
+      setHeardHook(true);
+  };
+  const fail = (cause: unknown) =>
+    setError(
+      (typeof cause === "string" ? cause : "bridgeUnavailable") as Message,
     );
   useEffect(() => {
     let disposed = false;
@@ -344,21 +358,23 @@ export default function App({
       receive(await bridge.toggle());
       setError(null);
     } catch (cause) {
-      setError(
-        (typeof cause === "string" ? cause : "bridgeUnavailable") as Message,
-      );
+      fail(cause);
     }
   }
   const active = view.sessions.filter((s) => s.endedAt === null);
   const completed = view.sessions.filter((s) => s.endedAt !== null);
   const form = priority(view.sessions);
+  const problem = (error || view.error) as Message | null;
   if (view.preferences.collapsed)
     return (
       <button
         className="collapsed"
         aria-label={t(language, "open")}
-        title={t(language, "moveHint")}
-        aria-description={t(language, "moveHint")}
+        title={problem ? t(language, problem) : t(language, "moveHint")}
+        aria-description={[
+          ...(problem ? [t(language, problem)] : []),
+          t(language, "moveHint"),
+        ].join(" ")}
         onKeyDown={(event) => {
           if (
             ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
@@ -372,7 +388,7 @@ export default function App({
                 receive(next);
                 setError(null);
               })
-              .catch(() => setError("bridgeUnavailable"));
+              .catch(fail);
           }
         }}
         onPointerDown={(event) => {
@@ -388,7 +404,7 @@ export default function App({
             Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4
           ) {
             dragStart.current = null;
-            void bridge.drag().catch(() => setError("bridgeUnavailable"));
+            void bridge.drag().catch(fail);
           }
         }}
         onPointerUp={() => {
@@ -405,6 +421,14 @@ export default function App({
         }}
       >
         <Gota form={form} size={56} label={t(language, form)} theme={theme} />
+        {problem && (
+          <span className="collapsed-error">
+            <span aria-hidden="true">!</span>
+            <span className="sr-only" role="alert">
+              {t(language, problem)}
+            </span>
+          </span>
+        )}
       </button>
     );
   return (
@@ -486,7 +510,7 @@ export default function App({
             </ul>
           </section>
         )}
-        {now - opened.current >= 300000 && !view.sessions.length && (
+        {now - opened.current >= 300000 && !heardHook && (
           <aside className="hint">
             <p>{t(language, "troubleshoot")}</p>
             <button

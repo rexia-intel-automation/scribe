@@ -8,7 +8,9 @@ const output = process.env.SCRIBE_EVIDENCE_DIR;
 if (!configPath?.includes(".artifacts") || !output?.includes(".artifacts"))
   throw new Error("Isolated fixture paths required");
 const connection = JSON.parse(await readFile(configPath, "utf8"));
-const browser = await chromium.connectOverCDP("http://127.0.0.1:9223");
+const browser = await chromium.connectOverCDP("http://127.0.0.1:9223", {
+  noDefaults: true,
+});
 try {
   const page = browser
     .contexts()

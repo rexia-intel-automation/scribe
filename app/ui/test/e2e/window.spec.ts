@@ -121,6 +121,95 @@ test("empty preview, keyboard dialog, language and theme survive real browser la
 });
 
 for (const theme of ["light", "dark"] as const) {
+  test(`state glyph contrast ${theme}: question and seal at 24/40/56/96 px`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/test/formas-24px.html");
+    await page
+      .getByRole("combobox", { name: "Tema", exact: true })
+      .selectOption(theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const results = await page.evaluate(async (modulePath) => {
+      const { Renderer } = await import(modulePath);
+      const luminance = (rgb: number[]) => {
+        const linear = rgb.map((value) => {
+          const normalized = value / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+        });
+        return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+      };
+      const contrast = (a: number[], b: number[]) => {
+        const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (values[0] + 0.05) / (values[1] + 0.05);
+      };
+      const readColor = (value: string) =>
+        [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+      const style = getComputedStyle(document.documentElement);
+      const ink = readColor(style.getPropertyValue("--gota-ink").trim());
+      const clay = readColor(style.getPropertyValue("--gota").trim());
+      const edge = clay.map((value) => Math.round(value * 0.85));
+      const nominalMinimum = Math.min(contrast(ink, clay), contrast(ink, edge));
+      const samples = [];
+      for (const form of ["interrogacao", "selo"]) {
+        for (const size of [24, 40, 56, 96]) {
+          const canvas = document.createElement("canvas");
+          document.body.append(canvas);
+          const renderer = new Renderer(canvas, size, form);
+          const context = canvas.getContext("2d")!;
+          const pixels = context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          ).data;
+          let darkest = clay;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const rgb = Array.from(pixels.slice(i, i + 3));
+            if (pixels[i + 3] === 255 && luminance(rgb) < luminance(darkest))
+              darkest = rgb;
+          }
+          const x = Math.floor(canvas.width * (0.5 + 0.65 * 0.32));
+          const y = Math.floor(canvas.height * 0.5);
+          const body = Array.from(
+            context.getImageData(x, y, 1, 1).data.slice(0, 3),
+          );
+          samples.push({
+            form,
+            size,
+            darkest,
+            body,
+            corePixelContrast: contrast(darkest, body),
+          });
+          renderer.dispose();
+          canvas.remove();
+        }
+      }
+      return {
+        theme: document.documentElement.dataset.theme,
+        ink,
+        clay,
+        edge,
+        nominalMinimum,
+        samples,
+      };
+    }, "/src/gota/render.ts");
+    expect(results.theme).toBe(theme);
+    expect(results.nominalMinimum).toBeGreaterThanOrEqual(3);
+    expect(results.samples).toHaveLength(8);
+    for (const sample of results.samples)
+      expect(sample.corePixelContrast).toBeGreaterThanOrEqual(3);
+    await mkdir(evidence, { recursive: true });
+    await import("node:fs/promises").then((fs) =>
+      fs.writeFile(
+        path.join(evidence, `glyph-contrast-${theme}.json`),
+        JSON.stringify(results, null, 2) + "\n",
+      ),
+    );
+  });
+
   test(`catalogue ${theme}: ten forms, 24/40/96 px, local fonts and WCAG AA`, async ({
     page,
   }) => {

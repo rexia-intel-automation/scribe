@@ -129,7 +129,7 @@ export class Renderer {
   }
   private colors() {
     const style = getComputedStyle(this.canvas);
-    this.ink = style.getPropertyValue("--tinta").trim() || "#141413";
+    this.ink = style.getPropertyValue("--gota-ink").trim() || "#141413";
     this.clay = style.getPropertyValue("--gota").trim() || "#d97757";
     this.edge =
       "#" +

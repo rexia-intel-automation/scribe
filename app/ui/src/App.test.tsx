@@ -1,4 +1,4 @@
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
@@ -214,5 +214,92 @@ describe("session window", () => {
     await user.keyboard("{Enter}");
     await screen.findByRole("button", { name: "Recolher janela" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("announces a failed move while collapsed and preserves the specific cause", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    data.preferences.collapsed = true;
+    vi.mocked(bridge.move).mockRejectedValueOnce("configUnavailable");
+    render(<App initialView={data} />);
+    const drop = screen.getByRole("button", { name: "Abrir Scribe" });
+    drop.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      t("pt-BR", "configUnavailable"),
+    );
+    expect(drop).toHaveAttribute("title", t("pt-BR", "configUnavailable"));
+    expect(drop).toHaveAccessibleDescription(
+      `${t("pt-BR", "configUnavailable")} ${t("pt-BR", "moveHint")}`,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Recolher janela" }),
+    ).not.toBeInTheDocument();
+  });
+  it("clears the local error when a newer native snapshot confirms recovery", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    vi.mocked(bridge.toggle).mockRejectedValueOnce("configUnavailable");
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Recolher janela" }));
+    expect(await screen.findByRole("alert")).toBeVisible();
+    act(() =>
+      receive!({
+        ...data,
+        revision: data.revision + 1,
+        error: "configUnavailable",
+      }),
+    );
+    expect(screen.getByRole("alert")).toBeVisible();
+    act(() => receive!({ ...data, revision: data.revision + 2, error: null }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("shows the connection hint after five minutes even with restored sessions", async () => {
+    vi.useFakeTimers();
+    const data = fixture();
+    data.sessions[0].lastEventAt = Date.now() - 60000;
+    const app = render(<App initialView={data} />);
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(301000));
+      expect(screen.getByText(t("pt-BR", "troubleshoot"))).toBeVisible();
+    } finally {
+      app.unmount();
+      vi.useRealTimers();
+    }
+  });
+  it("remembers receipt of a hook after its completed session leaves the list", async () => {
+    vi.useFakeTimers();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.sessions[0].lastEventAt = Date.now() - 60000;
+    const app = render(<App initialView={data} />);
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+      act(() =>
+        receive!({
+          ...data,
+          revision: data.revision + 1,
+          sessions: [{ ...data.sessions[0], lastEventAt: Date.now() }],
+        }),
+      );
+      act(() =>
+        receive!({ ...data, revision: data.revision + 2, sessions: [] }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(300000));
+      expect(
+        screen.queryByText(t("pt-BR", "troubleshoot")),
+      ).not.toBeInTheDocument();
+    } finally {
+      app.unmount();
+      vi.useRealTimers();
+    }
   });
 });

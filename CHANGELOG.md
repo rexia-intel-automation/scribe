@@ -68,6 +68,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   movimento reduzido. Fontes OFL locais e catálogo de 24/40/96 px.
 - Testes de interface, teclado e contraste; observação da janela Windows com
   inputs públicos no servidor isolado. Decisões humanas ainda pertencem à Fase 4.
+- Correções da segunda revisão da Fase 3: falhas anunciadas na gota recolhida,
+  recuperação por captura/atalho e dica de conexão após sessões restauradas.
+  Tinta interna separada do texto geral mantém contraste dos glifos nos dois
+  temas; 22 testes Vitest e seis Playwright passam. Revisão ainda pendente.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

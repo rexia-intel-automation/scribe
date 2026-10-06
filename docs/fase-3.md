@@ -52,14 +52,15 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
 
 ## Resultados locais
 
-- 24 testes Rust do núcleo/políticas passaram, incluindo falha SQL na segunda
+- 23 testes Rust do núcleo/políticas passaram, incluindo falha SQL na segunda
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Dezessete testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
-  DPR, FPS, pausa oculta e movimento reduzido.
-- Quatro Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
-  tamanhos, axe WCAG A/AA em claro/escuro e limite de redesenho.
+- Vinte e dois testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+  DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
+- Seis Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
+  tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
+  interrogação/selo em 24/40/56/96 px.
 - UI build, ESLint, Prettier e Clippy desktop passaram. npm audit: zero
   vulnerabilidades. Cargo audit: dois avisos GTK avaliados publicamente em
   [dependências desktop](dependencias-desktop.md); não chamar isso de auditoria
@@ -97,6 +98,7 @@ de permitir/negar/expirar e três sessões reais exigidos nas Fases 4 e 6.
 ![Dez formas no claro, 24/40/96 px](public/phase-3/forms-light-24-40-96.png)
 ![Dez formas no escuro, 24/40/96 px](public/phase-3/forms-dark-24-40-96.png)
 ![Sessão pública no WebView de produção, claro](public/phase-3/native-sessions.png)
+![Sessão pública no WebView de produção, escuro após rodada 2](public/phase-3/native-sessions-dark.png)
 
 As capturas do catálogo vieram de Playwright com movimento reduzido para
 comparar geometria de forma determinística. A captura nativa é do WebView de
@@ -131,11 +133,15 @@ Teclado moveu à esquerda (x0), para cima (y510→490 físicos, 16 px lógicos)
 e à direita (x1850), persistindo lado/altura. Isso não comprova arraste por mouse.
 Evidência: `docs/evidence/desktop-layout-recovery.json`.
 
-Axe no WebView de produção escuro teve zero violações WCAG A/AA em cinco
+Axe no WebView de produção claro teve zero violações WCAG A/AA em cinco
 estados: recolhido, sessões, detalhe, configurações e erro. Diagnóstico
 `app/ui/test/native-accessibility.mjs` observa apenas DOM do app isolado; ele
 não altera a CSP nem dispara ações UI. Arquivos `docs/evidence/native-a11y-*.json`.
 Esses resultados não equivalem a ensaio humano com leitor de tela ou zoom.
+Os JSONs registram o tema efetivamente examinado. A conexão CDP de Playwright
+aplicava emulação de tema claro ao contexto existente; ambos os inspetores agora
+usam `noDefaults: true` para preservar mídia/foco do app. As amostras anteriores
+continuam válidas para o tema claro declarado, sem alegação de teste nativo escuro.
 
 O primeiro job Linux do candidato 3a12b86 falhou ao iniciar Playwright:
 `webServer` procurava `package.json` em `app/ui`. O servidor Vite já aberto
@@ -145,3 +151,39 @@ No candidato def0a08, os builds/testes passaram nos três sistemas, mas o audit
 de evidências rejeitou a chave administrativa `method` de um novo JSON, reservada
 ao método MCP pelo sanitizador. O campo foi renomeado para `observationMethod`;
 a auditoria local voltou a zero mudanças, sem relaxar o sanitizador.
+
+## Correções após a rodada 2
+
+Rodada 2, candidato 18ebdea: reprovada (A8 B8 C8 D8 E8 F8 G8 H7 I8 J8),
+com cinco problemas documentados; relatório preservado. A gota recolhida agora
+mostra um indicador de erro e anuncia a causa específica com `role=alert`.
+Uma captura nova sem erro nativo limpa o alerta local, inclusive após recuperação
+por atalho global. Capturas que ainda contêm erro nativo preservam o aviso.
+A dica de cinco minutos acompanha hooks posteriores à abertura; sessões
+restauradas não contam, e remover uma sessão recebida não apaga essa informação.
+
+Glifos informativos usam tinta escura `#141413` sobre argila em ambos os temas,
+com token separado do texto geral. A menor relação nominal considerando corpo
+e borda do gradiente foi **4,39:1 no claro** e **4,98:1 no escuro**. O teste do
+renderer real em Chromium também encontrou pixels centrais com relação maior
+que 3:1 nos dois glifos e nos quatro tamanhos. Isso mede cores nominais e
+amostras centrais, não exige 3:1 de cada pixel antialiasado. Artefatos:
+`docs/evidence/glyph-contrast-{light,dark}.json`. A identidade argila é mantida;
+a mudança de token é fundamentada no ADR 0008.
+
+Os inspetores agora preservam mídia/foco do WebView (`noDefaults:true`) e
+registram o tema efetivamente observado no nome das novas amostras axe.
+As cinco amostras anteriores são claras; a errata mantém sua autoria e resultado.
+Essas correções e os testes locais ainda não representam aprovação da catraca.
+
+Repetição nativa após essas correções: preferências somente leitura impediram
+movimento por seta, preservando 56×56 e exibindo a causa de configuração no
+badge, descrição e anúncio. Após restaurar acesso e abrir pelo atalho global,
+a janela voltou a 372×784 sem alerta residual. Arquivos de teste ficaram
+novamente graváveis. Evidências `desktop-collapsed-error.json` e
+`desktop-shortcut-recovery.json`. Axe nativo escuro teve zero violações em
+sessões e nesse estado de erro; isso continua sem avaliar pixels do canvas.
+
+A nova amostra de 32 hooks públicos em produção, preservando tema escuro,
+registrou p95 **23,46 ms**, DPR 1,25 e 372×784 sem overflow; evidência
+`desktop-native-round3.json`. Os resultados anteriores permanecem históricos.

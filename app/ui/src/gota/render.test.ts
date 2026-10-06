@@ -84,4 +84,13 @@ describe("canvas scheduling and accessibility", () => {
     renderer.update("gota", 40, true);
     expect(context.ellipse).toHaveBeenCalledTimes(3);
   });
+  it("keeps informative glyphs in dark ink against clay in the dark theme", () => {
+    const { canvas, renderer, context } = avatar(96);
+    canvas.style.setProperty("--tinta", "#f0eee6");
+    canvas.style.setProperty("--gota", "#e08562");
+    renderer.update("interrogacao", 96, true);
+    expect(context.strokeStyle).toBe("#141413");
+    renderer.update("selo", 96, true);
+    expect(context.strokeStyle).toBe("#141413");
+  });
 });

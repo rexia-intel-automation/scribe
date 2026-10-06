@@ -49,6 +49,17 @@ resolução/DPR mudar, inclusive no modo reduzido. Interrogação e selo usam gl
 respingo irregular não reutiliza marcas de terceiros. Destaque fica recortado
 pelo corpo. Newsreader, Hanken Grotesk e JetBrains Mono são locais com OFL.
 
+O token interno `--gota-ink` permanece `#141413` nos dois temas, separado da
+tinta de texto geral. A interrogação e o check branco do tema escuro ficavam
+abaixo de 3:1 sobre argila; a tinta escura atende contraste não textual sem
+alterar o corpo argila. Essa correção ao uso original dos tokens é necessária
+para NFR-08. Testes medem os extremos do gradiente e pixels centrais dos dois
+glifos a 24/40/56/96 px em ambos os temas, além da inspeção humana pendente.
+Erros do modo recolhido têm indicador visual e anúncio acessível; capturas
+novas após recuperação removem avisos locais somente quando o Rust não
+reporta erro persistente. A dica de conexão considera hooks após a abertura,
+preservando essa informação mesmo quando a sessão recebida deixa de aparecer.
+
 ## Verificação e limites
 
 Testes Rust de transação/validação/origem/gravação privada, Vitest, Playwright e
@@ -70,3 +81,4 @@ específica está em `docs/dependencias-desktop.md`. Não são omitidos dos logs
 - [Permissões de comandos](https://docs.rs/tauri-build/2.7.1/tauri_build/struct.AppManifest.html).
 - [Fontes Google com OFL](https://github.com/google/fonts/tree/main/ofl).
 - [Coordenadas de WM_NCLBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown).
+- [WCAG — contraste não textual](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).

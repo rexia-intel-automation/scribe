@@ -23,6 +23,7 @@
   --linha: #e8e6dc;
   --pedra: #b0aea5;
   --gota: #d97757;
+  --gota-ink: #141413;
   --oliva: #788c5d;
   --ceu: #6a9bcc;
   --risco: #b3412e;
@@ -291,6 +292,7 @@ a {
   margin-bottom: 16px;
 }
 .collapsed {
+  position: relative;
   display: block;
   border: 0;
   background: transparent;
@@ -305,6 +307,32 @@ a {
 }
 .collapsed:focus-visible {
   outline-offset: -4px;
+}
+.collapsed-error {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--papel);
+  color: var(--risco);
+  border: 1px solid currentColor;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 .settings {
   width: calc(100% - 24px);
