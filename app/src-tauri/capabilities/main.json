@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "Local Scribe window: sanitized view and window preferences only.",
   "windows": ["main"],
-  "permissions": ["core:event:allow-listen","core:event:allow-unlisten","allow-get-view","allow-set-preferences","allow-toggle-panel","allow-start-drag","allow-clear-history","allow-open-help"]
+  "permissions": ["core:event:allow-listen","core:event:allow-unlisten","allow-get-view","allow-set-preferences","allow-toggle-panel","allow-move-panel","allow-start-drag","allow-clear-history","allow-open-help"]
 }

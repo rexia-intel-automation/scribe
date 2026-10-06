@@ -45,6 +45,7 @@ export interface Preferences {
 }
 export interface View {
   at: number;
+  revision: number;
   sessions: Session[];
   preferences: Preferences;
   error: string | null;

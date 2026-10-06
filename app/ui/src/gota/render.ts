@@ -45,6 +45,17 @@ function shape(form: Form, angle: number): Point {
 }
 const renderers = new Set<Renderer>();
 let frame = 0;
+let resolution = matchMedia(
+  `(resolution: ${window.devicePixelRatio || 1}dppx)`,
+);
+function refreshPixelRatio() {
+  resolution.removeEventListener("change", refreshPixelRatio);
+  resolution = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+  resolution.addEventListener("change", refreshPixelRatio);
+  for (const renderer of renderers) renderer.refreshScale();
+}
+resolution.addEventListener("change", refreshPixelRatio);
+window.addEventListener("resize", refreshPixelRatio);
 new MutationObserver(() => {
   for (const renderer of renderers) renderer.refreshColors();
 }).observe(document.documentElement, {
@@ -64,7 +75,10 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     cancelAnimationFrame(frame);
     frame = 0;
-  } else schedule();
+  } else {
+    for (const renderer of renderers) renderer.refreshScale();
+    schedule();
+  }
 });
 /** Local Canvas2D forms with DPR scaling, 450 ms morphs and reduced-motion cuts. */
 export class Renderer {
@@ -139,6 +153,13 @@ export class Renderer {
   refreshColors() {
     this.colors();
     this.draw(performance.now(), true);
+  }
+  refreshScale() {
+    const pixels = Math.round(
+      this.size * Math.max(1, window.devicePixelRatio || 1),
+    );
+    if (this.visible && !document.hidden && this.canvas.width !== pixels)
+      this.draw(performance.now(), true);
   }
   update(form: Form, size: number, reduced: boolean) {
     const now = performance.now();

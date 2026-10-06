@@ -1,7 +1,7 @@
 {
   "platform": "Windows",
   "sourceCommit": "3a12b86",
-  "method": "Computer Use native UI",
+  "observationMethod": "Computer Use native UI",
   "test": "occupied port 13111",
   "visibleAlert": "A porta de conexão está indisponível. Escolha outra em Configurações.",
   "connectionPort": 7717,

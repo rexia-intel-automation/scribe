@@ -47,6 +47,23 @@ describe("canvas scheduling and accessibility", () => {
     renderer.update("selo", 96, true);
     expect(context.clearRect).toHaveBeenCalledTimes(1);
   });
+  it("repaints a DPR change once while reduced motion remains stopped", () => {
+    const ratio = vi
+      .spyOn(window, "devicePixelRatio", "get")
+      .mockReturnValue(1);
+    const { canvas, renderer, context } = avatar(24);
+    renderer.update("gota", 24, true);
+    vi.mocked(context.clearRect).mockClear();
+    ratio.mockReturnValue(2);
+    window.dispatchEvent(new Event("resize"));
+    expect(canvas.width).toBe(48);
+    expect(canvas.height).toBe(48);
+    expect(renderer.active()).toBe(false);
+    expect(context.clearRect).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new Event("resize"));
+    renderer.draw(2000);
+    expect(context.clearRect).toHaveBeenCalledTimes(1);
+  });
   it("does not animate hidden documents", () => {
     const { renderer, context } = avatar(40);
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);

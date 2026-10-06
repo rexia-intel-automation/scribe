@@ -90,6 +90,7 @@ struct Connection {
 #[serde(rename_all = "camelCase")]
 pub struct View {
     at: u64,
+    revision: u64,
     sessions: Vec<Session>,
     preferences: Preferences,
     error: Option<String>,
@@ -103,6 +104,7 @@ struct Desktop {
     connection_path: PathBuf,
     prefs_path: PathBuf,
     drag_generation: AtomicU64,
+    view_revision: Mutex<u64>,
     saving: tokio::sync::Mutex<()>,
 }
 fn write_private(path: &Path, value: &impl Serialize) -> Result<(), String> {
@@ -230,6 +232,7 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
         connection_path,
         prefs_path,
         drag_generation: AtomicU64::new(0),
+        view_revision: Mutex::new(0),
         saving: tokio::sync::Mutex::new(()),
     })
 }
@@ -260,9 +263,14 @@ fn open_help(window: WebviewWindow) -> Result<(), String> {
     .map_err(|_| "bridgeUnavailable".into())
 }
 fn view(data: &Desktop) -> Result<View, String> {
+    // Serialize capture and numbering so delayed IPC replies cannot replace
+    // a newer snapshot, including two captures within the same millisecond.
+    let mut revision = data.view_revision.lock().map_err(|_| "bridgeUnavailable")?;
+    *revision += 1;
     let at = now_ms();
     Ok(View {
         at,
+        revision: *revision,
         sessions: match &data.core {
             Some(c) => c.snapshot(at).map_err(|_| "bridgeUnavailable")?.sessions,
             None => vec![],
@@ -336,23 +344,82 @@ fn layout(window: &WebviewWindow, p: &Preferences) -> Result<(), String> {
         .map_err(|_| "bridgeUnavailable")?;
     Ok(())
 }
+fn apply_layout(
+    data: &Desktop,
+    window: &WebviewWindow,
+    old: &Preferences,
+    preferences: Preferences,
+) -> Result<(), String> {
+    if let Err(error) = write_private(&data.prefs_path, &preferences) {
+        *data.error.lock().map_err(|_| "bridgeUnavailable")? = Some("configUnavailable".into());
+        return Err(error);
+    }
+    if let Err(error) = layout(window, &preferences) {
+        let restore_file = write_private(&data.prefs_path, old);
+        let restore_window = layout(window, old);
+        if restore_file.is_err() || restore_window.is_err() {
+            *data.error.lock().map_err(|_| "bridgeUnavailable")? = Some("configUnavailable".into());
+        }
+        return Err(error);
+    }
+    *data.preferences.lock().map_err(|_| "bridgeUnavailable")? = preferences;
+    let mut error = data.error.lock().map_err(|_| "bridgeUnavailable")?;
+    if error.as_deref() == Some("configUnavailable") {
+        *error = None;
+    }
+    Ok(())
+}
 fn set_panel(app: &AppHandle, collapsed: bool) -> Result<View, String> {
     let data = app.state::<Desktop>();
     let _saving = data.saving.try_lock().map_err(|_| "bridgeUnavailable")?;
     let window = app.get_webview_window("main").ok_or("bridgeUnavailable")?;
-    let mut preferences = data
+    let old = data
         .preferences
         .lock()
         .map_err(|_| "bridgeUnavailable")?
         .clone();
+    let mut preferences = old.clone();
     preferences.collapsed = collapsed;
-    layout(&window, &preferences)?;
-    write_private(&data.prefs_path, &preferences)?;
-    *data.preferences.lock().map_err(|_| "bridgeUnavailable")? = preferences;
+    apply_layout(&data, &window, &old, preferences)?;
     window.show().map_err(|_| "bridgeUnavailable")?;
     if !collapsed {
         window.set_focus().map_err(|_| "bridgeUnavailable")?;
     }
+    let current = view(&data)?;
+    let _ = app.emit_to("main", "scribe:view", &current);
+    Ok(current)
+}
+#[tauri::command]
+fn move_panel(
+    window: WebviewWindow,
+    app: AppHandle,
+    data: State<'_, Desktop>,
+    direction: String,
+) -> Result<View, String> {
+    trusted(&window)?;
+    let _saving = data.saving.try_lock().map_err(|_| "bridgeUnavailable")?;
+    let old = data
+        .preferences
+        .lock()
+        .map_err(|_| "bridgeUnavailable")?
+        .clone();
+    if !old.collapsed {
+        return Err("invalidPreferences".into());
+    }
+    let mut next = old.clone();
+    match direction.as_str() {
+        "ArrowLeft" => next.side = "left".into(),
+        "ArrowRight" => next.side = "right".into(),
+        "ArrowUp" | "ArrowDown" => {
+            let position = window.outer_position().map_err(|_| "bridgeUnavailable")?;
+            let scale = window.scale_factor().map_err(|_| "bridgeUnavailable")?;
+            next.y = Some(
+                f64::from(position.y) / scale + if direction == "ArrowUp" { -16.0 } else { 16.0 },
+            );
+        }
+        _ => return Err("invalidPreferences".into()),
+    }
+    apply_layout(&data, &window, &old, next)?;
     let current = view(&data)?;
     let _ = app.emit_to("main", "scribe:view", &current);
     Ok(current)
@@ -689,6 +756,7 @@ pub fn run() {
             get_view,
             set_preferences,
             toggle_panel,
+            move_panel,
             start_drag,
             clear_history,
             open_help

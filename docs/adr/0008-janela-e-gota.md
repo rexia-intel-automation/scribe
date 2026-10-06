@@ -13,7 +13,10 @@ sem introduzir decisões nesta fase.
 
 Tauri 2.12.1 estável com React, TypeScript e Vite. O comando `get_view` e os
 eventos Tauri levam apenas sessões já higienizadas e preferências à janela.
-O Rust guarda configuração, SQLite, token e servidor. A capability aceita a
+O Rust guarda configuração, SQLite, token e servidor. Capturas recebem revisões
+monotônicas, serializadas junto à leitura.
+O timestamp permanece apenas como metadado. A UI rejeita revisões anteriores
+mesmo quando duas capturas compartilham o mesmo milissegundo. A capability aceita a
 janela local `main`; navegação externa e novas janelas são rejeitadas. A ajuda
 abre uma URL fixa no navegador do sistema, sem dados de sessão na URL.
 
@@ -22,8 +25,12 @@ Janela transparente sem bordas, sempre no topo, largura lógica 372 px, área
 Atalho e instância única usam plugins oficiais pelo Rust, sem dar à UI APIs de
 arquivo, shell ou configuração de plugins. As preferências validam idioma,
 tema, atalho, porta e limites; conflito de porta/atalho permanece visível.
-Alterações simultâneas são serializadas. Políticas de histórico, poda e
-recarregamento usam uma transação SQLite; falhas restauram os arquivos de
+Alterações simultâneas são serializadas. Recolher e reposicionar gravam antes
+de mudar o layout; falha de layout restaura arquivo e janela anteriores. As setas
+reposicionam a gota focada: esquerda/direita selecionam a borda e cima/baixo movem
+16 px lógicos, com clamp à área útil e persistência. Enter/Space continuam abrindo.
+Políticas de histórico, poda e recarregamento usam uma transação SQLite;
+falhas restauram os arquivos de
 configuração. Reinício lê as políticas do banco como fonte autoritativa.
 Os dois arquivos JSON e o banco não formam uma transação distribuída: interrupção
 entre gravações pode exigir recuperação na abertura, e nenhuma decisão é tomada.
@@ -37,7 +44,8 @@ caminho aguarda confirmação funcional e revisão; macOS/Linux usam a API Tauri
 
 Canvas2D com scheduler compartilhado, 30 desenhos/s nos tamanhos pequenos e
 60 no de 96 px. Transições de 450 ms, DPR nativo, pausa em documento oculto e
-corte estático com movimento reduzido. Interrogação e selo usam glifos, e o
+corte estático com movimento reduzido. O canvas repinta uma única vez se a
+resolução/DPR mudar, inclusive no modo reduzido. Interrogação e selo usam glifos, e o
 respingo irregular não reutiliza marcas de terceiros. Destaque fica recortado
 pelo corpo. Newsreader, Hanken Grotesk e JetBrains Mono são locais com OFL.
 

@@ -12,12 +12,14 @@ vi.mock("./bridge", async () => {
     observe: vi.fn(async () => () => {}),
     savePreferences: vi.fn(),
     toggle: vi.fn(),
+    move: vi.fn(),
     clearHistory: vi.fn(),
   };
 });
 function fixture(): View {
   return {
     at: Date.now(),
+    revision: 1,
     error: null,
     preferences: { ...bridge.defaults, language: "pt-BR" },
     sessions: [
@@ -61,6 +63,7 @@ describe("session window", () => {
     const user = userEvent.setup();
     render(<App initialView={fixture()} />);
     const row = screen.getByRole("button", { name: /public-project/ });
+    expect(within(row).getByText("Origem: startup")).toBeVisible();
     row.focus();
     await user.keyboard("{Enter}");
     expect(row).toHaveAttribute("aria-expanded", "true");
@@ -71,6 +74,12 @@ describe("session window", () => {
     expect(screen.getByText("PUBLIC_STEP_19")).toBeVisible();
     await user.keyboard("{Enter}");
     expect(screen.queryByText("PUBLIC_STEP_19")).not.toBeInTheDocument();
+  });
+  it("does not invent an origin when the hook did not supply one", () => {
+    const data = fixture();
+    data.sessions[0].origin = null;
+    render(<App initialView={data} />);
+    expect(screen.queryByText(/^Origem:/)).not.toBeInTheDocument();
   });
   it("translates persisted system actions while preserving user reports", () => {
     expect(action("Editando …/project/file.ts", "en")).toBe(
@@ -84,7 +93,11 @@ describe("session window", () => {
     const user = userEvent.setup();
     const data = fixture();
     vi.mocked(bridge.savePreferences).mockImplementation(
-      async (preferences) => ({ ...data, preferences }),
+      async (preferences) => ({
+        ...data,
+        revision: data.revision + 1,
+        preferences,
+      }),
     );
     render(<App initialView={data} />);
     await user.click(
@@ -125,7 +138,7 @@ describe("session window", () => {
     );
     expect(screen.getByText("public-project")).toBeVisible();
   });
-  it("ignores snapshots older than a received update and releases its listener", async () => {
+  it("ignores reordered snapshots with identical timestamps and releases its listener", async () => {
     let receive: ((value: View) => void) | undefined;
     const stop = vi.fn();
     vi.mocked(bridge.observe).mockImplementation(async (callback) => {
@@ -135,11 +148,11 @@ describe("session window", () => {
     const data = fixture();
     const app = render(<App initialView={data} />);
     await waitFor(() => expect(receive).toBeDefined());
-    receive!({ ...data, at: data.at + 10, sessions: [] });
+    receive!({ ...data, revision: data.revision + 1, sessions: [] });
     await waitFor(() =>
       expect(screen.getByText(t("pt-BR", "empty"))).toBeVisible(),
     );
-    receive!({ ...data, at: data.at });
+    receive!({ ...data });
     expect(screen.queryByText("public-project")).not.toBeInTheDocument();
     app.unmount();
     expect(stop).toHaveBeenCalledOnce();
@@ -159,5 +172,47 @@ describe("session window", () => {
         { ...data.sessions[0], state: "divisao" },
       ]),
     ).toBe("mancha");
+  });
+  it("repositions the focused collapsed drop with arrow keys without reopening", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    data.preferences.collapsed = true;
+    vi.mocked(bridge.move).mockImplementation(async () => ({
+      ...data,
+      revision: data.revision + 1,
+      preferences: { ...data.preferences, side: "left" },
+    }));
+    render(<App initialView={data} />);
+    const drop = screen.getByRole("button", { name: "Abrir Scribe" });
+    expect(drop).toHaveAccessibleDescription(t("pt-BR", "moveHint"));
+    drop.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(bridge.move).toHaveBeenCalledWith("ArrowLeft");
+    expect(bridge.toggle).not.toHaveBeenCalled();
+    expect(drop).toHaveFocus();
+  });
+  it("clears a transient toggle error after recovery and reopening", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    vi.mocked(bridge.toggle)
+      .mockRejectedValueOnce("configUnavailable")
+      .mockResolvedValueOnce({
+        ...data,
+        revision: data.revision + 1,
+        preferences: { ...data.preferences, collapsed: true },
+      })
+      .mockResolvedValueOnce({ ...data, revision: data.revision + 2 });
+    render(<App initialView={data} />);
+    screen.getByRole("button", { name: "Recolher janela" }).focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      t("pt-BR", "configUnavailable"),
+    );
+    await user.keyboard("{Enter}");
+    (await screen.findByRole("button", { name: "Abrir Scribe" })).focus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("button", { name: "Recolher janela" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

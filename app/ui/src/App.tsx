@@ -19,6 +19,7 @@ function useTheme(theme: Preferences["theme"]) {
   }, [effective]);
   return effective;
 }
+/** Sanitized session summary with keyboard-accessible recent steps. */
 function SessionRow({
   session,
   view,
@@ -53,6 +54,11 @@ function SessionRow({
         <span className="session-copy">
           <span className="project">{session.project}</span>
           <span className="action">{action(session.action, language)}</span>
+          {session.origin && (
+            <span className="origin">
+              {t(language, "origin", { value: session.origin })}
+            </span>
+          )}
         </span>
         <span className="session-time">
           {duration}
@@ -61,10 +67,7 @@ function SessionRow({
       </button>
       {expanded && (
         <div className="session-detail">
-          <p className="path">
-            {session.cwd}
-            {session.origin && <span>{session.origin}</span>}
-          </p>
+          <p className="path">{session.cwd}</p>
           {session.state === "interrogacao" && (
             <p className="terminal-hint">{t(language, "permissionTerminal")}</p>
           )}
@@ -88,6 +91,7 @@ function SessionRow({
     </li>
   );
 }
+/** Modal preferences editor; failed saves retain the current session view. */
 function Settings({
   view,
   receive,
@@ -289,6 +293,7 @@ function Settings({
     </dialog>
   );
 }
+/** Native session panel; accepts ordered snapshots and explicit user actions. */
 export default function App({
   initialView = bridge.initial,
 }: {
@@ -303,7 +308,9 @@ export default function App({
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
   const receive = (next: View) =>
-    setView((previous) => (next.at >= previous.at ? next : previous));
+    setView((previous) =>
+      next.revision > previous.revision ? next : previous,
+    );
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -335,8 +342,11 @@ export default function App({
   async function toggle() {
     try {
       receive(await bridge.toggle());
-    } catch {
-      setError("bridgeUnavailable");
+      setError(null);
+    } catch (cause) {
+      setError(
+        (typeof cause === "string" ? cause : "bridgeUnavailable") as Message,
+      );
     }
   }
   const active = view.sessions.filter((s) => s.endedAt === null);
@@ -347,6 +357,24 @@ export default function App({
       <button
         className="collapsed"
         aria-label={t(language, "open")}
+        title={t(language, "moveHint")}
+        aria-description={t(language, "moveHint")}
+        onKeyDown={(event) => {
+          if (
+            ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+              event.key,
+            )
+          ) {
+            event.preventDefault();
+            void bridge
+              .move(event.key)
+              .then((next) => {
+                receive(next);
+                setError(null);
+              })
+              .catch(() => setError("bridgeUnavailable"));
+          }
+        }}
         onPointerDown={(event) => {
           if (event.button === 0) {
             dragStart.current = { x: event.clientX, y: event.clientY };

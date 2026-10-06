@@ -17,10 +17,17 @@ export const defaults: Preferences = {
 };
 export const initial: View = {
   at: 0,
+  revision: 0,
   sessions: [],
   preferences: defaults,
   error: desktop ? null : "desktopOnly",
 };
+let previewPreferences = defaults;
+let previewRevision = 0;
+function preview(preferences = previewPreferences): View {
+  previewPreferences = preferences;
+  return { ...initial, preferences, revision: ++previewRevision };
+}
 export async function observe(receive: (view: View) => void) {
   if (!desktop) {
     receive(initial);
@@ -40,18 +47,34 @@ export async function observe(receive: (view: View) => void) {
 export async function savePreferences(preferences: Preferences): Promise<View> {
   return desktop
     ? invoke("set_preferences", { preferences })
-    : { ...initial, preferences };
+    : preview(preferences);
 }
 export async function toggle(): Promise<View> {
   return desktop
     ? invoke("toggle_panel")
-    : { ...initial, preferences: { ...defaults, collapsed: true } };
+    : preview({
+        ...previewPreferences,
+        collapsed: !previewPreferences.collapsed,
+      });
 }
 export async function drag() {
   if (desktop) await invoke("start_drag");
 }
+export async function move(direction: string): Promise<View> {
+  return desktop
+    ? invoke("move_panel", { direction })
+    : preview({
+        ...previewPreferences,
+        side:
+          direction === "ArrowLeft"
+            ? "left"
+            : direction === "ArrowRight"
+              ? "right"
+              : previewPreferences.side,
+      });
+}
 export async function clearHistory(): Promise<View> {
-  return desktop ? invoke("clear_history") : initial;
+  return desktop ? invoke("clear_history") : preview();
 }
 export async function openHelp() {
   if (desktop) await invoke("open_help");

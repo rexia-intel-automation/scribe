@@ -56,7 +56,7 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Treze testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Dezessete testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta e movimento reduzido.
 - Quatro Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro e limite de redesenho.
@@ -116,7 +116,32 @@ Notificações, cartões de permissão/pergunta, instaladores e site ficam nas f
 seguintes. O link de ajuda aponta para o site de documentação ainda a publicar.
 Os dois avisos GTK precisam da avaliação do revisor e da auditoria da Fase 5.
 
+## Correções após a rodada 1
+
+Rodada 1, candidato 3a12b86: reprovada (A8 B7 C8 D7 E8 F7 G8 H7 I8 J8),
+com sete problemas documentados. O relatório foi preservado. Origem agora aparece
+na linha compacta; revisões monotônicas ordenam as capturas; mudança de DPR
+repinta o canvas estático sem animar. Falha de gravação preserva janela/DOM;
+o erro específico fica disponível, e operações recuperadas limpam o alerta local.
+Setas reposicionam a gota focada, Enter abre e o foco permanece visível.
+
+Repetição nativa Windows: com preferências somente leitura, a janela ficou
+372×784 e as preferências não mudaram. Após restaurar acesso, recolheu e reabriu.
+Teclado moveu à esquerda (x0), para cima (y510→490 físicos, 16 px lógicos)
+e à direita (x1850), persistindo lado/altura. Isso não comprova arraste por mouse.
+Evidência: `docs/evidence/desktop-layout-recovery.json`.
+
+Axe no WebView de produção escuro teve zero violações WCAG A/AA em cinco
+estados: recolhido, sessões, detalhe, configurações e erro. Diagnóstico
+`app/ui/test/native-accessibility.mjs` observa apenas DOM do app isolado; ele
+não altera a CSP nem dispara ações UI. Arquivos `docs/evidence/native-a11y-*.json`.
+Esses resultados não equivalem a ensaio humano com leitor de tela ou zoom.
+
 O primeiro job Linux do candidato 3a12b86 falhou ao iniciar Playwright:
 `webServer` procurava `package.json` em `app/ui`. O servidor Vite já aberto
 mascarava essa falha localmente. Foi definido `cwd` absoluto a partir do arquivo
 de configuração; quatro testes passaram com `CI=true`, sem servidor existente.
+No candidato def0a08, os builds/testes passaram nos três sistemas, mas o audit
+de evidências rejeitou a chave administrativa `method` de um novo JSON, reservada
+ao método MCP pelo sanitizador. O campo foi renomeado para `observationMethod`;
+a auditoria local voltou a zero mudanças, sem relaxar o sanitizador.

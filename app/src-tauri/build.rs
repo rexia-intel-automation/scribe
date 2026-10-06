@@ -5,6 +5,7 @@ fn main() {
             "get_view",
             "set_preferences",
             "toggle_panel",
+            "move_panel",
             "start_drag",
             "clear_history",
             "open_help",
