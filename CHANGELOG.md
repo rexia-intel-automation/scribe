@@ -63,3 +63,11 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   removido o teto de rodadas; relatórios anteriores preservados.
 - Tipos de enums, IDs e caminhos validados antes da recursão; números e booleanos
   limitados a campos tipados de metadados. Regressões de callback e auditoria.
+- Fase 3 em verificação: janela nativa Tauri, painel de sessões, modo recolhido,
+  bandeja e atalho global; traduções pt-BR/en, temas e dez formas Canvas2D com
+  movimento reduzido. Fontes OFL locais e catálogo de 24/40/96 px.
+- Testes de interface, teclado e contraste; observação da janela Windows com
+  inputs públicos no servidor isolado. Decisões humanas ainda pertencem à Fase 4.
+- Preferências de histórico e limpeza são gravadas na mesma transação; falhas
+  não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
+  restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

@@ -314,6 +314,29 @@ impl Core {
         Ok(())
     }
 
+    /// Commit both desktop policies, retention cleanup and visibility in one transaction.
+    pub fn set_policies(&self, days: u16, minutes: u16, at: u64) -> Result<()> {
+        if !(1..=365).contains(&days) || !(1..=1440).contains(&minutes) {
+            return Err("Invalid history policies".into());
+        }
+        let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        let before = at.saturating_sub(u64::from(days) * 86_400_000);
+        let stored = data.store.set_policies(days, minutes, before, at)?;
+        data.prune_memory(before);
+        data.sessions = stored
+            .into_iter()
+            .map(|stored| {
+                let current = data.sessions.get(&stored.id).cloned().unwrap_or(stored);
+                (current.id.clone(), current)
+            })
+            .collect();
+        let session_ids: HashSet<_> = data.sessions.keys().cloned().collect();
+        data.agents.retain(|id, _| session_ids.contains(id));
+        data.retention_days = days;
+        data.completed_minutes = minutes;
+        Ok(())
+    }
+
     /// Remove stored and in-memory history. The app supplies the explicit UI gesture.
     pub fn clear_history(&self) -> Result<()> {
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
@@ -326,3 +349,5 @@ impl Core {
         Ok(())
     }
 }
+#[cfg(feature = "desktop")]
+pub mod desktop;

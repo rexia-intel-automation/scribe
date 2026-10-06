@@ -1,0 +1,64 @@
+# ADR 0008 — janela nativa e gota
+
+- Data: 2026-10-06.
+- Estado: implementado, aguardando catraca da Fase 3.
+
+## Contexto
+
+A Fase 2 passou. As referências locais e argila foram aprovadas pelo humano.
+A interface precisa acompanhar o núcleo local sem receber o token do hook e
+sem introduzir decisões nesta fase.
+
+## Decisão
+
+Tauri 2.12.1 estável com React, TypeScript e Vite. O comando `get_view` e os
+eventos Tauri levam apenas sessões já higienizadas e preferências à janela.
+O Rust guarda configuração, SQLite, token e servidor. A capability aceita a
+janela local `main`; navegação externa e novas janelas são rejeitadas. A ajuda
+abre uma URL fixa no navegador do sistema, sem dados de sessão na URL.
+
+Janela transparente sem bordas, sempre no topo, largura lógica 372 px, área
+útil menos 32 px. Modo recolhido de 56 px; posição e monitor são persistidos.
+Atalho e instância única usam plugins oficiais pelo Rust, sem dar à UI APIs de
+arquivo, shell ou configuração de plugins. As preferências validam idioma,
+tema, atalho, porta e limites; conflito de porta/atalho permanece visível.
+Alterações simultâneas são serializadas. Políticas de histórico, poda e
+recarregamento usam uma transação SQLite; falhas restauram os arquivos de
+configuração. Reinício lê as políticas do banco como fonte autoritativa.
+Os dois arquivos JSON e o banco não formam uma transação distribuída: interrupção
+entre gravações pode exigir recuperação na abertura, e nenhuma decisão é tomada.
+
+No Windows, o início do arraste usa `WM_NCLBUTTONDOWN` com coordenadas de tela
+empacotadas e verifica que o botão esquerdo está pressionado. O Tao 0.37.1
+resolvido passa um ponteiro a `POINTS` nesse parâmetro. A documentação Win32
+especifica os valores x/y em `lParam`; a adaptação fica restrita ao Windows.
+O teste automatizado ainda não demonstrou deslocamento da gota, portanto este
+caminho aguarda confirmação funcional e revisão; macOS/Linux usam a API Tauri.
+
+Canvas2D com scheduler compartilhado, 30 desenhos/s nos tamanhos pequenos e
+60 no de 96 px. Transições de 450 ms, DPR nativo, pausa em documento oculto e
+corte estático com movimento reduzido. Interrogação e selo usam glifos, e o
+respingo irregular não reutiliza marcas de terceiros. Destaque fica recortado
+pelo corpo. Newsreader, Hanken Grotesk e JetBrains Mono são locais com OFL.
+
+## Verificação e limites
+
+Testes Rust de transação/validação/origem/gravação privada, Vitest, Playwright e
+axe-core. Catálogo reproduzível em `app/ui/test/formas-24px.html`. Observações
+do app nativo usam inputs públicos em diretórios de teste isolados; não são
+sessões reais do Claude nem decisões humanas. Evidências em `docs/fase-3.md`.
+Instaladores e notificações/decisões ficam nas Fases 4 e 6.
+
+Dependências GTK transitivas têm dois avisos RustSec conhecidos; a avaliação
+específica está em `docs/dependencias-desktop.md`. Não são omitidos dos logs.
+
+## Fontes
+
+- [IPC Rust](https://v2.tauri.app/develop/calling-rust/).
+- [Atalho global](https://v2.tauri.app/plugin/global-shortcut/).
+- [Instância única](https://v2.tauri.app/plugin/single-instance/).
+- [Bandeja](https://v2.tauri.app/learn/system-tray/).
+- [Área útil e escala do monitor](https://v2.tauri.app/reference/javascript/api/namespacewindow/).
+- [Permissões de comandos](https://docs.rs/tauri-build/2.7.1/tauri_build/struct.AppManifest.html).
+- [Fontes Google com OFL](https://github.com/google/fonts/tree/main/ofl).
+- [Coordenadas de WM_NCLBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown).
