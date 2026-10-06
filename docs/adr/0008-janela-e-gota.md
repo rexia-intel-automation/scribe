@@ -67,6 +67,9 @@ restaura o botão Configurações atual.
 Ao substituir o conteúdo da confirmação de histórico, o foco acompanha
 Cancelar/Apagar histórico. A abertura inicial do modal não altera esse foco,
 e atualizações sem troca da confirmação não interrompem a navegação.
+Limpeza e salvamento registram o controle que iniciou a ação antes de
+desabilitá-lo. Ao terminar a espera, o foco é restaurado somente se ficou
+no BODY e o controle ainda existe; a navegação posterior do usuário é preservada.
 Formas estacionárias sem olhos ignoram o
 prazo de piscada; transições, órbita e piscadas efetivas continuam desenhando. O job
 de auditoria também bloqueia vulnerabilidades npm desde nível baixo, incluindo

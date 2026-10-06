@@ -82,6 +82,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 - Correção da quinta revisão da Fase 3: abrir/cancelar a confirmação do
   histórico mantém foco no controle atual. 31 Vitest e oito Playwright passaram,
   incluindo três ciclos pelo teclado sem apagar dados. Aceites humanos pendentes.
+- Correção da sexta revisão da Fase 3: limpeza/salvamento recuperam foco perdido
+  após falha assíncrona, preservando navegação posterior e controles desmontados.
+  Regressões falham no candidato anterior; 32 Vitest e dez Playwright passam.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

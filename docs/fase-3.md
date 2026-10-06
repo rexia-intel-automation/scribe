@@ -56,9 +56,9 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Trinta e um testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Trinta e dois testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
-- Oito Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
+- Dez Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
   interrogação/selo em 24/40/56/96 px.
   O repouso sem olhos é medido após 6,5 s, além do prazo máximo da primeira piscada.
@@ -250,3 +250,28 @@ A janela Windows em execução continua no candidato e98bd21, reservada ao
 arraste humano; esta correção ainda não foi observada em um novo binário nativo.
 CI desse candidato anterior terminou verde nos três sistemas; isso não aprova
 o candidato corrigido nem substitui os aceites visual/arraste pendentes.
+
+## Correções após a rodada 6
+
+Rodada 6, candidato 41194b9: reprovada (A–J 8, mínimas G/H 9), com um
+defeito baixo de foco após falha assíncrona na limpeza. Logs e relatório
+permanecem preservados. O controle que iniciou uma ação é registrado antes
+de ficar desabilitado. Ao terminar a espera, ele recupera foco somente se
+o foco ficou no BODY e o controle ainda está conectado. Navegação posterior,
+retorno de sucesso e modais desmontados mantêm seu próprio foco.
+
+Limpeza e salvamento usam esse mesmo caminho. As duas regressões novas de
+navegador falharam no 41194b9 antes da correção, com traces preservados em
+`D:/RexIA/projetos/scribe/app/.artifacts/phase-3-async-focus-fix/baseline-results`.
+No código corrigido, 32 Vitest, dez Playwright, lint, formatação e build UI
+passaram. O teste de falha usa somente uma ponte simulada no Chromium, sem
+apagar histórico nem salvar preferências nativas. Verifica tanto foco perdido
+quanto foco movido para outro controle durante a espera.
+O recheck do harness R6 passou 39/39 (32 produto + sete adversariais), e
+seus quatro ensaios de navegador passaram 4/4, com logs novos do implementador
+em `D:/RexIA/projetos/scribe/app/.artifacts/phase-3-async-focus-fix`.
+
+CI do 41194b9 terminou verde nos três sistemas. A janela Windows permanece
+no e98bd21 para o ensaio humano; essas regressões ainda não foram repetidas
+em um novo binário nativo. Revisão do novo candidato e aceites humanos
+continuam necessários antes de avançar.

@@ -112,6 +112,7 @@ function Settings({
   const [preferences, setPreferences] = useState(view.preferences);
   const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
+  const actionFocus = useRef<HTMLElement | null>(null);
   const [confirm, setConfirm] = useState(false);
   const historyToggle = useRef<HTMLButtonElement>(null);
   const previousConfirm = useRef(confirm);
@@ -139,11 +140,24 @@ function Settings({
       historyToggle.current?.focus();
     }
   }, [confirm]);
+  useEffect(() => {
+    if (!busy) {
+      const source = actionFocus.current;
+      actionFocus.current = null;
+      if (document.activeElement === document.body && source?.isConnected)
+        source.focus();
+    }
+  }, [busy]);
+  function startAction() {
+    const source = document.activeElement;
+    actionFocus.current = source instanceof HTMLElement ? source : null;
+    setBusy(true);
+  }
   const change = <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
     setPreferences((previous) => ({ ...previous, [key]: value }));
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    startAction();
     setError(null);
     try {
       receive(await bridge.savePreferences(preferences));
@@ -157,7 +171,7 @@ function Settings({
     }
   }
   async function clear() {
-    setBusy(true);
+    startAction();
     try {
       receive(await bridge.clearHistory());
       setConfirm(false);

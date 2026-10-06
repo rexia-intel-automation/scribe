@@ -175,6 +175,29 @@ describe("session window", () => {
     expect(bridge.clearHistory).toHaveBeenCalledOnce();
     expect(screen.queryByText("public-project")).not.toBeInTheDocument();
   });
+  it("does not steal focus moved by the user while clearing fails asynchronously", async () => {
+    const user = userEvent.setup();
+    let reject!: (cause: string) => void;
+    vi.mocked(bridge.clearHistory).mockReturnValue(
+      new Promise<View>((_, fail) => {
+        reject = fail;
+      }),
+    );
+    render(<App initialView={fixture()} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: "Apagar histórico" }));
+    await user.click(
+      screen.getByRole("button", { name: t("pt-BR", "confirmClear") }),
+    );
+    const language = screen.getByLabelText(t("pt-BR", "language"));
+    await user.click(language);
+    await act(async () => reject("storageUnavailable"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      t("pt-BR", "storageUnavailable"),
+    );
+    expect(language).toHaveFocus();
+    expect(screen.getByText("public-project")).toBeVisible();
+  });
   it("ignores reordered snapshots with identical timestamps and releases its listener", async () => {
     let receive: ((value: View) => void) | undefined;
     const stop = vi.fn();

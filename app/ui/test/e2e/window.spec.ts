@@ -150,6 +150,69 @@ test("history confirmation keeps visible keyboard focus without deleting data", 
   ).toBeFocused();
 });
 
+for (const operation of ["clear", "save"] as const) {
+  test(`${operation} failure restores lost keyboard focus and preserves subsequent navigation`, async ({
+    page,
+  }) => {
+    await page.route("**/src/bridge.ts", (route) =>
+      route.fulfill({
+        contentType: "text/javascript",
+        body: `
+        export const desktop = false;
+        export const defaults = {language:'pt-BR',theme:'dark',shortcut:'Control+Shift+Space',notifications:true,retentionDays:14,completedMinutes:10,port:7717,collapsed:false,side:'right',y:null,monitor:null};
+        export const initial = {at:0,revision:1,sessions:[],preferences:defaults,error:null};
+        export async function observe() { return () => {}; }
+        function failLater() { return new Promise((_, reject) => window.addEventListener('scribe-test-fail', () => reject('${operation === "clear" ? "storageUnavailable" : "configUnavailable"}'), {once:true})); }
+        export const clearHistory = failLater;
+        export const savePreferences = failLater;
+        export async function toggle() { return initial; }
+        export async function move() { return initial; }
+        export async function drag() {}
+        export async function openHelp() {}
+      `,
+      }),
+    );
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Configurações", exact: true })
+      .focus();
+    await page.keyboard.press("Enter");
+    if (operation === "clear") {
+      await page
+        .getByRole("button", { name: "Apagar histórico", exact: true })
+        .focus();
+      await page.keyboard.press("Enter");
+    }
+    const submit = page.getByRole("button", {
+      name:
+        operation === "clear" ? "Apagar histórico agora" : "Salvar alterações",
+      exact: true,
+    });
+    for (const navigate of [false, true]) {
+      await submit.focus();
+      await page.keyboard.press("Enter");
+      await expect(submit).toBeDisabled();
+      const language = page.getByRole("combobox", {
+        name: "Idioma",
+        exact: true,
+      });
+      if (navigate) await language.focus();
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event("scribe-test-fail")),
+      );
+      await expect(submit).toBeEnabled();
+      const focused = navigate ? language : submit;
+      await expect(focused).toBeFocused();
+      await expect(focused).toHaveCSS("outline-style", "solid");
+      await expect(page.getByRole("alert")).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("button", { name: "Configurações", exact: true }),
+    ).toBeFocused();
+  });
+}
+
 test("stationary forms without eyes remain settled after the longest blink interval", async ({
   page,
 }) => {
