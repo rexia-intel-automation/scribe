@@ -241,6 +241,35 @@ describe("session window", () => {
       screen.getByRole("button", { name: "Recolher janela" }),
     ).toHaveFocus();
   });
+  it("restores settings focus after the original opener was removed by a mode change", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        preferences: { ...data.preferences, collapsed: true },
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Abrir Scribe" })).toHaveFocus();
+    act(() => receive!({ ...data, revision: 3 }));
+    expect(screen.getByRole("dialog")).toHaveAttribute("open");
+    await user.click(
+      screen.getByRole("button", { name: "Fechar configurações" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Configurações" }),
+      ).toHaveFocus(),
+    );
+  });
   it("announces a failed move while collapsed and preserves the specific cause", async () => {
     const user = userEvent.setup();
     const data = fixture();

@@ -56,7 +56,7 @@ Não habilitar essa instrumentação para o app instalado de uso diário.
   política: configurações, poda, histórico e memória permanecem inalterados.
 - Cinco testes de biblioteca com desktop passaram: origem/navegação,
   preferências inválidas, gravação privada, higienização e coordenadas Win32.
-- Vinte e oito testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
+- Vinte e nove testes Vitest passaram: sessões, i18n, modal, histórico, prioridade,
   DPR, FPS, pausa oculta, movimento reduzido, erros recolhidos e recuperação.
 - Sete Playwright passaram: teclado/foco, idiomas/temas, dez formas nos três
   tamanhos, axe WCAG A/AA em claro/escuro, limite de redesenho e contraste de
@@ -212,3 +212,21 @@ O job dependency-audit instala o lockfile sem scripts e executa
 Nenhum `continue-on-error` é usado. O mesmo comando local teve zero
 vulnerabilidades; o CI do novo candidato ainda precisa passar. Os testes,
 builds e correções não dispensam o aceite visual e a confirmação do arraste.
+
+## Correções após a rodada 4
+
+Rodada 4, candidato f3cacc2: reprovada (A–J 8, mínimas G/H 9), com um
+defeito baixo e os aceites humanos pendentes. O relatório permanece preservado.
+Fechar o modal depois de recolher/reabrir agora restaura o botão Configurações
+atual quando o opener original foi removido ou era BODY. O fallback é capturado
+na montagem do modal e recebe foco somente enquanto ainda estiver conectado.
+O recheck do harness R4 passou **38/38** (29 produto + nove adversariais), e a
+reprodução independente em Chromium com proxy de snapshots passou **1/1**.
+Seu resultado novo é separado do log vermelho original em
+`desktop-modal-focus-browser.json`; isso não é ensaio nativo nem aceite humano.
+
+Repetição posterior no Windows de produção: abrir Configurações, recolher e
+reabrir pelo atalho global e fechar por Escape devolveu o foco ao botão
+Configurações. Janela ficou 372×784, escura, sem modal/alerta e arquivo de
+preferências gravável; `desktop-modal-focus-native.json`. Este ensaio do
+implementador é separado da reprodução de navegador feita pelo revisor.

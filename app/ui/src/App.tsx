@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Gota } from "./gota/Gota";
 import { t, action, type Message } from "./i18n";
 import { priority, type View, type Session, type Preferences } from "./types";
@@ -96,10 +96,12 @@ function Settings({
   view,
   receive,
   close,
+  returnFocus,
 }: {
   view: View;
   receive: (view: View) => void;
   close: () => void;
+  returnFocus: RefObject<HTMLButtonElement | null>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef(
@@ -116,14 +118,19 @@ function Settings({
   useEffect(() => {
     const modal = dialog.current;
     const source = opener.current;
+    const fallback = returnFocus.current;
     modal?.showModal();
     return () => {
       modal?.close();
       queueMicrotask(() => {
-        if (!modal?.isConnected && source?.isConnected) source.focus();
+        if (!modal?.isConnected) {
+          const target =
+            source?.isConnected && source !== document.body ? source : fallback;
+          if (target?.isConnected) target.focus();
+        }
       });
     };
-  }, []);
+  }, [returnFocus]);
   const change = <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
     setPreferences((previous) => ({ ...previous, [key]: value }));
   async function save(event: React.FormEvent) {
@@ -312,6 +319,7 @@ export default function App({
   );
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const panelToggle = useRef<HTMLButtonElement>(null);
+  const settingsToggle = useRef<HTMLButtonElement>(null);
   const previousMode = useRef(initialView.preferences.collapsed);
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
@@ -463,6 +471,7 @@ export default function App({
       <nav className="navigation" aria-label={t(language, "now")}>
         <span>{t(language, "now")}</span>
         <button
+          ref={settingsToggle}
           className="icon-button"
           onClick={() => setSettings(true)}
           aria-label={t(language, "settings")}
@@ -540,6 +549,7 @@ export default function App({
           view={view}
           receive={receive}
           close={() => setSettings(false)}
+          returnFocus={settingsToggle}
         />
       )}
     </main>

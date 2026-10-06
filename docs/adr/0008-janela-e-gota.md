@@ -62,8 +62,9 @@ preservando essa informação mesmo quando a sessão recebida deixa de aparecer.
 
 A troca de modo transfere foco DOM ao controle equivalente, sem refocar cada
 snapshot nem alterar a ativação nativa do aplicativo externo. O modal mantém
-seu gerenciamento de foco. Formas estacionárias sem olhos ignoram o prazo de
-piscada; transições, órbita e piscadas efetivas continuam desenhando. O job
+seu gerenciamento de foco; se seu opener foi removido na troca de modo, fechar
+restaura o botão Configurações atual. Formas estacionárias sem olhos ignoram o
+prazo de piscada; transições, órbita e piscadas efetivas continuam desenhando. O job
 de auditoria também bloqueia vulnerabilidades npm desde nível baixo, incluindo
 dependências de desenvolvimento; não há execução de scripts de instalação.
 

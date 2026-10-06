@@ -76,6 +76,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   formas sem olhos mantêm repouso após o prazo de piscada e npm audit bloqueia
   vulnerabilidades no CI. 28 Vitest e sete Playwright passaram; recheck dos
   11 casos adversariais da rodada 3 passou, sem alterar a reprovação histórica.
+- Correção da quarta revisão da Fase 3: fechar Configurações após recolher e
+  reabrir devolve o foco ao botão atual. 29 Vitest, sete Playwright e recheck
+  R4 com 38/38 passaram; reprodução Chromium do defeito também passou.
 - Preferências de histórico e limpeza são gravadas na mesma transação; falhas
   não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
   restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.
