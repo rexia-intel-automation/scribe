@@ -6,6 +6,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Instalação local de desenvolvimento autorizada: app/cliente no perfil do
+  usuário e plug-in configurado pelo CLI oficial, com conexão MCP privada.
+  Não é release; aceite visual foi adiado para priorizar o fluxo de decisões.
 - Núcleo da Fase 2 em implementação: HTTP local autenticado, onze contratos,
   estados, SSE, MCP oficial e persistência SQLite de metadados higienizados.
   Aprovado na quinta revisão independente; não é um app publicado.
@@ -24,6 +27,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Abertura do app pelo cliente não mantém os canais do comando chamador:
+  stdio separado e herança dos handles padrão removida no Windows. Regressão
+  confirma aplicativo vivo, EOF de stdin e ausência de saída capturada.
 - Correções da quarta revisão da Fase 2: caminhos junto a flags de compilador
   são encurtados; retenção elimina sessões e passos vencidos sem depender de
   novos hooks. Servidor ocioso limpa o banco a cada minuto. Política e limpeza

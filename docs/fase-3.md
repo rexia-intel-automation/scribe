@@ -354,3 +354,49 @@ a sessão interativa aberta não foi controlada. Este teste comprova o caminho
 Claude real → cliente nativo → servidor → interface para observação de sessão.
 Não comprova instalação nessa sessão, decisões de permissão, aceite visual ou
 arraste físico. A catraca da Fase 3 continua pendente.
+
+## Instalação local autorizada pelo humano
+
+O pedido de 2026-10-07 autoriza instalar agora e resolver o visual depois.
+O app e o cliente foram copiados para `%LOCALAPPDATA%\Scribe`; há atalho no
+menu Iniciar. O marketplace local e `scribe@rexia-scribe` foram instalados no
+escopo de usuário pelo CLI, com as três opções configuradas. O token sensível
+não está em settings.json. O app usa perfil padrão, sem fixtures sintéticas.
+O ADR 0009 registra a exceção de prioridade sem transformar G8 em aprovação.
+
+Ciclo real do plug-in instalado e conversa auto com Read passaram: código zero,
+stderr vazio, resposta pública correta e sessão concluída persistida. Um teste
+mais amplo chamou `scribe_report` e persistiu o marco público, mas não concluiu
+a conversa; não é contado como ensaio completo aprovado. O teste seguinte de
+Read foi interrompido por `error_max_budget_usd` com teto 0,50; com teto 3,00,
+o ciclo/Read passaram. Tentativas originais permanecem no artefato local.
+
+O ensaio de abertura reproduziu retenção dos canais herdados. A regressão
+falhou no cliente anterior e após redirecionar apenas para null. Depois de
+remover a herança dos handles padrão no Windows, 19 testes Node, um Rust,
+Clippy, formatação e build de release passaram. O cliente corrigido foi copiado
+para a instalação; a janela desktop permanece com o código 9b64918.
+
+Com o app efetivamente fechado, `--init-only` terminou sem stdout/stderr; o
+helper reabriu o app e encerrou em 48 ms. A conexão persistiu e o health retornou
+200. O ciclo inteiro do Claude levou 2558 ms, incluindo inicialização do CLI;
+este ensaio não comprova sozinho o limite de atraso adicional de FR-03 nem
+o fluxo humano de PermissionRequest. Os testes do cliente verificam o prazo
+individual dos hooks e a falha silenciosa. Não há aprovação automática.
+
+Evidências: `docs/evidence/installed-preview.json`,
+`installed-preview-fail-safe.json` e `installed-preview-installation.json`.
+Logs/instrumentos em `D:/RexIA/projetos/scribe/app/.artifacts/installed-preview`.
+O CI 90e6e27 foi verde nas três plataformas; a correção nova requer seus checks.
+Cartões/perguntas/notificações, auditoria e release continuam pendentes.
+
+Revisão independente focada em `docs/reviews/instalacao-local.md`: nenhum
+bloqueador de lançamento Windows confirmado; oito sondagens e cinco repetições
+passaram, com controle que reproduziu o defeito sem a proteção dos handles.
+Duas lacunas baixas no teste foram tratadas: compilação com deadline/limpeza e
+fixture que verifica EOF vazio, stdin aberto e sentinelas de stdout/stderr
+suprimidas. Os 19 ensaios passaram novamente. Isso não é uma nova aprovação
+global da Fase 3 ou da v0.1; os relatórios anteriores foram preservados.
+O recheck independente em `docs/reviews/instalacao-local-recheck.md` confirmou
+as duas correções: regressão 1/1 e compilador sintético encerrado aos 30 s,
+com falha esperada e sem processo remanescente. Não houve achado novo no escopo.

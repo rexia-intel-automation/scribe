@@ -1,0 +1,24 @@
+{
+  "plugin": "scribe@rexia-scribe",
+  "scope": "user",
+  "enabled": true,
+  "configured": true,
+  "defaultProfile": true,
+  "installLocation": "%LOCALAPPDATA%/Scribe",
+  "startMenuShortcut": true,
+  "sensitiveOptionAbsentFromSettings": true,
+  "publishedRelease": false,
+  "visualAcceptanceDeferredByUser": true,
+  "permissionsImplemented": false,
+  "questionCardsImplemented": false,
+  "binaryFingerprints": [
+    {
+      "sha256": "BFF472CFAB8F99CA28E666438C7126E179834C4AE3774F057417CD185D35FA27",
+      "file": "scribe.exe"
+    },
+    {
+      "sha256": "6B25672789210DF0A5598FECFB2167ADC1E5690B7646FD03EF6B0F40568E73B6",
+      "file": "scribe-hook.exe"
+    }
+  ]
+}

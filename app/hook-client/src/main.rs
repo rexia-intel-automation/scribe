@@ -3,7 +3,14 @@
 use directories::BaseDirs;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{fs, io::Read, path::PathBuf, process::Command, sync::mpsc, time::Duration};
+use std::{
+    fs,
+    io::Read,
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::mpsc,
+    time::Duration,
+};
 
 const EVENTS: &[&str] = &[
     "SessionStart",
@@ -116,10 +123,35 @@ fn open(config: Option<Connection>) -> bool {
         return false;
     }
     let mut command = Command::new(path);
-    command.arg("--show");
+    command
+        .arg("--show")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     #[cfg(windows)]
     {
+        use std::ffi::c_void;
         use std::os::windows::process::CommandExt;
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetStdHandle(kind: u32) -> *mut c_void;
+            fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
+        }
+        // Redirecting stdio alone still leaves the original Windows pipe handles
+        // inheritable. This short-lived --open process must not pass them on.
+        for kind in [-10_i32, -11, -12] {
+            // SAFETY: these are documented standard-handle selectors. We change
+            // only HANDLE_FLAG_INHERIT on valid handles owned by this process.
+            unsafe {
+                let handle = GetStdHandle(kind as u32);
+                if !handle.is_null()
+                    && handle != -1_isize as *mut c_void
+                    && SetHandleInformation(handle, 1, 0) == 0
+                {
+                    return false;
+                }
+            }
+        }
         command.creation_flags(0x08000000);
     }
     command.spawn().is_ok()
