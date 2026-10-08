@@ -11,6 +11,14 @@ use tokio::{
 const TOKEN: &str = "PUBLIC_SYNTHETIC_MCP_TOKEN_32_CHARACTERS";
 const KEY: &str = "PUBLIC_INDEPENDENT_MCP_KEY_32_CHARACTERS";
 
+fn modern_meta() -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name":"public-test","version":"1"}
+    })
+}
+
 struct Helper {
     child: Child,
     input: ChildStdin,
@@ -180,7 +188,104 @@ async fn helper_discovers_offline_recovers_and_keeps_pending_question_concurrent
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn modern_client_without_initialize_discovers_and_forwards_calls() {
+    let temp = TempDir::new().unwrap();
+    let config = temp.path().join("modern connection.json");
+    let mut helper = Helper::start(&config);
+    let meta = modern_meta();
+    helper
+        .send(json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":meta}}))
+        .await;
+    let listed = helper.reply(1).await;
+    assert_eq!(listed["result"]["ttlMs"], 0);
+    assert_eq!(listed["result"]["cacheScope"], "private");
+    assert_eq!(
+        listed["result"]["tools"],
+        serde_json::from_str::<Value>(scribe_hook_protocol::MCP_TOOLS).unwrap()
+    );
+
+    helper
+        .send(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+            "_meta":meta,"name":"scribe_report","arguments":{"session_id":"public-modern-session","text":"PUBLIC MODERN OFFLINE"}}}))
+        .await;
+    let offline = helper.reply(2).await;
+    assert_eq!(offline["result"]["isError"], true);
+    assert!(!offline.to_string().contains(TOKEN));
+
+    let core = Core::open(&temp.path().join("modern state.db"), scribe_core::now_ms()).unwrap();
+    core.hook("SessionStart", &serde_json::to_vec(&json!({"hook_event_name":"SessionStart","session_id":"public-modern-session","cwd":"/public/project"})).unwrap(), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), KEY.into())
+        .await
+        .unwrap();
+    std::fs::write(
+        &config,
+        json!({"port":server.port(),"token":TOKEN,"hook_key":KEY}).to_string(),
+    )
+    .unwrap();
+
+    helper
+        .send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+            "_meta":meta,"name":"scribe_report","arguments":{"session_id":"public-modern-session","text":"PUBLIC MODERN RECOVERED"}}}))
+        .await;
+    assert_ne!(helper.reply(3).await["result"]["isError"], true);
+    assert!(core.snapshot(scribe_core::now_ms()).unwrap().sessions[0]
+        .steps
+        .iter()
+        .any(|step| step.summary == "PUBLIC MODERN RECOVERED"));
+
+    helper
+        .send(json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{
+            "_meta":meta,"name":"scribe_ask","arguments":{"session_id":"public-modern-session","question":"PUBLIC MODERN QUESTION","options":["A","B"]}}}))
+        .await;
+    let decision = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(decision) = core
+                .snapshot(scribe_core::now_ms())
+                .unwrap()
+                .decisions
+                .first()
+            {
+                break decision.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Modern authenticated helper must reach the real app");
+    helper
+        .send(json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
+            "_meta":meta,"name":"scribe_report","arguments":{"session_id":"public-modern-session","text":"PUBLIC MODERN CONCURRENT"}}}))
+        .await;
+    assert_ne!(helper.reply(5).await["result"]["isError"], true);
+    assert!(core.snapshot(scribe_core::now_ms()).unwrap().sessions[0]
+        .steps
+        .iter()
+        .any(|step| step.summary == "PUBLIC MODERN CONCURRENT"));
+    core.resolve_decision(
+        &decision.id,
+        serde_json::from_value(json!({"option":1})).unwrap(),
+    )
+    .unwrap();
+    let answered = helper.reply(4).await;
+    assert_ne!(answered["result"]["isError"], true);
+    let answer: Value =
+        serde_json::from_str(answered["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(answer["answer"], "B");
+    helper.finish().await;
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn helper_cancel_closes_socket_and_cannot_leave_a_live_question() {
+    cancel_question(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn modern_cancel_expires_a_pending_question() {
+    cancel_question(true).await;
+}
+
+async fn cancel_question(modern: bool) {
     let temp = TempDir::new().unwrap();
     let config = temp.path().join("connection.json");
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
@@ -194,9 +299,15 @@ async fn helper_cancel_closes_socket_and_cannot_leave_a_live_question() {
     )
     .unwrap();
     let mut helper = Helper::start(&config);
-    helper.initialize().await;
-    helper.send(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-        "name":"scribe_ask","arguments":{"session_id":"public-session","question":"PUBLIC CANCEL","options":["A","B"]}}})).await;
+    let mut params = json!({"name":"scribe_ask","arguments":{"session_id":"public-session","question":"PUBLIC CANCEL","options":["A","B"]}});
+    if modern {
+        params["_meta"] = modern_meta();
+    } else {
+        helper.initialize().await;
+    }
+    helper
+        .send(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":params}))
+        .await;
     tokio::time::timeout(Duration::from_secs(5), async {
         while core
             .snapshot(scribe_core::now_ms())
@@ -229,6 +340,15 @@ async fn helper_cancel_closes_socket_and_cannot_leave_a_live_question() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn helper_eof_expires_a_pending_question_without_answering_it() {
+    eof_question(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn modern_eof_expires_a_pending_question_without_answering_it() {
+    eof_question(true).await;
+}
+
+async fn eof_question(modern: bool) {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
     core.hook("SessionStart", &serde_json::to_vec(&json!({"hook_event_name":"SessionStart","session_id":"public-session","cwd":"/public/project"})).unwrap(), scribe_core::now_ms()).unwrap();
@@ -242,9 +362,15 @@ async fn helper_eof_expires_a_pending_question_without_answering_it() {
     )
     .unwrap();
     let mut helper = Helper::start(&config);
-    helper.initialize().await;
-    helper.send(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-        "name":"scribe_ask","arguments":{"session_id":"public-session","question":"PUBLIC EOF","options":["A","B"]}}})).await;
+    let mut params = json!({"name":"scribe_ask","arguments":{"session_id":"public-session","question":"PUBLIC EOF","options":["A","B"]}});
+    if modern {
+        params["_meta"] = modern_meta();
+    } else {
+        helper.initialize().await;
+    }
+    helper
+        .send(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":params}))
+        .await;
     let decision = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(decision) = core

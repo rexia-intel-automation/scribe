@@ -21,7 +21,7 @@ function sign(fields) {
   }
   return mac.digest('base64url');
 }
-async function fixture(t, handler) {
+async function fixture(t, handler, mode = 'legacy') {
   const root = await mkdtemp(join(tmpdir(), 'scribe public mcp '));
   const server = createServer(handler);
   await new Promise(ok => server.listen(0, '127.0.0.1', ok));
@@ -60,10 +60,12 @@ async function fixture(t, handler) {
       ]);
     } finally { clearTimeout(replyTimer); }
   }
-  send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
-    protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'public-test', version: '1' } } });
-  assert.equal((await reply(1)).result.serverInfo.name, 'scribe');
-  send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  if (mode === 'legacy') {
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+      protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'public-test', version: '1' } } });
+    assert.equal((await reply(1)).result.serverInfo.name, 'scribe');
+    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  }
   async function finish() {
     child.stdin.end();
     const result = await closed;
@@ -73,6 +75,11 @@ async function fixture(t, handler) {
 }
 const report = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
   name: 'scribe_report', arguments: { session_id: 'public-session', text: 'PUBLIC CONTENT' } } };
+const modernMeta = {
+  'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+  'io.modelcontextprotocol/clientCapabilities': {},
+  'io.modelcontextprotocol/clientInfo': { name: 'public-test', version: '1' },
+};
 
 test('legacy native MCP discovery includes private cache hints without contacting the app', async t => {
   let requests = 0;
@@ -111,7 +118,46 @@ test('native MCP proves the server before sending content and uses one socket fo
   let connections = 0; f.server.on('connection', () => connections++);
   f.send(report);
   const response = await f.reply(2);
-  assert.notEqual(response.result.isError, true); assert.equal(calls, 1); assert.equal(connections, 1);
+  assert.deepEqual(response.result, { content: [{ type: 'text', text: '{"ok":true}' }] });
+  assert.equal(calls, 1); assert.equal(connections, 1);
+  await f.finish();
+});
+
+test('modern MCP client skips initialize and forwards attested tools/call without inline metadata', async t => {
+  let calls = 0, firstSocket;
+  const f = await fixture(t, async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    assert.equal(req.headers.authorization, undefined);
+    assert.ok(!Object.values(req.headers).includes(token));
+    assert.ok(!Object.values(req.headers).includes(key));
+    const nonce = req.url.split('/').at(-1);
+    if (req.method === 'GET') {
+      firstSocket = req.socket; assert.equal(body.length, 0);
+      assert.equal(req.headers['x-scribe-proof'], sign(['mcp-challenge-request', nonce]));
+      res.writeHead(204, { 'x-scribe-server-nonce': fresh, 'x-scribe-proof': sign(['mcp-challenge', nonce, fresh]) }); res.end();
+    } else {
+      calls++; assert.equal(req.socket, firstSocket); assert.equal(req.url, '/mcp');
+      assert.equal(req.headers['mcp-protocol-version'], '2025-11-25');
+      assert.equal(req.headers['x-scribe-server-nonce'], fresh);
+      assert.equal(req.headers['x-scribe-proof'], sign(['mcp-request', req.headers['x-scribe-nonce'], fresh, '/mcp', body]));
+      const call = JSON.parse(body);
+      assert.equal(call.method, 'tools/call');
+      assert.equal(call.params._meta, undefined);
+      assert.equal(call.params.name, 'scribe_report');
+      assert.equal(call.params.arguments.text, 'PUBLIC CONTENT');
+      const result = JSON.stringify({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
+      res.writeHead(200, { 'content-type': 'application/json', 'x-scribe-proof': sign(['mcp-response', req.headers['x-scribe-nonce'], fresh, '200', result]) }); res.end(result);
+    }
+  }, 'modern');
+  let connections = 0; f.server.on('connection', () => connections++);
+  f.send({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: modernMeta } });
+  const listed = await f.reply(1);
+  assert.deepEqual(listed.result.tools.map(tool => tool.name).sort(), ['scribe_ask', 'scribe_report']);
+  f.send({ ...report, id: 2, params: { ...report.params, _meta: modernMeta } });
+  const response = await f.reply(2);
+  assert.deepEqual(response.result, { content: [{ type: 'text', text: '{"ok":true}' }] });
+  assert.equal(calls, 1); assert.equal(connections, 1);
   await f.finish();
 });
 

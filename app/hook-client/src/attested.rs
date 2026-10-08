@@ -9,7 +9,7 @@ use tokio::{net::TcpStream, task::JoinHandle};
 #[derive(Clone, Copy)]
 pub(super) enum Channel<'a> {
     Hook(&'a str),
-    Mcp(&'a str),
+    Mcp,
 }
 
 // Dropping a cancelled or timed-out call closes the connection driver too.
@@ -51,7 +51,7 @@ pub(super) async fn post(
             Duration::from_millis(250),
             8192,
         ),
-        Channel::Mcp(_) => (
+        Channel::Mcp => (
             "/mcp".to_owned(),
             "/v1/mcp/challenge",
             [
@@ -140,10 +140,12 @@ pub(super) async fn post(
         .header("x-scribe-nonce", &nonce)
         .header("x-scribe-server-nonce", &server_nonce)
         .header("x-scribe-proof", proof);
-    if let Channel::Mcp(version) = channel {
+    if let Channel::Mcp = channel {
+        // RMCP consumes external inline metadata. The private app hop uses
+        // its own stable protocol, independent of the client's negotiation.
         request = request
             .header(header::ACCEPT, "application/json, text/event-stream")
-            .header("mcp-protocol-version", version);
+            .header("mcp-protocol-version", "2025-11-25");
     }
     let response = sender
         .send_request(request.body(Full::new(Bytes::from(body))).map_err(|_| ())?)

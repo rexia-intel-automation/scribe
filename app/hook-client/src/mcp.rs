@@ -54,12 +54,8 @@ impl ServerHandler for NativeMcp {
         if self.get_tool(&request.name).is_none() {
             return Err(ErrorData::invalid_params("Unknown Scribe tool", None));
         }
-        let version = context
-            .protocol_version()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "2025-11-25".into());
         let result = tokio::select! {
-            result = tokio::time::timeout(Duration::from_secs(610), forward(&context.id, request, &version)) => result.ok().and_then(Result::ok),
+            result = tokio::time::timeout(Duration::from_secs(610), forward(&context.id, request)) => result.ok().and_then(Result::ok),
             _ = context.ct.cancelled() => None,
             _ = self.closed.cancelled() => None,
         };
@@ -72,7 +68,6 @@ impl ServerHandler for NativeMcp {
 async fn forward(
     id: &rmcp::model::RequestId,
     request: CallToolRequestParams,
-    version: &str,
 ) -> Result<CallToolResult, ()> {
     let config = super::connection().ok_or(())?;
     let body = serde_json::to_vec(
@@ -80,7 +75,7 @@ async fn forward(
     )
     .map_err(|_| ())?;
     let (status, bytes) =
-        super::attested::post(&config, super::attested::Channel::Mcp(version), body).await?;
+        super::attested::post(&config, super::attested::Channel::Mcp, body).await?;
     if status != 200 {
         return Err(());
     }
