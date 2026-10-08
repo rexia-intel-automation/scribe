@@ -1,7 +1,10 @@
 use crate::{now_ms, Core};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig},
+    model::{
+        CacheScope, CallToolResult, ContentBlock, Implementation, ListToolsResult,
+        PaginatedRequestParams, ServerCapabilities, ServerConfig,
+    },
     schemars, tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
 use serde::Deserialize;
@@ -114,6 +117,16 @@ impl ScribeMcp {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for ScribeMcp {
+    async fn list_tools(
+        &self,
+        _: Option<PaginatedRequestParams>,
+        _: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult::with_all_items(self.tool_router.list_all())
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private))
+    }
+
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("scribe", env!("CARGO_PKG_VERSION")))

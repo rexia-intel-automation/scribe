@@ -16,6 +16,15 @@ compartilhado e um teste compara a lista completa com a gerada pelo app.
 Somente chamadas de ferramentas são encaminhadas ao app, concorrentes entre si.
 App fechado ou incompatível resulta em erro de ferramenta, sem consentimento.
 
+As duas superfícies MCP emitem `ttlMs: 0` e `cacheScope: "private"` em
+`tools/list`, inclusive quando negociam `2025-11-25`. O Claude Code 2.1.294
+rejeitou a listagem sem esses campos no ensaio real do candidato 7dfaec7.
+São os campos de cache retrocompatíveis do
+[SEP-2549](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2549-TTL-for-list-results.md),
+já disponíveis no RMCP 3.5.0. A lista deve ser tratada como imediatamente
+desatualizada e restrita ao cliente solicitante; isso não muda autenticação,
+esquemas ou versão negociada, nem declara suporte integral ao protocolo novo.
+
 Cada chamada estabelece um socket HTTP1 com Hyper. Um GET autenticado obtém
 nonce fresco e prova do servidor. O corpo só é enviado depois de verificar
 essa prova, pelo mesmo socket: não há pool, redirects, proxy ou retry. O app
@@ -52,6 +61,14 @@ resposta inventada. Testes de transporte conferem socket único, ausência de
 corpo diante de prova inválida, recusa de reconexão e resposta adulterada.
 Testes do servidor cobrem recusa de Bearer e replay após reemitir o desafio.
 O onboarding tem executáveis simulados e perfis temporários em PowerShell 5.1/7.
+
+O CI Windows também executa `claude mcp add` e `claude mcp list` com a CLI
+2.1.294 e o helper de produção. Usa configuração, cwd e diretórios de perfil
+temporários vazios, remove variáveis de credenciais e não chama o modelo.
+Exige o servidor de teste como conectado, sem erro de listagem de ferramentas.
+O helper recebe um caminho de conexão inexistente: descoberta não depende de
+app instalado, dados reais ou login. O mesmo smoke reproduziu a rejeição do
+helper anterior e passou com os campos corrigidos na CLI nativa local.
 
 Essas provas não substituem sessões interativas do Claude, ensaio do instalador,
 aceite humano ou nota da Fase 5. O protocolo dos hooks permanece neste lote;
