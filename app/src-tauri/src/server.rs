@@ -227,7 +227,7 @@ impl Drop for LocalServer {
 
 /// Bound sockets before HTTP parsing; header deadlines do not limit SSE/MCP responses.
 async fn serve_bounded(
-    listener: TcpListener,
+    mut listener: TcpListener,
     router: Router,
     cancel: CancellationToken,
     slots: Arc<Semaphore>,
@@ -239,8 +239,10 @@ async fn serve_bounded(
             biased;
             _ = cancel.cancelled() => break,
             Some(_) = connections.join_next(), if !connections.is_empty() => {},
-            accepted = listener.accept() => {
-                let (socket, _) = accepted?;
+            // Retain Axum's retry/backoff for transient accept errors (including
+            // Windows resets and descriptor exhaustion), cancellable by select.
+            accepted = axum::serve::Listener::accept(&mut listener) => {
+                let (socket, _) = accepted;
                 let Ok(permit) = slots.clone().try_acquire_owned() else {
                     // No HTTP response or parser allocation for excess connections.
                     drop(socket);
@@ -928,6 +930,51 @@ mod connection_tests {
             );
         }
         drop(socket);
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reset_in_the_backlog_does_not_end_the_listener() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // A single client resets before the first accept. Windows may report
+        // WSAECONNRESET here; Unix can instead return a socket closed by its peer.
+        let reset = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        socket2::SockRef::from(&reset)
+            .set_linger(Some(Duration::ZERO))
+            .unwrap();
+        drop(reset);
+        let cancel = CancellationToken::new();
+        let router = Router::new().route("/health", get(|| async { StatusCode::NO_CONTENT }));
+        let server = tokio::spawn(serve_bounded(
+            listener,
+            router,
+            cancel.clone(),
+            // The reset can be returned as a dead socket rather than an accept
+            // error; keep one slot for it and one for the healthy request.
+            Arc::new(Semaphore::new(2)),
+            HEADER_TIMEOUT,
+        ));
+        let mut healthy = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        healthy
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(3), healthy.read_to_end(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 204"));
         cancel.cancel();
         tokio::time::timeout(Duration::from_secs(1), server)
             .await
