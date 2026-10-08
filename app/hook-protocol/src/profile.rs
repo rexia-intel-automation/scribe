@@ -10,10 +10,10 @@ pub struct ProfileDirs {
 pub fn trusted_profile_dirs() -> Option<ProfileDirs> {
     #[cfg(windows)]
     {
-        let root = account_roaming_dir()?.join("com.rexia.scribe");
+        use windows_sys::Win32::UI::Shell::{FOLDERID_LocalAppData, FOLDERID_RoamingAppData};
         Some(ProfileDirs {
-            config: root.clone(),
-            data: root,
+            config: account_folder(&FOLDERID_RoamingAppData)?.join("com.rexia.scribe"),
+            data: account_folder(&FOLDERID_LocalAppData)?.join("com.rexia.scribe"),
         })
     }
     #[cfg(unix)]
@@ -42,7 +42,7 @@ pub fn trusted_profile_dirs() -> Option<ProfileDirs> {
 }
 
 #[cfg(windows)]
-fn account_roaming_dir() -> Option<PathBuf> {
+fn account_folder(folder: &windows_sys::core::GUID) -> Option<PathBuf> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -52,7 +52,7 @@ fn account_roaming_dir() -> Option<PathBuf> {
             Com::CoTaskMemFree,
             Threading::{GetCurrentProcess, OpenProcessToken},
         },
-        UI::Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath},
+        UI::Shell::SHGetKnownFolderPath,
     };
     let mut handle = std::ptr::null_mut();
     // SAFETY: valid process pseudo-handle and writable output; on success we own the token.
@@ -72,14 +72,7 @@ fn account_roaming_dir() -> Option<PathBuf> {
     // An explicit account token prevents the shell from expanding the process's
     // untrusted USERPROFILE when resolving the account's redirected Known Folder.
     // SAFETY: valid GUID, token and output. The API allocates a NUL-terminated UTF-16 string.
-    let result = unsafe {
-        SHGetKnownFolderPath(
-            &FOLDERID_RoamingAppData,
-            0,
-            token.as_raw_handle(),
-            &mut path,
-        )
-    };
+    let result = unsafe { SHGetKnownFolderPath(folder, 0, token.as_raw_handle(), &mut path) };
     if result < 0 || path.is_null() {
         // SAFETY: the shell allocation, if present even on failure, belongs to the COM allocator.
         unsafe { CoTaskMemFree(path.cast()) };

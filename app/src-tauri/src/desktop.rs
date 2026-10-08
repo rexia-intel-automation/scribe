@@ -127,6 +127,7 @@ pub struct View {
     decisions: Vec<crate::Decision>,
     preferences: Preferences,
     error: Option<String>,
+    warning: Option<String>,
     notification_decision_id: Option<String>,
 }
 struct Desktop {
@@ -135,6 +136,7 @@ struct Desktop {
     connection: Mutex<Connection>,
     preferences: Mutex<Preferences>,
     error: Mutex<Option<String>>,
+    warning: Option<String>,
     connection_path: PathBuf,
     prefs_path: PathBuf,
     drag_generation: AtomicU64,
@@ -238,7 +240,42 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
     if !data_path.is_absolute() {
         return Err("Data path must be absolute".into());
     }
-    let core = match Core::open(&data_path.join("state.db"), now_ms()) {
+    #[cfg(windows)]
+    let mut warning = None;
+    #[cfg(not(windows))]
+    let warning = None;
+    #[cfg(windows)]
+    let core_result = (|| -> crate::Result<Core> {
+        #[cfg(windows)]
+        {
+            #[cfg(not(feature = "test-fixture"))]
+            let migrate = true;
+            #[cfg(feature = "test-fixture")]
+            let migrate = std::env::var_os("SCRIBE_DATA_DIR").is_none();
+            if migrate {
+                warning =
+                    crate::history_migration::migrate(&profile.config.join("history"), &data_path)?
+                        .map(|notice| {
+                            match notice {
+                                crate::history_migration::MigrationNotice::ConflictPreserved => {
+                                    "historyConflictPreserved"
+                                }
+                                crate::history_migration::MigrationNotice::CleanupPending => {
+                                    "historyCleanupPending"
+                                }
+                                crate::history_migration::MigrationNotice::HistoryReset => {
+                                    "historyReset"
+                                }
+                            }
+                            .into()
+                        });
+            }
+        }
+        Core::open(&data_path.join("state.db"), now_ms())
+    })();
+    #[cfg(not(windows))]
+    let core_result = Core::open(&data_path.join("state.db"), now_ms());
+    let core = match core_result {
         Ok(core) => Some(core),
         Err(_) => {
             error = Some("storageUnavailable".into());
@@ -278,6 +315,7 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
         connection: Mutex::new(connection),
         preferences: Mutex::new(preferences),
         error: Mutex::new(error),
+        warning,
         connection_path,
         prefs_path,
         drag_generation: AtomicU64::new(0),
@@ -339,6 +377,7 @@ fn view(data: &Desktop) -> Result<View, String> {
             .map_err(|_| "bridgeUnavailable")?
             .clone(),
         error: data.error.lock().map_err(|_| "bridgeUnavailable")?.clone(),
+        warning: data.warning.clone(),
         notification_decision_id: None,
     })
 }

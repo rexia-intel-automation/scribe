@@ -4,6 +4,8 @@ mod decisions;
 mod interactive;
 mod mcp;
 pub use decisions::{Decision, DecisionInput, DecisionWait};
+#[cfg(any(all(windows, feature = "desktop"), test))]
+mod history_migration;
 mod model;
 #[cfg(feature = "desktop")]
 mod notifications;
