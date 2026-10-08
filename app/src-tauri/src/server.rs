@@ -706,7 +706,18 @@ async fn decision(
     Path(id): Path<String>,
     Json(input): Json<crate::DecisionInput>,
 ) -> StatusCode {
-    match tokio::task::spawn_blocking(move || state.core.resolve_decision(&id, input)).await {
+    #[cfg(feature = "decision-timing")]
+    let queued = std::time::Instant::now();
+    match tokio::task::spawn_blocking(move || {
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_DECISION_QUEUE wait_us={}",
+            queued.elapsed().as_micros()
+        );
+        state.core.resolve_decision(&id, input)
+    })
+    .await
+    {
         Ok(Ok(())) => StatusCode::NO_CONTENT,
         _ => StatusCode::CONFLICT,
     }

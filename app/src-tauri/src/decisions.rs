@@ -441,7 +441,11 @@ impl Core {
 
     /// Resolve exactly once, after validating type, deadline and risk confirmation.
     pub fn resolve_decision(&self, id: &str, input: DecisionInput) -> Result<()> {
+        #[cfg(feature = "decision-timing")]
+        let entered = std::time::Instant::now();
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        #[cfg(feature = "decision-timing")]
+        let locked = std::time::Instant::now();
         let pending = data.decisions.get(id).ok_or("Unknown decision")?;
         let mut view = pending.view.clone();
         if view.status != "pending"
@@ -583,7 +587,11 @@ impl Core {
             response
         };
         view.resolved_at = Some(now_ms());
+        #[cfg(feature = "decision-timing")]
+        let saving = std::time::Instant::now();
         data.store.save_decision(&view)?;
+        #[cfg(feature = "decision-timing")]
+        let committed = std::time::Instant::now();
         let pending = data.decisions.get_mut(id).unwrap();
         pending.view = view.clone();
         pending.original_input = None;
@@ -597,6 +605,14 @@ impl Core {
             }
         }
         let _ = self.events.send(StateEvent::Decision(view));
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_DECISION_TIMING lock_us={} validation_us={} save_us={} send_us={}",
+            locked.duration_since(entered).as_micros(),
+            saving.duration_since(locked).as_micros(),
+            committed.duration_since(saving).as_micros(),
+            committed.elapsed().as_micros()
+        );
         Ok(())
     }
 

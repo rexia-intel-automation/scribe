@@ -1,5 +1,7 @@
 //! Scribe's local session core. Persistence contains validated display data;
 //! raw hook envelopes, credentials and human answer payloads are excluded.
+#[cfg(all(feature = "decision-timing", not(debug_assertions)))]
+compile_error!("decision-timing is restricted to debug diagnostics, not release builds");
 mod decisions;
 mod interactive;
 mod mcp;
