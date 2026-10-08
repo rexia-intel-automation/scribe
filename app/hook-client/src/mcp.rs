@@ -83,7 +83,12 @@ async fn forward(
     if reply["jsonrpc"] != "2.0" || reply["id"] != serde_json::to_value(id).map_err(|_| ())? {
         return Err(());
     }
-    serde_json::from_value(reply.get("result").cloned().ok_or(())?).map_err(|_| ())
+    let mut result: CallToolResult =
+        serde_json::from_value(reply.get("result").cloned().ok_or(())?).map_err(|_| ())?;
+    // The private legacy hop omits resultType; modern clients require it.
+    // RMCP strips the discriminator again when replying to a legacy peer.
+    result.result_type = Some(rmcp::model::ResultType::COMPLETE);
+    Ok(result)
 }
 
 // Bound a line before RMCP's newline codec allocates an unbounded JSON message.
