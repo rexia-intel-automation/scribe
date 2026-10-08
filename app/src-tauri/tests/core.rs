@@ -247,7 +247,7 @@ fn failed_retention_setting_rolls_back_history_and_policy() {
     apply(&core, payload("SessionStart"), 13 * DAY);
     let before = serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=TRUNCATE; CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
     assert!(core.set_retention_days(1, 15 * DAY).is_err());
     assert_eq!(
         serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap(),
@@ -812,6 +812,8 @@ struct Reply {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
+    const SAMPLE_COUNT: usize = 128;
+    const P95_INDEX: usize = (SAMPLE_COUNT * 95).div_ceil(100) - 1;
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
     let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
@@ -827,7 +829,7 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
             let mut samples = Vec::new();
             let mut choices = Vec::new();
             let mut deliveries = Vec::new();
-            for sample in 0..32 {
+            for sample in 0..SAMPLE_COUNT {
                 // Pacing is outside the measured interval and preserves the real quota.
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let body = json!({"hook_event_name":"PermissionRequest","session_id":"public-session",
@@ -956,12 +958,12 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
             choices.sort();
             deliveries.sort();
             eprintln!(
-            "NFR02 choice-to-signed-hook-HTTP ms transport={transport} action={action} samples=32 p95={} max={} choice_p95={} remaining_hook_wait_p95={} samples_over_100ms={}",
-            samples[30].as_millis(), samples[31].as_millis(), choices[30].as_millis(), deliveries[30].as_millis(),
+            "NFR02 choice-to-signed-hook-HTTP ms transport={transport} action={action} samples={SAMPLE_COUNT} p95={} max={} choice_p95={} remaining_hook_wait_p95={} samples_over_100ms={}",
+            samples[P95_INDEX].as_millis(), samples[SAMPLE_COUNT - 1].as_millis(), choices[P95_INDEX].as_millis(), deliveries[P95_INDEX].as_millis(),
             samples.iter().filter(|sample| **sample >= Duration::from_millis(100)).count()
         );
             // Report all paths before failing; keep the same strict SLA for every group.
-            within_bound &= samples[30] < Duration::from_millis(100);
+            within_bound &= samples[P95_INDEX] < Duration::from_millis(100);
         }
     }
     assert!(

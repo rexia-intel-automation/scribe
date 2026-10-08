@@ -5,7 +5,7 @@ em app/src-tauri/tests/core.rs, verifica o caminho HTTP real do LocalServer com
 banco SQLite temporário, porta efêmera e credenciais públicas de teste. Nenhum
 perfil, instalação ou sessão real do Claude Code é usado.
 
-São 32 amostras de permitir e 32 de negar uma PermissionRequest não arriscada
+São 128 amostras de permitir e 128 de negar uma PermissionRequest não arriscada
 para cada caminho: endpoint HTTP privado e chamada direta a Core::resolve_decision.
 Cada amostra autentica o desafio, envia o hook assinado, confirma que existe uma
 única decisão pendente na sessão e que o hook ainda espera a resposta. O relógio
@@ -19,7 +19,8 @@ os caminhos exercitam a mesma primitiva Core::resolve_decision usada pelo
 comando Tauri. O teste direto exclui IPC, verificação de foco e retorno da view;
 não deve ser apresentado como medição da interface desktop.
 
-O p95 usa a posição 30 das 32 durações ordenadas e deve ser estritamente menor
+O p95 usa nearest rank, `ceil(0,95 × n) - 1`: índice 121 das 128 durações
+ordenadas de cada grupo. Deve ser estritamente menor
 que 100 ms para cada escolha e caminho, conforme NFR-02 de prompt.md. O log mostra
 o máximo e a quantidade de amostras que atingem ou excedem 100 ms. A pausa de
 100 ms entre amostras fica fora da medição e preserva a quota real do servidor.
@@ -41,8 +42,14 @@ Execução no espelho de runtime da RexIA:
 cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --nocapture --test-threads=1
 ```
 
-O teste integra a suíte normal de core executada pelo CI nas três plataformas.
-A execução local Windows dos dois caminhos em 2026-10-08 mediu:
+O teste integra a suíte normal completa de core executada pelo CI nas três
+plataformas, sem instrumentação de cobertura. O job llvm-cov mede a cobertura
+funcional com o mesmo mínimo de 85%; exclui apenas este teste de timing, que já
+é obrigatório na suíte nativa. O binário instrumentado não representa a latência
+do app distribuído. A amostragem maior continua exigindo o mesmo p95 abaixo de
+100 ms, sem exceção por plataforma, e inclui 512 respostas autenticadas.
+
+A execução histórica local Windows com 32 amostras por grupo em 2026-10-08 mediu:
 
 | Caminho | Escolha | Amostras | p95 | Máximo |
 | --- | --- | --- | --- | --- |
@@ -69,8 +76,32 @@ Esses contadores globais não atribuem I/O ao Scribe. Cada teste criou seu próp
 eles. Cache do Cargo, execução sequencial e layout do CI também podem influenciar
 o resultado. Passar isoladamente não resolveu as falhas observadas na suíte.
 
-Os controles temporários e os timers de diagnóstico foram removidos. A suíte
-normal continua obrigatória nas três plataformas, com os quatro grupos, 128
-amostras e o mesmo p95 estritamente abaixo de 100 ms. Nenhuma configuração de
-durabilidade foi alterada. Os registros históricos identificam o custo de
+Os controles temporários e os timers de diagnóstico foram removidos. Naquela
+rodada, a suíte normal tinha quatro grupos de 32 amostras e o mesmo p95
+estritamente abaixo de 100 ms. Os registros históricos identificam o custo de
 `save_decision`, mas não demonstram sua causa nem garantem o SLA no CI atual.
+
+No head e86b60f, o CI normal do Linux passou, mas a execução instrumentada para
+cobertura atingiu p95 de 141 ms no caminho Core/permitir. Uma execução normal
+do macOS atingiu 109 ms em Core/negar; a pior amostra teve 156 ms na escolha e
+306 ms de espera adicional depois dela. Portanto, não há prova de que todas as
+pausas sejam causadas pela gravação do banco.
+
+## Journal durável sem excluir o arquivo a cada commit
+
+O armazenamento seleciona `journal_mode=TRUNCATE` em toda abertura e exige que
+o SQLite aceite esse modo. `synchronous=FULL` e `secure_delete=ON` são explícitos.
+O upsert durável da decisão continua antes do envio da resposta. Segundo a
+[documentação do SQLite](https://www.sqlite.org/pragma.html#pragma_journal_mode),
+truncar o journal pode evitar o custo de alterar seu diretório a cada commit.
+Isso é uma hipótese de melhoria de I/O; não explica pausas de scheduling ou
+instrumentação e não comprova a solução das falhas anteriores.
+
+O journal permanece vazio depois do commit, e a regressão confere tamanho zero,
+configuração efetiva e política recuperada na reabertura. Os testes de remoção
+dos bytes do histórico, retenção e rollback continuam obrigatórios. Como no
+modo DELETE, truncar não apaga cópias de backup nem garante sobrescrever os
+blocos antigos no disco. Conexões auxiliares que escrevam diretamente no mesmo
+banco precisam usar o mesmo modo de journal; os três instrumentos de falha por
+trigger agora fazem isso, preservando seus asserts de rollback e de ausência de
+autorização quando o commit falha.

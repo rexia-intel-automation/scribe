@@ -660,7 +660,7 @@ async fn failed_decision_commit_never_releases_permission_and_policy_is_bounded(
         .unwrap();
     let decision_id = id(&core, "one");
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("CREATE TRIGGER block_decision BEFORE UPDATE ON decisions BEGIN SELECT RAISE(ABORT, 'PUBLIC_FAILURE'); END;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=TRUNCATE; CREATE TRIGGER block_decision BEFORE UPDATE ON decisions BEGIN SELECT RAISE(ABORT, 'PUBLIC_FAILURE'); END;").unwrap();
     assert!(core
         .resolve_decision(&decision_id, input(json!({"action":"allow"})))
         .is_err());
