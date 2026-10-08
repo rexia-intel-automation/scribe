@@ -67,11 +67,8 @@ function DecisionCardContent({
   const [planFeedback, setPlanFeedback] = useState("");
   const controlId = useId();
   const canAllow = decision.canAllow !== false;
-  const missingTarget =
-    decision.target === "" ||
-    decision.target === "Ferramenta sem alvo informado";
   const displayedTarget =
-    !canAllow && missingTarget
+    !canAllow && decision.target === ""
       ? t(language, "targetNotProvided")
       : decision.target;
   const headingMessage =

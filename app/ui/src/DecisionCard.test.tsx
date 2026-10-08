@@ -250,7 +250,7 @@ describe("human decision card", () => {
         decision={{
           ...fixture(),
           canAllow: false,
-          target: "Ferramenta sem alvo informado",
+          target: "",
         }}
         language="pt-BR"
       />,
@@ -263,6 +263,42 @@ describe("human decision card", () => {
         {...props}
         decision={{
           ...fixture(),
+          tool: "Write",
+          canAllow: false,
+          target: "Ferramenta sem alvo informado",
+        }}
+        language="pt-BR"
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ferramenta sem alvo informado",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(t("pt-BR", "hiddenTarget"))).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          tool: "Write",
+          canAllow: false,
+          target: "Ferramenta sem alvo informado",
+        }}
+        language="en"
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ferramenta sem alvo informado",
+      }),
+    ).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          tool: "Write",
           canAllow: true,
           target: "Ferramenta sem alvo informado",
         }}
