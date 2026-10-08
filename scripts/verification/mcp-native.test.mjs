@@ -74,6 +74,18 @@ async function fixture(t, handler) {
 const report = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
   name: 'scribe_report', arguments: { session_id: 'public-session', text: 'PUBLIC CONTENT' } } };
 
+test('legacy native MCP discovery includes private cache hints without contacting the app', async t => {
+  let requests = 0;
+  const f = await fixture(t, (_req, res) => { requests++; res.end(); });
+  f.send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+  const { result } = await f.reply(2);
+  assert.equal(result.ttlMs, 0);
+  assert.equal(result.cacheScope, 'private');
+  assert.deepEqual(result.tools.map(tool => tool.name).sort(), ['scribe_ask', 'scribe_report']);
+  assert.equal(requests, 0);
+  await f.finish();
+});
+
 test('native MCP proves the server before sending content and uses one socket for challenge and POST', async t => {
   let calls = 0, firstSocket;
   const f = await fixture(t, async (req, res) => {

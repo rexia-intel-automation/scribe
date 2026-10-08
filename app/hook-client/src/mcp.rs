@@ -1,8 +1,9 @@
 //! Stdio stays available offline. Only tool calls cross the attested local socket.
 use rmcp::{
     model::{
-        CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-        ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
+        CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
+        Implementation, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig,
+        Tool,
     },
     service::RequestContext,
     ErrorData, RoleServer, ServerHandler, ServiceExt,
@@ -40,10 +41,9 @@ impl ServerHandler for NativeMcp {
         _: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult {
-            tools: self.tools.clone(),
-            ..Default::default()
-        })
+        Ok(ListToolsResult::with_all_items(self.tools.clone())
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private))
     }
 
     async fn call_tool(

@@ -1521,6 +1521,8 @@ async fn http_boundaries_auth_body_rate_mcp_and_protected_decision_route() {
     assert!(tools.body.contains("scribe_report"));
     assert!(tools.body.contains("scribe_ask"));
     let listing: Value = serde_json::from_str(&tools.body).unwrap();
+    assert_eq!(listing["result"]["ttlMs"], 0);
+    assert_eq!(listing["result"]["cacheScope"], "private");
     let listed = listing["result"]["tools"].as_array().unwrap();
     assert_eq!(listed.len(), 2);
     let question_schema =
