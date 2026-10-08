@@ -1,0 +1,21 @@
+{
+  "sourceCommit": "ef829f87d769f3dc8e446582d629b1cf9220ea17",
+  "testedAt": "2026-10-08",
+  "scope": "External Windows current-user NSIS upgrade; native interactive tool flow still pending",
+  "installerSha256": "B3AFDE9860C2F9A4D70522671F829D59A3B9A6DDF2A6A1F89E2F2E3AC77F5B21",
+  "targetAppSha256": "C5A66334F36CDF7638928CBC333F13695AE3CBF73FCD7C6E308C8890F7FF2EBA",
+  "installedAppSha256": "840DC2A9E76FE543A062BB616D8C40CE5B7AC886070DE8D5276033A347BD1006",
+  "installedHookSha256": "1FD335362A796193D6F48685A2FE8E4215BED587B45603F15D10AE41C39E2155",
+  "installerHashSource": "Codex frozen build artifact and Claude external comparison",
+  "installedHashSource": "Claude external process, outside Codex MSIX redirection",
+  "setupExitCode": 0,
+  "launch": "Start menu shortcut",
+  "connectionPreserved": true,
+  "claudeCodeVersion": "2.1.293",
+  "limitations": [
+    "Native questions and plan approval still require a fresh interactive session test.",
+    "Clean first app installation and uninstall were not covered by this upgrade.",
+    "Bundling changes executable metadata; target and installed hashes differ.",
+    "The installer is unsigned; no certificate or human visual acceptance is claimed."
+  ]
+}
