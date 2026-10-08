@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Gota } from "./gota/Gota";
 import { t, action, type Message } from "./i18n";
-import { priority, type View, type Session, type Preferences } from "./types";
+import {
+  priority,
+  type View,
+  type Session,
+  type Preferences,
+  type DropColor,
+} from "./types";
 import * as bridge from "./bridge";
 import { DecisionCard } from "./DecisionCard";
+const dropColors: DropColor[] = ["clay", "blue", "green", "wine", "ochre"];
+const dropColorLabels: Record<DropColor, Message> = {
+  clay: "dropColorClay",
+  blue: "dropColorBlue",
+  green: "dropColorGreen",
+  wine: "dropColorWine",
+  ochre: "dropColorOchre",
+};
+function isDropColor(value: unknown): value is DropColor {
+  return typeof value === "string" && dropColors.includes(value as DropColor);
+}
 function useTheme(theme: Preferences["theme"]) {
   const [dark, setDark] = useState(
     matchMedia("(prefers-color-scheme: dark)").matches,
@@ -149,6 +166,9 @@ function Settings({
           (pattern): pattern is string => typeof pattern === "string",
         )
       : [],
+    dropColor: isDropColor(view.preferences.dropColor)
+      ? view.preferences.dropColor
+      : "clay",
   }));
   const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
@@ -266,6 +286,23 @@ function Settings({
             {(["auto", "light", "dark"] as const).map((theme) => (
               <option key={theme} value={theme}>
                 {t(language, theme)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t(language, "dropColor")}
+          <select
+            value={
+              isDropColor(preferences.dropColor)
+                ? preferences.dropColor
+                : "clay"
+            }
+            onChange={(e) => change("dropColor", e.target.value as DropColor)}
+          >
+            {dropColors.map((color) => (
+              <option key={color} value={color}>
+                {t(language, dropColorLabels[color])}
               </option>
             ))}
           </select>
@@ -428,6 +465,15 @@ export default function App({
   const previousMode = useRef(initialView.preferences.collapsed);
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
+  const dropColor = isDropColor(view.preferences.dropColor)
+    ? view.preferences.dropColor
+    : "clay";
+  useEffect(() => {
+    document.documentElement.dataset.dropColor = dropColor;
+    return () => {
+      delete document.documentElement.dataset.dropColor;
+    };
+  }, [dropColor]);
   const receive = (next: View) => {
     if (next.revision <= revision.current) return;
     revision.current = next.revision;

@@ -8,6 +8,7 @@ export const defaults: Preferences = {
   shortcut: "CommandOrControl+Shift+Space",
   notifications: true,
   riskPatterns: [],
+  dropColor: "clay",
   retentionDays: 14,
   completedMinutes: 10,
   permissionSeconds: 120,

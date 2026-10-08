@@ -60,7 +60,7 @@ new MutationObserver(() => {
   for (const renderer of renderers) renderer.refreshColors();
 }).observe(document.documentElement, {
   attributes: true,
-  attributeFilter: ["data-theme"],
+  attributeFilter: ["data-theme", "data-drop-color"],
 });
 function schedule() {
   if (!frame && [...renderers].some((r) => r.active()))

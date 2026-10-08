@@ -12,6 +12,7 @@ export const forms = [
   "ponto",
 ] as const;
 export type Form = (typeof forms)[number];
+export type DropColor = "clay" | "blue" | "green" | "wine" | "ochre";
 export interface Step {
   at: number;
   tool: string | null;
@@ -37,6 +38,7 @@ export interface Preferences {
   shortcut: string;
   notifications: boolean;
   riskPatterns: string[];
+  dropColor: DropColor;
   retentionDays: number;
   completedMinutes: number;
   permissionSeconds?: number;

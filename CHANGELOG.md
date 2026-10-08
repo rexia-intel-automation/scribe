@@ -6,6 +6,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Paleta da gota nas configurações: terracota (padrão), azul, verde, vinho e
+  ocre, persistida no perfil local e aplicada também à bandeja. A forma indica
+  o estado; a cor permanece a escolhida pelo usuário. Ainda fora da beta.1.
+
 - Respostas pela janela: permissões por hook nativo, perguntas pelo MCP,
   confirmação separada para ações de risco, decisões concorrentes e prazos.
   Prazo de permissões configurável de 1 a 120 segundos; perguntas até 10 minutos.
