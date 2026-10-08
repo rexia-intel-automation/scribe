@@ -31,6 +31,94 @@ fn id(core: &Core, session: &str) -> String {
 }
 
 #[tokio::test]
+async fn custom_literal_risk_requires_the_same_deliberate_confirmation() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    core.set_risk_patterns(&["Restart-Service".into()]).unwrap();
+    start(&core, "custom-risk");
+    let wait = core
+        .permission(&permission("custom-risk", "restart-service spooler"), 120)
+        .unwrap();
+    let decision_id = id(&core, "custom-risk");
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.id == decision_id)
+            .unwrap()
+            .risk
+    );
+    assert!(core
+        .resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .is_err());
+    core.resolve_decision(&decision_id, input(json!({"action":"arm"})))
+        .unwrap();
+    assert!(core
+        .resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(1050)).await;
+    core.resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+}
+
+#[tokio::test]
+async fn invalid_patterns_preserve_previous_rules_and_clearing_never_removes_defaults() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    core.set_risk_patterns(&["echo public".into()]).unwrap();
+    assert!(core.set_risk_patterns(&[String::new()]).is_err());
+    start(&core, "kept-rule");
+    let wait = core
+        .permission(&permission("kept-rule", "ECHO PUBLIC"), 120)
+        .unwrap();
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "kept-rule")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+    core.set_risk_patterns(&[]).unwrap();
+    start(&core, "cleared-rule");
+    let wait = core
+        .permission(&permission("cleared-rule", "echo public"), 120)
+        .unwrap();
+    assert!(
+        !core
+            .snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "cleared-rule")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+    start(&core, "built-in");
+    let wait = core
+        .permission(&permission("built-in", "rm -rf ./public-tmp"), 120)
+        .unwrap();
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "built-in")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+}
+
+#[tokio::test]
 async fn returning_an_mcp_question_to_terminal_never_invents_an_answer() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();

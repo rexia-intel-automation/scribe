@@ -27,6 +27,8 @@ pub struct Preferences {
     theme: String,
     shortcut: String,
     notifications: bool,
+    #[serde(default)]
+    risk_patterns: Vec<String>,
     retention_days: u16,
     completed_minutes: u16,
     #[serde(default = "default_permission_seconds")]
@@ -57,6 +59,7 @@ impl Default for Preferences {
             }
             .into(),
             notifications: true,
+            risk_patterns: vec![],
             retention_days: 14,
             completed_minutes: 10,
             permission_seconds: 120,
@@ -70,6 +73,7 @@ impl Default for Preferences {
 }
 impl Preferences {
     fn validate(&self) -> Result<(), String> {
+        crate::risk::validate(&self.risk_patterns).map_err(|_| "invalidPreferences")?;
         if !matches!(self.language.as_str(), "en" | "pt-BR")
             || !matches!(self.theme.as_str(), "light" | "dark" | "auto")
             || !(1..=365).contains(&self.retention_days)
@@ -239,6 +243,8 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
         None
     };
     if let Some(core) = &core {
+        core.set_risk_patterns(&preferences.risk_patterns)
+            .map_err(|_| "Invalid risk patterns")?;
         core.set_permission_seconds(u64::from(preferences.permission_seconds))
             .map_err(|_| "Invalid permission timeout")?;
         let policy = core.data.lock().map_err(|_| "State lock unavailable")?;
@@ -650,6 +656,11 @@ async fn set_preferences(
         .map_err(|_| "bridgeUnavailable")?
         .clone();
     preferences.collapsed = old.collapsed;
+    if old.risk_patterns != preferences.risk_patterns
+        && !window.is_focused().map_err(|_| "bridgeUnavailable")?
+    {
+        return Err("bridgeUnavailable".into());
+    }
     preferences.side = old.side.clone();
     preferences.y = old.y;
     preferences.monitor = old.monitor.clone();
@@ -701,6 +712,8 @@ async fn set_preferences(
             now_ms(),
         )
         .map_err(|_| "storageUnavailable")?;
+        core.set_risk_patterns(&preferences.risk_patterns)
+            .map_err(|_| "invalidPreferences")?;
         *data.connection.lock().map_err(|_| "bridgeUnavailable")? = next_connection;
         Ok::<_, String>(())
     })();
@@ -1061,6 +1074,28 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_risk_preferences_roundtrip_and_old_files_default_to_empty() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = temp.path().join("preferences.json");
+        let mut preferences = Preferences {
+            risk_patterns: vec!["Restart-Service".into()],
+            ..Preferences::default()
+        };
+        preferences.validate().unwrap();
+        write_private(&path, &preferences).unwrap();
+        let restored: Preferences = read_json(&path).unwrap();
+        assert_eq!(restored.risk_patterns, ["Restart-Service"]);
+        let mut old = serde_json::to_value(restored).unwrap();
+        old.as_object_mut().unwrap().remove("riskPatterns");
+        assert!(serde_json::from_value::<Preferences>(old)
+            .unwrap()
+            .risk_patterns
+            .is_empty());
+        preferences.risk_patterns = vec![String::new()];
+        assert!(preferences.validate().is_err());
+    }
 
     #[test]
     fn cold_launch_recognizes_the_hook_open_argument() {
