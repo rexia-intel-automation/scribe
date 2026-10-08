@@ -4,6 +4,8 @@
   "permissionSeconds": "Prazo de permissão (segundos, até 120)",
   "decisionsWaiting": "{count} decisões esperando",
   "allowOnce": "Permitir uma vez",
+  "hiddenTarget": "Há detalhes ocultos para proteger dados privados. Responda a este pedido no terminal.",
+  "answerInTerminal": "Responder no terminal",
   "confirmAllow": "Confirmar permissão",
   "deny": "Negar",
   "riskWarning": "Ação de risco. Confira o alvo; permitir exige dois cliques.",

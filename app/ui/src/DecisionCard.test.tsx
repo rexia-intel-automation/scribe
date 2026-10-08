@@ -78,11 +78,48 @@ describe("human decision card", () => {
     rerender(
       <DecisionCard {...props} decision={{ ...decision, armed: true }} />,
     );
+    const confirm = screen.getByRole("button", {
+      name: "Confirmar permissão",
+    });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm, { detail: 2 });
+    expect(bridge.resolveDecision).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 1500 });
+    fireEvent.click(confirm, { detail: 2 });
+    expect(bridge.resolveDecision).toHaveBeenCalledTimes(1);
     await user.click(
       screen.getByRole("button", { name: "Confirmar permissão" }),
     );
     expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
       action: "allow",
+    });
+  });
+  it("requires the terminal when the target is hidden and blocks the allow shortcut", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    render(
+      <DecisionCard
+        decision={{ ...fixture(), canAllow: false, risk: true }}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Permitir uma vez" }),
+    ).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Negar" }), {
+      key: "a",
+    });
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Responda a este pedido no terminal/),
+    ).toBeVisible();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Responder no terminal" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "terminal",
     });
   });
   it("does not act without focus or after expiration", () => {

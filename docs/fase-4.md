@@ -89,3 +89,38 @@ fase, auditoria final e instaladores multiplataforma ainda não são comprovados
 por este fluxo. A compilação local atualizada não é uma release pública.
 
 Decisão de arquitetura: [ADR 0010](adr/0010-respostas-de-decisoes.md).
+
+## Correções da primeira revisão adversarial
+
+A primeira rodada do Claude reprovou o fluxo. Estas correções aguardam novo
+veredito; o relatório da rodada 1 permanece preservado.
+
+- Hook verifica o servidor antes de enviar conteúdo. Uma chave privada independente
+  do Bearer MCP assina challenge, pedido e resposta com HMAC-SHA256 de RustCrypto.
+  Nonce aleatório de 128 bits liga resposta ao evento, status e bytes; challenges
+  têm uso único, prazo monotônico de dois segundos e capacidade limitada. O cliente
+  nativo não transmite Bearer nem chave. Windows usa SO_EXCLUSIVEADDRUSE no bind.
+  A raiz de confiança é connection.json com ACL privada: o protocolo não protege
+  contra processos que já possam ler esse arquivo.
+- Alvos ocultos, desconhecidos ou com controles não permitem aprovação na UI.
+  Responder no terminal encerra a espera sem decisão. A redação anterior foi
+  preservada; entradas MCP sem alvo conhecido não expõem conteúdo arbitrário.
+- Risco cobre as variantes de rm, rd/del, wget e PowerShell citadas no review.
+  Extensão por configuração ainda está pendente.
+- Confirmação de risco tem carência monotônica de um segundo no backend, outro
+  botão na UI e rejeição de duplo clique. Atalho de permitir continua desabilitado.
+- Perguntas e opções cuja redação mudaria o sentido são rejeitadas, assim como
+  opções duplicadas. A resposta mantém o texto original seguro.
+- Payloads sem tool_use_id usam digest privado de nome/input, só em memória,
+  para deduplicar e cancelar a permissão correspondente em PostToolUse/Failure.
+- Validade da resposta usa prazo monotônico, além do relógio de exibição.
+
+Regressões locais: 35 testes Rust de core/decisões/políticas, seis do cartão e
+três do cliente nativo passaram. O cliente foi exercitado contra impostor,
+assinatura com Bearer, resposta sem prova, replay, evento/status/corpo alterados,
+redirect e proxy. Compilação de testes desktop Windows passou. Esses checks não
+constituem aprovação da fase, prova física de arraste nem ensaio da nova instalação.
+
+O session_id MCP ainda depende do chamador autenticado: sessões que compartilham
+Bearer não têm isolamento criptográfico. A [pesquisa de Mods](claude-mods.md)
+propõe integração posterior; nenhum mod foi implementado para fechar esse limite.

@@ -7,7 +7,7 @@ use std::{sync::LazyLock, time::Duration};
 use tokio::sync::oneshot;
 
 static RISK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(rm\s+-\S*r\S*f|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|curl\b[^\n]*\|\s*(sh|bash)|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse)").unwrap()
+    Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse)").unwrap()
 });
 
 /// Sanitized display data. Original tool inputs and tool results are excluded.
@@ -23,6 +23,8 @@ pub struct Decision {
     pub question: Option<String>,
     pub options: Vec<String>,
     pub risk: bool,
+    #[serde(default)]
+    pub can_allow: bool,
     pub armed: bool,
     pub status: String,
     pub created_at: u64,
@@ -43,6 +45,9 @@ pub(crate) struct Pending {
     pub view: Decision,
     pub sender: Option<oneshot::Sender<Value>>,
     pub tool_use_id: Option<String>,
+    pub tool_key: Option<String>,
+    pub deadline: Option<tokio::time::Instant>,
+    pub armed_at: Option<tokio::time::Instant>,
 }
 
 /// Dropping a disconnected request invalidates its card immediately.
@@ -90,25 +95,38 @@ impl Core {
             "pattern",
         ]
         .iter()
-        .find_map(|key| hook.tool_input.get(key).and_then(Value::as_str))
-        .unwrap_or("Ferramenta sem alvo informado");
+        .find_map(|key| hook.tool_input.get(key).and_then(Value::as_str));
+        let raw_target = target.unwrap_or("Ferramenta sem alvo informado");
+        let display_target = sanitize::redact(raw_target);
+        // A hidden or unknown action must be answered in the terminal, where
+        // Claude displays the original. Never weaken secret redaction to allow it.
+        let can_allow = target.is_some()
+            && display_target == raw_target
+            && !raw_target.chars().any(char::is_control);
+        let tool_key = tool_key(hook.tool_name.as_deref(), &hook.tool_input);
         let view = Decision {
             id: format!("{:032x}", rand::random::<u128>()),
             session_id: hook.session_id,
             project: String::new(),
             kind: "permission".into(),
             tool: hook.tool_name.map(|s| sanitize::summary(&s, 80)),
-            target: sanitize::redact(target),
+            target: display_target,
             question: None,
             options: vec![],
-            risk: RISK.is_match(target),
+            risk: !can_allow || RISK.is_match(raw_target),
+            can_allow,
             armed: false,
             status: "pending".into(),
             created_at: now_ms(),
             expires_at: now_ms() + seconds * 1000,
             resolved_at: None,
         };
-        self.begin_decision(view, hook.tool_use_id, Duration::from_secs(seconds))
+        self.begin_decision(
+            view,
+            hook.tool_use_id,
+            tool_key,
+            Duration::from_secs(seconds),
+        )
     }
 
     /// Register an MCP question for an explicitly identified live session.
@@ -130,6 +148,18 @@ impl Core {
         {
             return Err("Invalid question".into());
         }
+        if sanitize::redact(question) != question
+            || question.chars().any(char::is_control)
+            || options
+                .iter()
+                .any(|s| sanitize::redact(s) != *s || s.chars().any(char::is_control))
+            || options
+                .iter()
+                .enumerate()
+                .any(|(i, s)| options[..i].iter().any(|other| other.trim() == s.trim()))
+        {
+            return Err("Question or options cannot be displayed unambiguously".into());
+        }
         let at = now_ms();
         self.begin_decision(
             Decision {
@@ -142,12 +172,14 @@ impl Core {
                 question: Some(sanitize::redact(question)),
                 options: options.iter().map(|s| sanitize::redact(s)).collect(),
                 risk: false,
+                can_allow: false,
                 armed: false,
                 status: "pending".into(),
                 created_at: at,
                 expires_at: at + seconds * 1000,
                 resolved_at: None,
             },
+            None,
             None,
             Duration::from_secs(seconds),
         )
@@ -157,6 +189,7 @@ impl Core {
         &self,
         mut view: Decision,
         tool_use_id: Option<String>,
+        tool_key: Option<String>,
         duration: Duration,
     ) -> Result<DecisionWait> {
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
@@ -176,7 +209,11 @@ impl Core {
                 d.view.status == "pending"
                     && d.view.session_id == view.session_id
                     && (view.kind == "question" && d.view.kind == "question"
-                        || tool_use_id.is_some() && d.tool_use_id == tool_use_id)
+                        || tool_use_id.is_some() && d.tool_use_id == tool_use_id
+                        || view.kind == "permission"
+                            && d.view.kind == "permission"
+                            && tool_key.is_some()
+                            && d.tool_key == tool_key)
             })
         {
             return Err("Duplicate or excess pending decision".into());
@@ -195,12 +232,16 @@ impl Core {
         }
         let (sender, receiver) = oneshot::channel();
         let id = view.id.clone();
+        let deadline = tokio::time::Instant::now() + duration;
         data.decisions.insert(
             id.clone(),
             Pending {
                 view: view.clone(),
                 sender: Some(sender),
                 tool_use_id,
+                tool_key,
+                deadline: Some(deadline),
+                armed_at: None,
             },
         );
         let _ = self.events.send(StateEvent::Decision(view));
@@ -208,7 +249,7 @@ impl Core {
             core: self.clone(),
             id,
             receiver,
-            deadline: tokio::time::Instant::now() + duration,
+            deadline,
         })
     }
 
@@ -219,6 +260,9 @@ impl Core {
         let mut view = pending.view.clone();
         if view.status != "pending"
             || now_ms() >= view.expires_at
+            || pending
+                .deadline
+                .is_none_or(|at| tokio::time::Instant::now() >= at)
             || pending.sender.as_ref().is_none_or(|s| s.is_closed())
         {
             return Err("Decision no longer pending".into());
@@ -227,15 +271,30 @@ impl Core {
             if input.option.is_some() {
                 return Err("Invalid permission choice".into());
             }
+            if input.action.as_deref() == Some("terminal") && input.message.is_none() {
+                self.expire_locked(&mut data, id);
+                return Ok(());
+            }
             match input.action.as_deref() {
-                Some("arm") if view.risk && !view.armed && input.message.is_none() => {
+                Some("arm")
+                    if view.can_allow && view.risk && !view.armed && input.message.is_none() =>
+                {
                     view.armed = true;
                     data.store.save_decision(&view)?;
-                    data.decisions.get_mut(id).unwrap().view = view.clone();
+                    let pending = data.decisions.get_mut(id).unwrap();
+                    pending.view = view.clone();
+                    pending.armed_at = Some(tokio::time::Instant::now());
                     let _ = self.events.send(StateEvent::Decision(view));
                     return Ok(());
                 }
-                Some("allow") if !view.risk || view.armed => {
+                Some("allow")
+                    if view.can_allow
+                        && (!view.risk
+                            || view.armed
+                                && pending
+                                    .armed_at
+                                    .is_some_and(|at| at.elapsed() >= Duration::from_secs(1))) =>
+                {
                     if input.message.is_some() {
                         return Err("Invalid permission message".into());
                     }
@@ -306,4 +365,13 @@ impl Core {
             let _ = self.events.send(StateEvent::Decision(view));
         }
     }
+}
+
+/// A keyed digest kept only in memory. No raw tool input enters persistence.
+pub(crate) fn tool_key(tool: Option<&str>, input: &Value) -> Option<String> {
+    static KEY: LazyLock<String> = LazyLock::new(|| format!("{:032x}", rand::random::<u128>()));
+    Some(scribe_hook_protocol::sign(
+        &KEY,
+        &[b"tool", tool?.as_bytes(), &serde_json::to_vec(input).ok()?],
+    ))
 }

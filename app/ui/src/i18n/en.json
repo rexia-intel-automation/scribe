@@ -4,6 +4,8 @@
   "permissionSeconds": "Permission timeout (seconds, up to 120)",
   "decisionsWaiting": "{count} decisions waiting",
   "allowOnce": "Allow once",
+  "hiddenTarget": "Some details are hidden to protect private data. Answer this request in the terminal.",
+  "answerInTerminal": "Answer in terminal",
   "confirmAllow": "Confirm permission",
   "deny": "Deny",
   "riskWarning": "Risky action. Check the target; allowing requires two clicks.",

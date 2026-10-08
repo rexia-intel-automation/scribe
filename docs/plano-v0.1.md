@@ -7,6 +7,9 @@ no Claude Code. A v0.2 e a v0.3 ficam fora deste ciclo.
 
 - Revisões continuam até aprovação, mantendo mínimos e contexto independente.
 - Repositório: rexia-intel-automation/scribe. Marketplace: rexia-scribe.
+- Direção de produto: interface amigável para aproveitar PowerShell; expansão
+  futura para OpenCode e Codex. Integração opcional por Claude Mods em avaliação
+  após a v0.1; ver [pesquisa de Mods](claude-mods.md).
 - Referências: scribe-conceito.html e ZIPs/vídeos locais. Gota em argila.
 - Em 2026-10-07, o humano autorizou instalar a compilação local e adiou a parte
   visual, priorizando o lançamento. Instalação e desenvolvimento das decisões

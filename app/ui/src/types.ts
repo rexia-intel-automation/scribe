@@ -62,6 +62,7 @@ export interface Decision {
   question: string | null;
   options: string[];
   risk: boolean;
+  canAllow?: boolean;
   armed: boolean;
   status: "pending" | "allowed" | "denied" | "answered" | "expired";
   createdAt: number;
@@ -69,7 +70,7 @@ export interface Decision {
   resolvedAt: number | null;
 }
 export interface DecisionInput {
-  action?: "allow" | "deny" | "arm";
+  action?: "allow" | "deny" | "arm" | "terminal";
   option?: number;
   message?: string;
 }

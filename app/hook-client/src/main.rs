@@ -33,6 +33,8 @@ struct Connection {
     port: u16,
     token: String,
     #[serde(default)]
+    hook_key: String,
+    #[serde(default)]
     app_path: Option<PathBuf>,
 }
 
@@ -97,22 +99,68 @@ fn valid_event(event: &str, bytes: &[u8]) -> bool {
 }
 
 fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
-    if !valid_event(event, &bytes) {
+    if !valid_event(event, &bytes)
+        || !scribe_hook_protocol::valid_secret(&config.hook_key)
+        || config.hook_key == config.token
+    {
         return;
     }
+    let started = std::time::Instant::now();
+    let budget = if event == "PermissionRequest" {
+        Duration::from_secs(125)
+    } else {
+        Duration::from_millis(250)
+    };
+    let nonce = format!("{:032x}", rand::random::<u128>());
+    let preflight = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_millis(250)))
+        .max_redirects(0)
+        .proxy(None)
+        .build()
+        .new_agent();
+    let Ok(response) = preflight
+        .get(format!(
+            "http://127.0.0.1:{}/v1/hooks/challenge/{nonce}",
+            config.port
+        ))
+        .call()
+    else {
+        return;
+    };
+    let Some(proof) = response
+        .headers()
+        .get("x-scribe-proof")
+        .and_then(|h| h.to_str().ok())
+    else {
+        return;
+    };
+    if response.status() != 204
+        || !scribe_hook_protocol::verify(&config.hook_key, &[b"challenge", nonce.as_bytes()], proof)
+    {
+        return;
+    }
+    let Some(remaining) = budget
+        .checked_sub(started.elapsed())
+        .filter(|d| !d.is_zero())
+    else {
+        return;
+    };
     let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(if event == "PermissionRequest" {
-            Duration::from_secs(125)
-        } else {
-            Duration::from_millis(250)
-        }))
+        .timeout_global(Some(remaining))
         .max_redirects(0)
         .proxy(None)
         .build()
         .new_agent();
     let response = agent
         .post(format!("http://127.0.0.1:{}/v1/hooks/{event}", config.port))
-        .header("Authorization", format!("Bearer {}", config.token))
+        .header("x-scribe-nonce", &nonce)
+        .header(
+            "x-scribe-proof",
+            scribe_hook_protocol::sign(
+                &config.hook_key,
+                &[b"request", nonce.as_bytes(), event.as_bytes(), &bytes],
+            ),
+        )
         .header("Content-Type", "application/json")
         .send(bytes);
     if event != "PermissionRequest" {
@@ -124,6 +172,14 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     if response.status() != 200 {
         return;
     }
+    let Some(proof) = response
+        .headers()
+        .get("x-scribe-proof")
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_owned)
+    else {
+        return;
+    };
     let Ok(text) = response
         .body_mut()
         .with_config()
@@ -132,6 +188,19 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     else {
         return;
     };
+    if !scribe_hook_protocol::verify(
+        &config.hook_key,
+        &[
+            b"response",
+            nonce.as_bytes(),
+            event.as_bytes(),
+            b"200",
+            text.as_bytes(),
+        ],
+        &proof,
+    ) {
+        return;
+    }
     let Ok(value) = serde_json::from_str::<Value>(&text) else {
         return;
     };

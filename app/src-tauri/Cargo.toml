@@ -17,6 +17,8 @@ desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-global-shortcut", "
 tauri-build = { version = "=2.7.1", optional = true }
 
 [dependencies]
+scribe-hook-protocol = { path = "../hook-protocol" }
+socket2 = "0.6"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.23"
 futures-util = "0.3"
@@ -37,7 +39,7 @@ directories = { version = "=6.0.0", optional = true }
 sys-locale = { version = "=0.3.2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { t, type Language } from "./i18n";
 import type { Decision, DecisionInput, View } from "./types";
 import * as bridge from "./bridge";
@@ -19,6 +19,14 @@ export function DecisionCard({
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  const [confirmReady, setConfirmReady] = useState(false);
+  const canAllow = decision.canAllow !== false;
+  useEffect(() => {
+    setConfirmReady(false);
+    if (!decision.armed) return;
+    const timer = window.setTimeout(() => setConfirmReady(true), 1000);
+    return () => window.clearTimeout(timer);
+  }, [decision.id, decision.armed]);
   const pending = decision.status === "pending" && now < decision.expiresAt;
   async function choose(input: DecisionInput) {
     if (!pending || submitting.current) return;
@@ -58,7 +66,7 @@ export function DecisionCard({
           event.preventDefault();
           void choose({ action: "deny" });
         }
-        if (event.key.toLowerCase() === "a" && !decision.risk) {
+        if (event.key.toLowerCase() === "a" && canAllow && !decision.risk) {
           event.preventDefault();
           void choose({ action: "allow" });
         }
@@ -88,6 +96,7 @@ export function DecisionCard({
               {t(language, "riskWarning")}
             </p>
           )}
+          {!canAllow && <p role="note">{t(language, "hiddenTarget")}</p>}
         </>
       ) : (
         <p>{decision.question}</p>
@@ -98,20 +107,34 @@ export function DecisionCard({
             <>
               <button
                 className="allow-decision"
-                disabled={busy}
-                onClick={() =>
-                  void choose({
-                    action: decision.risk && !decision.armed ? "arm" : "allow",
-                  })
-                }
+                disabled={busy || !canAllow || decision.armed}
+                onClick={(event) => {
+                  if (event.detail > 1) return;
+                  void choose({ action: decision.risk ? "arm" : "allow" });
+                }}
               >
-                {t(
-                  language,
-                  decision.risk && decision.armed
-                    ? "confirmAllow"
-                    : "allowOnce",
-                )}
+                {t(language, "allowOnce")}
               </button>
+              {!canAllow && (
+                <button
+                  disabled={busy}
+                  onClick={() => void choose({ action: "terminal" })}
+                >
+                  {t(language, "answerInTerminal")}
+                </button>
+              )}
+              {canAllow && decision.risk && decision.armed && (
+                <button
+                  className="confirm-decision"
+                  disabled={busy || !confirmReady}
+                  onClick={(event) => {
+                    if (event.detail > 1) return;
+                    void choose({ action: "allow" });
+                  }}
+                >
+                  {t(language, "confirmAllow")}
+                </button>
+              )}
               <button
                 disabled={busy}
                 onClick={() => void choose({ action: "deny" })}

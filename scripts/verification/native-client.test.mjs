@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { createHmac } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm, copyFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -11,6 +12,13 @@ import { EVENTS } from './lib.mjs';
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror');
 const binary = resolve('app/hook-client/target/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
 const token = 'PUBLIC_SYNTHETIC_TOKEN_WITH_32_CHARACTERS';
+const hookKey = 'PUBLIC_INDEPENDENT_HOOK_KEY_32_CHARACTERS';
+function sign(key, fields) {
+  const mac = createHmac('sha256', key).update('scribe-hook-v1');
+  for (const value of fields) { const bytes = Buffer.from(value); const size = Buffer.alloc(8); size.writeBigUInt64BE(BigInt(bytes.length)); mac.update(size).update(bytes); }
+  return mac.digest('base64url');
+}
+
 
 async function launch(exe, config, event, body, leaveStdinOpen = false, overrides = {}) {
   const started = performance.now();
@@ -39,19 +47,38 @@ test('native client forwards eleven events, returns only permission decisions an
   const trapUrl = `http://127.0.0.1:${trap.address().port}`;
   const server = createServer(async (req, res) => {
     let body = ''; for await (const chunk of req) body += chunk;
-    assert.equal(req.headers.authorization, `Bearer ${token}`);
+    assert.equal(req.headers.authorization, undefined, 'Neither MCP Bearer nor hook key may be sent');
+    if (req.url.startsWith('/v1/hooks/challenge/')) {
+      assert.equal(body, '');
+      const nonce = req.url.split('/').at(-1);
+      if (scenario === 'impostor') { res.writeHead(200).end('{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'); return; }
+      const key = scenario === 'bearer-forgery' ? token : hookKey;
+      res.writeHead(204, { 'x-scribe-proof': sign(key, ['challenge', nonce]) }).end();
+      return;
+    }
     const event = JSON.parse(body).hook_event_name;
     assert.equal(req.url, '/v1/hooks/' + event);
+    const nonce = req.headers['x-scribe-nonce'];
+    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, event, body]));
     events.push(event);
     if (scenario === 'stalled') return;
     if (scenario === 'redirect') { res.writeHead(307, { Location: trapUrl }).end(); return; }
     if (scenario === 'http-error') { res.writeHead(503).end(); return; }
+    const reply = scenario === 'invalid-json' ? 'invalid JSON' : JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
+    if (scenario !== 'unsigned') {
+      const key = scenario === 'response-bearer-forgery' ? token : hookKey;
+      const boundNonce = scenario === 'replay' ? '0'.repeat(32) : nonce;
+      const boundEvent = scenario === 'wrong-event' ? 'Stop' : event;
+      const boundReply = scenario === 'changed-body' ? reply.replace('allow', 'deny') : reply;
+      const boundStatus = scenario === 'wrong-status' ? '204' : '200';
+      res.setHeader('x-scribe-proof', sign(key, ['response', boundNonce, boundEvent, boundStatus, boundReply]));
+    }
     res.setHeader('Content-Type', 'application/json');
-    res.end(scenario === 'invalid-json' ? 'invalid JSON' : JSON.stringify({ hookSpecificOutput: {
-      hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } }));
+    res.end(reply);
   });
   await new Promise(ok => server.listen(0, '127.0.0.1', ok));
-  await writeFile(config, JSON.stringify({ port: server.address().port, token }));
+  await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
   try {
     for (const event of EVENTS) {
       const result = await launch(executable, config, event, JSON.stringify({ hook_event_name: event, session_id: 'public', cwd: '/public' }));
@@ -62,7 +89,8 @@ test('native client forwards eleven events, returns only permission decisions an
       assert.ok(result.elapsedMs < 1000);
     }
     assert.deepEqual(events, EVENTS);
-    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'healthy']) {
+    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
+      const countBefore = events.length;
       const event = scenario === 'stalled' ? 'Stop' : 'PermissionRequest';
       const result = await launch(executable, config, event, JSON.stringify({
         hook_event_name: event, session_id: 'public', cwd: '/public' }), false,
@@ -71,6 +99,7 @@ test('native client forwards eleven events, returns only permission decisions an
       if (scenario === 'healthy') assert.equal(JSON.parse(result.stdout).hookSpecificOutput.decision.behavior, 'allow');
       else assert.equal(result.stdout, '');
       assert.equal(result.stderr, '');
+      if (['impostor', 'bearer-forgery'].includes(scenario)) assert.equal(events.length, countBefore, 'Reject impersonator before sending the payload');
       assert.ok(result.elapsedMs < 1000);
     }
     assert.equal(forbiddenRequests, 0);
@@ -88,7 +117,7 @@ test('native client forwards eleven events, returns only permission decisions an
 test('native client rejects oversized/malformed input and terminates with unfinished stdin', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scribe-client-input-'));
   const config = join(root, 'connection.json');
-  await writeFile(config, JSON.stringify({ port: 21517, token }));
+  await writeFile(config, JSON.stringify({ port: 21517, token, hook_key: hookKey }));
   try {
     for (const [event, body, open] of [['Stop', 'invalid', false], ['Stop', 'x'.repeat(1024 * 1024 + 1), false],
       ['Unknown', '{}', false], ['Stop', '{', true], ['Stop', '{"hook_event_name":"Stop","session_id":42,"cwd":"/public"}', false]]) {

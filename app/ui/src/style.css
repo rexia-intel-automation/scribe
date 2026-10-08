@@ -230,6 +230,10 @@ a {
 .allow-decision {
   border-color: var(--oliva);
 }
+.confirm-decision {
+  flex-basis: 100%;
+  border-color: var(--risco);
+}
 .risk-warning {
   border-left: 3px solid var(--risco);
   padding-left: 8px;

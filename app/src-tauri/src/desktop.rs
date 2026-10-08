@@ -91,6 +91,8 @@ impl Preferences {
 struct Connection {
     port: u16,
     token: String,
+    #[serde(default)]
+    hook_key: String,
     app_path: Option<PathBuf>,
 }
 #[derive(Clone, Serialize)]
@@ -176,6 +178,12 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
         {
             c.app_path = Some(std::env::current_exe()?);
+            if c.hook_key.is_empty() {
+                c.hook_key = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+            }
+            if !scribe_hook_protocol::valid_secret(&c.hook_key) || c.hook_key == c.token {
+                return Err("Invalid hook key".into());
+            }
             c
         }
         _ if connection_path.exists() => {
@@ -183,12 +191,14 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
             Connection {
                 port: preferences.port,
                 token: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
+                hook_key: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
                 app_path: Some(std::env::current_exe()?),
             }
         }
         _ => Connection {
             port: preferences.port,
             token: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
+            hook_key: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
             app_path: Some(std::env::current_exe()?),
         },
     };
@@ -215,6 +225,7 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
                 core.clone(),
                 connection.port,
                 connection.token.clone(),
+                connection.hook_key.clone(),
             )) {
                 Ok(server) => Some(server),
                 Err(_) => {
@@ -558,9 +569,14 @@ async fn set_preferences(
             .is_none()
     {
         Some(
-            LocalServer::start(core.clone(), preferences.port, connection.token.clone())
-                .await
-                .map_err(|_| "portBusy")?,
+            LocalServer::start(
+                core.clone(),
+                preferences.port,
+                connection.token.clone(),
+                connection.hook_key.clone(),
+            )
+            .await
+            .map_err(|_| "portBusy")?,
         )
     } else {
         None

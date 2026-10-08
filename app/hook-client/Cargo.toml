@@ -6,6 +6,8 @@ license = "MIT"
 description = "Local native hook transport for Scribe"
 
 [dependencies]
+scribe-hook-protocol = { path = "../hook-protocol" }
+rand = "0.10"
 directories = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

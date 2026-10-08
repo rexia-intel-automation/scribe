@@ -98,6 +98,9 @@ impl Core {
                         view,
                         sender: None,
                         tool_use_id: None,
+                        tool_key: None,
+                        deadline: None,
+                        armed_at: None,
                     },
                 )
             })
@@ -140,6 +143,20 @@ impl Core {
     pub fn snapshot(&self, at: u64) -> Result<Snapshot> {
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
         data.prune(at)?;
+        let expired: Vec<_> = data
+            .decisions
+            .values()
+            .filter(|d| {
+                d.view.status == "pending"
+                    && (at >= d.view.expires_at
+                        || d.deadline
+                            .is_none_or(|deadline| tokio::time::Instant::now() >= deadline))
+            })
+            .map(|d| d.view.id.clone())
+            .collect();
+        for id in expired {
+            self.expire_locked(&mut data, &id);
+        }
         let mut sessions: Vec<_> = data
             .sessions
             .values()
@@ -332,8 +349,15 @@ impl Core {
                     .filter(|d| {
                         d.view.session_id == hook.session_id
                             && d.view.status == "pending"
-                            && hook.tool_use_id.is_some()
-                            && d.tool_use_id == hook.tool_use_id
+                            && d.view.kind == "permission"
+                            && (hook.tool_use_id.is_some() && d.tool_use_id == hook.tool_use_id
+                                || d.tool_use_id.is_none()
+                                    && d.tool_key.is_some()
+                                    && d.tool_key
+                                        == decisions::tool_key(
+                                            hook.tool_name.as_deref(),
+                                            &hook.tool_input,
+                                        ))
                     })
                     .map(|d| d.view.id.clone())
                     .collect()

@@ -11,6 +11,7 @@ use tokio::{
     net::TcpStream,
 };
 
+const HOOK_KEY: &str = "publicIndependentHookKey0123456789012345";
 const TOKEN: &str = "publicTestToken01234567890123456789";
 const EVENTS: &[&str] = &[
     "SessionStart",
@@ -257,7 +258,7 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
     core.report("public-session", "PUBLIC_IDLE_METADATA", old + 1)
         .unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -805,7 +806,7 @@ async fn request(
 async fn http_boundaries_auth_body_rate_mcp_and_protected_decision_route() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let port = server.port();
@@ -1030,7 +1031,7 @@ async fn http_boundaries_auth_body_rate_mcp_and_protected_decision_route() {
 async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let mut socket = TcpStream::connect(("127.0.0.1", server.port()))
@@ -1063,13 +1064,13 @@ async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
 async fn real_release_helper_reaches_the_production_server_with_silent_output() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let connection = temp.path().join("connection.json");
     fs::write(
         &connection,
-        json!({"port":server.port(),"token":TOKEN}).to_string(),
+        json!({"port":server.port(),"token":TOKEN,"hook_key":HOOK_KEY}).to_string(),
     )
     .unwrap();
     let executable = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1121,16 +1122,20 @@ async fn real_release_helper_reaches_the_production_server_with_silent_output() 
 async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    assert!(LocalServer::start(core.clone(), 0, "short".into())
-        .await
-        .is_err());
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    assert!(
+        LocalServer::start(core.clone(), 0, "short".into(), HOOK_KEY.into())
+            .await
+            .is_err()
+    );
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let port = server.port();
-    assert!(LocalServer::start(core.clone(), port, TOKEN.into())
-        .await
-        .is_err());
+    assert!(
+        LocalServer::start(core.clone(), port, TOKEN.into(), HOOK_KEY.into())
+            .await
+            .is_err()
+    );
     let mut samples = vec![];
     for _ in 0..32 {
         let started = Instant::now();
@@ -1178,6 +1183,116 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
     })
     .await
     .unwrap();
-    let restarted = LocalServer::start(core, port, TOKEN.into()).await.unwrap();
+    let restarted = LocalServer::start(core, port, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
     restarted.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_hooks_authenticate_both_peers_and_reject_replay() {
+    use scribe_hook_protocol::{sign, verify};
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let path = format!("/v1/hooks/challenge/{nonce}");
+    let challenge = request(port, "invalid", "GET", &path, "", "").await;
+    assert_eq!(challenge.code, 204);
+    let proof = challenge
+        .headers
+        .lines()
+        .find_map(|h| h.strip_prefix("x-scribe-proof: "))
+        .unwrap();
+    assert!(verify(HOOK_KEY, &[b"challenge", nonce.as_bytes()], proof));
+    assert!(!verify(TOKEN, &[b"challenge", nonce.as_bytes()], proof));
+    let body =
+        r#"{"hook_event_name":"SessionStart","session_id":"native-auth","cwd":"/public/project"}"#;
+    let proof = sign(
+        HOOK_KEY,
+        &[
+            b"request",
+            nonce.as_bytes(),
+            b"SessionStart",
+            body.as_bytes(),
+        ],
+    );
+    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+    let reply = request(
+        port,
+        "invalid",
+        "POST",
+        "/v1/hooks/SessionStart",
+        &extra,
+        body,
+    )
+    .await;
+    assert_eq!(reply.code, 204);
+    let proof = reply
+        .headers
+        .lines()
+        .find_map(|h| h.strip_prefix("x-scribe-proof: "))
+        .unwrap();
+    assert!(verify(
+        HOOK_KEY,
+        &[
+            b"response",
+            nonce.as_bytes(),
+            b"SessionStart",
+            b"204",
+            reply.body.as_bytes()
+        ],
+        proof
+    ));
+    assert_eq!(
+        request(
+            port,
+            "invalid",
+            "POST",
+            "/v1/hooks/SessionStart",
+            &extra,
+            body
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        request(port, "invalid", "GET", &path, "", "").await.code,
+        204
+    );
+    let wrong = sign(
+        TOKEN,
+        &[
+            b"request",
+            nonce.as_bytes(),
+            b"SessionStart",
+            body.as_bytes(),
+        ],
+    );
+    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {wrong}\r\n");
+    assert_eq!(
+        request(
+            port,
+            "invalid",
+            "POST",
+            "/v1/hooks/SessionStart",
+            &extra,
+            body
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
+        1
+    );
+    assert!(LocalServer::start(core, 0, TOKEN.into(), TOKEN.into())
+        .await
+        .is_err());
+    server.stop().await.unwrap();
 }
