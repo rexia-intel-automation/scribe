@@ -13,6 +13,11 @@ use axum::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::stream;
+use hyper::server::conn::http1;
+use hyper_util::{
+    rt::{TokioIo, TokioTimer},
+    service::TowerToHyperService,
+};
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
@@ -24,10 +29,16 @@ use std::{
     time::{Duration, Instant},
 };
 use subtle::ConstantTimeEq;
-use tokio::{net::TcpListener, sync::broadcast, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{broadcast, Semaphore},
+    task::{JoinHandle, JoinSet},
+};
 use tokio_util::sync::CancellationToken;
 
 const BODY_LIMIT: usize = 1024 * 1024;
+const CONNECTION_LIMIT: usize = 32;
+const HEADER_TIMEOUT: Duration = Duration::from_secs(2);
 struct Rate {
     since: Instant,
     count: u16,
@@ -150,9 +161,14 @@ impl LocalServer {
         let http_finished = cancel.clone();
         let task = tokio::spawn(async move {
             let http = async {
-                let result = axum::serve(listener, router)
-                    .with_graceful_shutdown(shutdown.cancelled_owned())
-                    .await;
+                let result = serve_bounded(
+                    listener,
+                    router,
+                    shutdown,
+                    Arc::new(Semaphore::new(CONNECTION_LIMIT)),
+                    HEADER_TIMEOUT,
+                )
+                .await;
                 http_finished.cancel();
                 result
             };
@@ -207,6 +223,61 @@ impl Drop for LocalServer {
             task.abort();
         }
     }
+}
+
+/// Bound sockets before HTTP parsing; header deadlines do not limit SSE/MCP responses.
+async fn serve_bounded(
+    mut listener: TcpListener,
+    router: Router,
+    cancel: CancellationToken,
+    slots: Arc<Semaphore>,
+    header_timeout: Duration,
+) -> std::io::Result<()> {
+    let mut connections = JoinSet::new();
+    loop {
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => break,
+            Some(_) = connections.join_next(), if !connections.is_empty() => {},
+            // Retain Axum's retry/backoff for transient accept errors (including
+            // Windows resets and descriptor exhaustion), cancellable by select.
+            accepted = axum::serve::Listener::accept(&mut listener) => {
+                let (socket, _) = accepted;
+                let Ok(permit) = slots.clone().try_acquire_owned() else {
+                    // No HTTP response or parser allocation for excess connections.
+                    drop(socket);
+                    continue;
+                };
+                let router = router.clone();
+                let shutdown = cancel.child_token();
+                connections.spawn(async move {
+                    let _permit = permit;
+                    let mut builder = http1::Builder::new();
+                    builder
+                        .timer(TokioTimer::new())
+                        .header_read_timeout(header_timeout)
+                        .max_headers(32)
+                        .max_buf_size(16 * 1024);
+                    let connection = builder.serve_connection(
+                        TokioIo::new(socket),
+                        TowerToHyperService::new(router),
+                    );
+                    tokio::pin!(connection);
+                    tokio::select! {
+                        _ = connection.as_mut() => {},
+                        _ = shutdown.cancelled() => {
+                            connection.as_mut().graceful_shutdown();
+                            let _ = connection.await;
+                        },
+                    }
+                });
+            }
+        }
+    }
+    // LocalServer::stop bounds this join. Dropping JoinSet on abort cancels every
+    // connection task and releases its permit, including incomplete requests.
+    while connections.join_next().await.is_some() {}
+    Ok(())
 }
 
 fn matches_secret(actual: Option<&str>, expected: &str) -> bool {
@@ -690,4 +761,225 @@ async fn events(State(state): State<HttpState>) -> Response {
 
 async fn read_snapshot(core: Core) -> Result<crate::Snapshot> {
     tokio::task::spawn_blocking(move || core.snapshot(now_ms())).await?
+}
+
+#[cfg(test)]
+mod connection_tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpStream,
+    };
+
+    async fn wait_for_slots(slots: &Semaphore, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while slots.available_permits() != expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("connection permit must be acquired or released");
+    }
+
+    #[tokio::test]
+    async fn one_reserved_connection_rejects_an_excess_socket_and_releases_on_close() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let slots = Arc::new(Semaphore::new(1));
+        let cancel = CancellationToken::new();
+        let router = Router::new().route("/health", get(|| async { StatusCode::NO_CONTENT }));
+        let server = tokio::spawn(serve_bounded(
+            listener,
+            router,
+            cancel.clone(),
+            slots.clone(),
+            HEADER_TIMEOUT,
+        ));
+        let first = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        wait_for_slots(&slots, 0).await;
+        let mut excess = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        let mut byte = [0];
+        let closed = tokio::time::timeout(Duration::from_secs(1), excess.read(&mut byte))
+            .await
+            .unwrap();
+        assert!(matches!(closed, Ok(0)) || closed.is_err());
+        assert_eq!(slots.available_permits(), 0);
+        drop(first);
+        wait_for_slots(&slots, 1).await;
+        let mut accepted = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        accepted
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(1), accepted.read_to_end(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 204"));
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(slots.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn keepalive_survives_two_requests_and_shutdown_closes_partial_headers() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let slots = Arc::new(Semaphore::new(1));
+        let cancel = CancellationToken::new();
+        let router = Router::new()
+            .route("/challenge", get(|| async { StatusCode::NO_CONTENT }))
+            .route("/signed", post(|| async { StatusCode::NO_CONTENT }));
+        let server = tokio::spawn(serve_bounded(
+            listener,
+            router,
+            cancel.clone(),
+            slots.clone(),
+            HEADER_TIMEOUT,
+        ));
+        let mut socket = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        for (method, path) in [("GET", "/challenge"), ("POST", "/signed")] {
+            socket
+                .write_all(
+                    format!(
+                        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut headers = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), async {
+                while !headers.ends_with(b"\r\n\r\n") {
+                    headers.push(socket.read_u8().await.unwrap());
+                }
+            })
+            .await
+            .unwrap();
+            assert!(headers.starts_with(b"HTTP/1.1 204"));
+        }
+        socket
+            .write_all(b"GET /challenge HTTP/1.1\r\nHost: ")
+            .await
+            .unwrap();
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let mut byte = [0];
+        let closed = tokio::time::timeout(Duration::from_secs(1), socket.read(&mut byte))
+            .await
+            .unwrap();
+        assert!(matches!(closed, Ok(0)) || closed.is_err());
+        assert_eq!(slots.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn header_deadline_does_not_end_an_active_sse_response() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let cancel = CancellationToken::new();
+        let router = Router::new().route(
+            "/events",
+            get(|| async {
+                Sse::new(stream::pending::<std::result::Result<Event, Infallible>>())
+                    .keep_alive(KeepAlive::new().interval(Duration::from_millis(25)))
+            }),
+        );
+        let server = tokio::spawn(serve_bounded(
+            listener,
+            router,
+            cancel.clone(),
+            Arc::new(Semaphore::new(1)),
+            HEADER_TIMEOUT,
+        ));
+        let mut socket = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        socket
+            .write_all(b"GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
+        // Drain continuously past the header deadline: an SSE response is not a
+        // partially received request. No limit or body deadline is raised here.
+        let started = Instant::now();
+        let mut bytes = [0u8; 1024];
+        while started.elapsed() < HEADER_TIMEOUT + Duration::from_millis(100) {
+            let count = tokio::time::timeout(Duration::from_secs(1), socket.read(&mut bytes))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                count > 0,
+                "active SSE response was closed by a header deadline"
+            );
+        }
+        drop(socket);
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reset_in_the_backlog_does_not_end_the_listener() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // A single client resets before the first accept. Windows may report
+        // WSAECONNRESET here; Unix can instead return a socket closed by its peer.
+        let reset = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        socket2::SockRef::from(&reset)
+            .set_linger(Some(Duration::ZERO))
+            .unwrap();
+        drop(reset);
+        let cancel = CancellationToken::new();
+        let router = Router::new().route("/health", get(|| async { StatusCode::NO_CONTENT }));
+        let server = tokio::spawn(serve_bounded(
+            listener,
+            router,
+            cancel.clone(),
+            // The reset can be returned as a dead socket rather than an accept
+            // error; keep one slot for it and one for the healthy request.
+            Arc::new(Semaphore::new(2)),
+            HEADER_TIMEOUT,
+        ));
+        let mut healthy = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        healthy
+            .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(3), healthy.read_to_end(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 204"));
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
 }

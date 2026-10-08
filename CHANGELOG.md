@@ -6,6 +6,14 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Driver HTTP local com até 32 conexões, prazo de 2 segundos para cabeçalhos,
+  até 32 campos e buffer de 16 KiB. Mantém keep-alive e respostas SSE/MCP em
+  andamento. Regressões cobrem liberação de vagas, encerramento e rejeição de
+  Host, URI absoluta e Origin nas rotas, sem CORS. Não é prova de disponibilidade
+  sob carga concorrente nem aceite da Fase 5.
+- Avisos de risco para limpeza ampla do Docker, exclusão remota de branches e
+  variantes de envio de arquivos por curl, wget e PowerShell. Continuam sendo
+  heurísticas; comandos comuns de leitura e push sem força são preservados.
 - Candidato de migração do MCP para stdio nativo: plugin `0.1.1` inicia o helper
   Rust sem servidor HTTP MCP. `initialize` e `tools/list` continuam disponíveis
   com o app fechado; `tools/call` informa indisponibilidade nesse estado e pode
