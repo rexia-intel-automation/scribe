@@ -191,7 +191,7 @@ sudo apt-get install -y libfuse2 libegl1
 
 Other distributions require their corresponding FUSE 2 and EGL packages.
 AppImage relies on the host's graphics libraries; see the
-[AppImage dependency policy](https://docs.appimage.org/introduction/concepts.html#do-not-depend-on-system-provided-resources).
+[AppImage graphics-library exclusions](https://docs.appimage.org/introduction/concepts.html#build-on-old-systems-run-on-newer-systems).
 
 Then verify its checksum, make it executable, and extract it into a
 new, empty permanent directory owned by your account. The helper must remain there so
