@@ -1115,11 +1115,12 @@ mod tests {
             let [r, g, b] = drop_rgb(color);
             for state in states {
                 let image = icon(state, color);
-                assert!(image.rgba().chunks_exact(4).any(|p| p == [r, g, b, 255]));
-                assert!(image.rgba().chunks_exact(4).all(|p| p[3] == 0
-                    || p == [r, g, b, 255]
-                    || p == [20, 20, 19, 255]
-                    || p == [250, 249, 245, 255]));
+                let pixels = image.rgba().as_chunks::<4>().0;
+                assert!(pixels.contains(&[r, g, b, 255]));
+                assert!(pixels.iter().all(|p| p[3] == 0
+                    || *p == [r, g, b, 255]
+                    || *p == [20, 20, 19, 255]
+                    || *p == [250, 249, 245, 255]));
             }
         }
     }
