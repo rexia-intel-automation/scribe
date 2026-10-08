@@ -1,7 +1,7 @@
 use rusqlite::Connection;
-use scribe_core::{now_ms, Core, DecisionInput};
+use scribe_core::{now_ms, Core, Decision, DecisionInput};
 use serde_json::{json, Value};
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 use tempfile::TempDir;
 
 fn start(core: &Core, session: &str) {
@@ -66,6 +66,15 @@ fn pending_id(core: &Core, session: &str) -> String {
         .id
 }
 
+fn decision(core: &Core, id: &str) -> Decision {
+    core.snapshot(now_ms())
+        .unwrap()
+        .decisions
+        .into_iter()
+        .find(|decision| decision.id == id)
+        .unwrap()
+}
+
 fn database_text(path: &Path) -> String {
     String::from_utf8_lossy(&fs::read(path).unwrap()).into_owned()
 }
@@ -94,7 +103,7 @@ async fn native_questions_echo_original_questions_and_answers_by_question_text()
     let original = question_input("native-session", original_questions.clone());
     let wait = core.interactive(&original, 60).unwrap();
     let id = pending_id(&core, "native-session");
-    let card = &core.snapshot(now_ms()).unwrap().decisions[0];
+    let card = decision(&core, &id);
     assert_eq!(card.kind, "nativeQuestion");
     assert_eq!(card.native_questions.len(), 4);
 
@@ -147,10 +156,7 @@ async fn one_question_accepts_answer_and_invalid_answer_sets_leave_card_pending(
         json!({"action":"answer","answers":[{"options":[0]}, {"options":[1]}]}),
     ] {
         assert!(core.resolve_decision(&id, input(invalid)).is_err());
-        assert_eq!(
-            core.snapshot(now_ms()).unwrap().decisions[0].status,
-            "pending"
-        );
+        assert_eq!(decision(&core, &id).status, "pending");
     }
     assert!(serde_json::from_value::<DecisionInput>(json!({
         "action":"answer", "answers":[], "unexpected":true
@@ -171,19 +177,48 @@ async fn one_question_accepts_answer_and_invalid_answer_sets_leave_card_pending(
 #[tokio::test]
 async fn plan_allow_echoes_original_content_and_deny_fails_closed() {
     let temp = TempDir::new().unwrap();
-    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, now_ms()).unwrap();
     start(&core, "plan-allow");
     let body = plan_input("plan-allow", "Step 1: inspect", "/public/project/PLAN.md");
     let wait = core.interactive(&body, 60).unwrap();
     let id = pending_id(&core, "plan-allow");
-    let card = &core.snapshot(now_ms()).unwrap().decisions[0];
+    let card = decision(&core, &id);
     assert_eq!(card.kind, "plan");
+    assert!(card.risk);
+    assert!(card.can_allow);
+    assert!(!card.armed);
     assert_eq!(card.target, "Step 1: inspect");
     assert_eq!(
         card.plan_file_path.as_deref(),
         Some("/public/project/PLAN.md")
     );
     let original: Value = serde_json::from_slice(&body).unwrap();
+
+    for invalid in [
+        json!({"action":"allow"}),
+        json!({"action":"allow","option":0}),
+        json!({"action":"allow","message":"not empty"}),
+        json!({"action":"allow","answers":[]}),
+        json!({"action":"answer","answers":[]}),
+        json!({"action":"arm","option":0}),
+        json!({"action":"arm","message":"not empty"}),
+        json!({"action":"arm","answers":[]}),
+    ] {
+        assert!(core.resolve_decision(&id, input(invalid)).is_err());
+        assert_eq!(decision(&core, &id).status, "pending");
+    }
+    core.resolve_decision(&id, input(json!({"action":"arm"})))
+        .unwrap();
+    assert!(decision(&core, &id).armed);
+    assert!(core
+        .resolve_decision(&id, input(json!({"action":"arm"})))
+        .is_err());
+    assert!(core
+        .resolve_decision(&id, input(json!({"action":"allow"})))
+        .is_err());
+    assert_eq!(decision(&core, &id).status, "pending");
+    tokio::time::sleep(Duration::from_millis(1050)).await;
     core.resolve_decision(&id, input(json!({"action":"allow"})))
         .unwrap();
     let response = wait.receive().await;
@@ -200,7 +235,15 @@ async fn plan_allow_echoes_original_content_and_deny_fails_closed() {
         )
         .unwrap();
     let id = pending_id(&core, "plan-deny");
-    core.resolve_decision(&id, input(json!({"action":"deny"})))
+    let secret = "sk-ant-PUBLIC_PLAN_DENIAL_SECRET";
+    assert!(core
+        .resolve_decision(&id, input(json!({"action":"deny","message":secret})))
+        .is_err());
+    assert_eq!(decision(&core, &id).status, "pending");
+    assert!(!persisted_decisions(&path).contains(secret));
+    assert!(!database_text(&path).contains(secret));
+    let feedback = "I need a clearer plan before continuing.";
+    core.resolve_decision(&id, input(json!({"action":"deny","message":feedback})))
         .unwrap();
     let response = wait.receive().await;
     assert_eq!(response["hookSpecificOutput"]["permissionDecision"], "deny");
@@ -208,6 +251,11 @@ async fn plan_allow_echoes_original_content_and_deny_fails_closed() {
         response["hookSpecificOutput"]["hookEventName"],
         "PreToolUse"
     );
+    assert_eq!(
+        response["hookSpecificOutput"]["permissionDecisionReason"],
+        feedback
+    );
+    assert!(feedback.chars().count() <= 200);
 }
 
 #[tokio::test]
@@ -374,5 +422,37 @@ async fn drop_session_end_and_timeout_cancel_without_authorizing() {
         .id;
     assert!(core
         .resolve_decision(&id, input(json!({"action":"allow"})))
+        .is_err());
+}
+
+#[tokio::test]
+async fn matching_post_tool_use_cancels_native_question() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "post-tool-session");
+    let questions = json!([native_question("Choose", false)]);
+    let wait = core
+        .interactive(&question_input("post-tool-session", questions.clone()), 60)
+        .unwrap();
+    let id = pending_id(&core, "post-tool-session");
+    let completed = json!({
+        "hook_event_name":"PostToolUse",
+        "session_id":"post-tool-session",
+        "cwd":"/public/project",
+        "tool_name":"AskUserQuestion",
+        "tool_use_id":"ask-public-1",
+        "tool_input":{"questions":questions},
+    });
+    core.hook("PostToolUse", &completed.to_string().into_bytes(), now_ms())
+        .unwrap();
+    assert_eq!(
+        wait.receive().await,
+        json!({"answer":null,"reason":"scribe_unavailable"})
+    );
+    assert!(core
+        .resolve_decision(
+            &id,
+            input(json!({"action":"answer","answers":[{"options":[0]}]}))
+        )
         .is_err());
 }

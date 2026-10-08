@@ -11,7 +11,8 @@ static RISK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse|\b(Format-Volume|Stop-Computer|Restart-Computer|Set-ExecutionPolicy|iex|Invoke-Expression)\b|\bStart-Process\b[^\n]*-Verb\b[^\n]*\bRunAs\b)").unwrap()
 });
 
-/// Sanitized display data. Original tool inputs and tool results are excluded.
+/// Safe display data. Native question/plan text is retained only after validating
+/// its complete visible form; answers, feedback and original transport are excluded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Decision {
@@ -246,6 +247,7 @@ impl Core {
         if !hook.valid("PreToolUse") || !(1..=600).contains(&seconds) {
             return Err("Invalid interactive hook".into());
         }
+        self.hook("PreToolUse", body, now_ms())?;
         let (kind, native_questions, target, plan_file_path) = match hook.tool_name.as_deref() {
             Some("AskUserQuestion") => (
                 "nativeQuestion",
@@ -259,7 +261,6 @@ impl Core {
             }
             _ => return Err("Not a native interactive tool".into()),
         };
-        self.hook("PreToolUse", body, now_ms())?;
         let at = now_ms();
         self.begin_decision(
             Decision {
@@ -273,7 +274,7 @@ impl Core {
                 options: vec![],
                 native_questions,
                 plan_file_path,
-                risk: false,
+                risk: kind == "plan",
                 can_allow: true,
                 armed: false,
                 status: "pending".into(),
@@ -377,7 +378,35 @@ impl Core {
             self.expire_locked(&mut data, id);
             return Ok(());
         }
+        if input.action.as_deref() == Some("arm") {
+            if !matches!(view.kind.as_str(), "permission" | "plan")
+                || !view.can_allow
+                || !view.risk
+                || view.armed
+                || input.option.is_some()
+                || input.message.is_some()
+                || input.answers.is_some()
+            {
+                return Err("Invalid confirmation step".into());
+            }
+            view.armed = true;
+            data.store.save_decision(&view)?;
+            let pending = data.decisions.get_mut(id).unwrap();
+            pending.view = view.clone();
+            pending.armed_at = Some(tokio::time::Instant::now());
+            let _ = self.events.send(StateEvent::Decision(view));
+            return Ok(());
+        }
         let response = if matches!(view.kind.as_str(), "nativeQuestion" | "plan") {
+            if view.kind == "plan"
+                && input.action.as_deref() == Some("allow")
+                && (!view.armed
+                    || pending
+                        .armed_at
+                        .is_none_or(|at| at.elapsed() < Duration::from_secs(1)))
+            {
+                return Err("Plan approval requires separate confirmation".into());
+            }
             let response = crate::interactive::answer(
                 &view.kind,
                 pending
@@ -405,17 +434,6 @@ impl Core {
                 return Ok(());
             }
             match input.action.as_deref() {
-                Some("arm")
-                    if view.can_allow && view.risk && !view.armed && input.message.is_none() =>
-                {
-                    view.armed = true;
-                    data.store.save_decision(&view)?;
-                    let pending = data.decisions.get_mut(id).unwrap();
-                    pending.view = view.clone();
-                    pending.armed_at = Some(tokio::time::Instant::now());
-                    let _ = self.events.send(StateEvent::Decision(view));
-                    return Ok(());
-                }
                 Some("allow")
                     if view.can_allow
                         && (!view.risk

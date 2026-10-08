@@ -31,6 +31,32 @@ fn id(core: &Core, session: &str) -> String {
 }
 
 #[tokio::test]
+async fn returning_an_mcp_question_to_terminal_never_invents_an_answer() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "mcp-terminal");
+    let wait = core
+        .question("mcp-terminal", "Choose?", &["A".into(), "B".into()], 600)
+        .unwrap();
+    let question_id = id(&core, "mcp-terminal");
+    assert!(core
+        .resolve_decision(
+            &question_id,
+            input(json!({"action":"terminal", "option":0}))
+        )
+        .is_err());
+    core.resolve_decision(&question_id, input(json!({"action":"terminal"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await,
+        json!({"answer":null, "reason":"scribe_unavailable"})
+    );
+    assert!(core
+        .resolve_decision(&question_id, input(json!({"option":0})))
+        .is_err());
+}
+
+#[tokio::test]
 async fn concurrent_sessions_deliver_exact_allow_deny_and_option_once() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();

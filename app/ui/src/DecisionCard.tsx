@@ -44,7 +44,11 @@ function DecisionCardContent({
   const canAllow = decision.canAllow !== false;
   useEffect(() => {
     setConfirmReady(false);
-    if (decision.kind !== "permission" || !decision.armed) return;
+    if (
+      (decision.kind !== "permission" && decision.kind !== "plan") ||
+      !decision.armed
+    )
+      return;
     const timer = window.setTimeout(() => setConfirmReady(true), 1000);
     return () => window.clearTimeout(timer);
   }, [decision.id, decision.armed, decision.kind]);
@@ -217,6 +221,11 @@ function DecisionCardContent({
             </p>
           )}
           <pre className="decision-plan-body">{decision.target}</pre>
+          {canAllow && (
+            <p className="risk-warning" role="note">
+              {decisionText(language, "planRiskWarning")}
+            </p>
+          )}
           {pending && (
             <div className="native-answer-wrap">
               <label htmlFor={`${controlId}-plan-feedback`}>
@@ -447,10 +456,25 @@ function DecisionCardContent({
               {canAllow && (
                 <button
                   className="allow-decision"
-                  disabled={busy}
-                  onClick={() => void choose({ action: "allow" })}
+                  disabled={busy || decision.armed}
+                  onClick={(event) => {
+                    if (event.detail > 1) return;
+                    void choose({ action: "arm" });
+                  }}
                 >
                   {decisionText(language, "planApprove")}
+                </button>
+              )}
+              {canAllow && decision.armed && (
+                <button
+                  className="confirm-decision"
+                  disabled={busy || !confirmReady}
+                  onClick={(event) => {
+                    if (event.detail > 1) return;
+                    void choose({ action: "allow" });
+                  }}
+                >
+                  {decisionText(language, "planConfirm")}
                 </button>
               )}
               <button

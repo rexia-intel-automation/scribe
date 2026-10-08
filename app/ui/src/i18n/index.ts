@@ -19,6 +19,9 @@ const decisionMessages = {
     plan: "Plan",
     planPath: "Plan file: {path}",
     planApprove: "Approve plan",
+    planConfirm: "Confirm plan",
+    planRiskWarning:
+      "Leaving plan mode may restore Claude’s previous permission mode. This confirmation does not pre-authorize any commands.",
     planContinue: "Continue planning",
     planFeedback: "Feedback for the plan (optional)",
     planFeedbackPlaceholder:
@@ -40,6 +43,9 @@ const decisionMessages = {
     plan: "Plano",
     planPath: "Arquivo do plano: {path}",
     planApprove: "Aprovar plano",
+    planConfirm: "Confirmar plano",
+    planRiskWarning:
+      "Sair do modo de planejamento pode restaurar o modo de permissões anterior do Claude. Esta confirmação não pré-autoriza nenhum comando.",
     planContinue: "Continuar planejando",
     planFeedback: "Sugestão para o plano (opcional)",
     planFeedbackPlaceholder: "Explique o que deve mudar (até 200 caracteres)",

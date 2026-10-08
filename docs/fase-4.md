@@ -165,7 +165,10 @@ a quatro opções, seleção única ou múltipla e uma alternativa de texto livr
 Não há resposta pré-selecionada. Enviar exige responder a todas. A interface
 do plano mostra o conteúdo integral como texto, sem executar HTML nem abrir
 links, e oferece aprovar, continuar planejando com feedback opcional ou voltar
-ao terminal. Aprovar um plano não altera modos nem regras de permissão.
+ao terminal. Aprovar um plano exige armar e confirmar em outro botão depois
+de pelo menos um segundo. O Scribe não emite mudanças explícitas de modos nem
+regras nessa resposta; ao sair do planejamento, o Claude Code pode restaurar
+seu modo anterior, inclusive um modo permissivo.
 
 A espera nativa é de 120 segundos, com orçamento do cliente de 125 segundos
 e timeout do hook de 130. Matchers exclusivos mantêm os demais PreToolUse em
@@ -190,3 +193,27 @@ e build da UI passaram. O teste HTTP dos hooks nativos passou em 0,18 s, cobrind
 pergunta, plano e devolução ao terminal, com rejeição de Bearer sem a credencial
 privada da UI. Isso mede o transporte local do Scribe; o ensaio de uma sessão
 real do Claude e o novo instalador ainda são necessários antes do aceite desse lote.
+
+## Ensaio do instalador nativo
+
+O Claude ensaiou externamente o upgrade do NSIS `8f47ceb` em 2026-10-08.
+Setup silencioso por usuário terminou com exit 0, o app foi aberto pelo atalho
+e connection.json ficou idêntico. A instalação externa é distinta da visão
+virtualizada MSIX do Codex; hashes e origem da evidência estão em
+[install-8f47ceb-windows.json](evidence/install-8f47ceb-windows.json).
+
+Na mesma rodada, Claude Code 2.1.293 com o plugin carregado não ofereceu
+AskUserQuestion em uma execução `-p` Sonnet limitada a US$ 0,30 e recorreu a
+scribe_ask. Portanto o Scribe não declara suporte a perguntas nativas headless
+nesse ambiente, apesar da possibilidade descrita na documentação oficial.
+O ensaio de perguntas e planos em sessão interativa nova continua pendente.
+Os planos com texto que ativa a redação, como x = y ou token/secret seguido de
+conteúdo, podem ir diretamente ao terminal; isso deve ser verificado no roteiro.
+
+O lote seguinte exige duas etapas para aprovar um plano e corrige a observação
+dos nativos rejeitados. Seus testes de decisões (13) e perguntas/planos (7),
+UI (50), build UI e Clippy passaram. Também passou a rota HTTP de armar,
+rejeitar confirmação prematura e aprovar após o prazo. O instalador 8f não
+contém essa correção e deve ser substituído por um build do novo SHA antes da
+entrega. Um job Windows do CI 8f falhou na latência, enquanto outro passou;
+o limite de 200 ms permanece exigido, sem bypass.

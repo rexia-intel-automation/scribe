@@ -380,10 +380,10 @@ describe("human decision card", () => {
       action: "terminal",
     });
   });
-  it("renders a plan as inert text and supports approval, denial, and terminal actions", async () => {
+  it("renders a plan as inert text and requires a separate timed approval", async () => {
     const user = userEvent.setup();
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
-    const { container } = render(
+    const { container, rerender } = render(
       <DecisionCard
         decision={planFixture()}
         language="pt-BR"
@@ -395,6 +395,9 @@ describe("human decision card", () => {
     expect(screen.getByText(/C:\\work\\plan\.md/)).toBeVisible();
     expect(screen.getByText(/Review <img src=x/)).toBeVisible();
     expect(container.querySelector("img")).toBeNull();
+    expect(
+      screen.getByText(/Sair do modo de planejamento pode restaurar/),
+    ).toBeVisible();
     const feedback = screen.getByRole("textbox", {
       name: "Sugestão para o plano (opcional)",
     });
@@ -404,6 +407,30 @@ describe("human decision card", () => {
     expect(bridge.resolveDecision).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Aprovar plano" }));
     expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "arm",
+    });
+    const decision = { ...planFixture(), armed: true };
+    rerender(
+      <DecisionCard
+        decision={decision}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Aprovar plano" }),
+    ).toBeDisabled();
+    const confirm = screen.getByRole("button", { name: "Confirmar plano" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm, { detail: 2 });
+    expect(bridge.resolveDecision).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 1500 });
+    fireEvent.click(confirm, { detail: 2 });
+    expect(bridge.resolveDecision).toHaveBeenCalledTimes(1);
+    await user.click(confirm);
+    expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
       action: "allow",
     });
   });
@@ -419,6 +446,7 @@ describe("human decision card", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Approve plan" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm plan" })).toBeNull();
     await user.type(
       screen.getByRole("textbox", { name: "Feedback for the plan (optional)" }),
       "Add a rollback step",

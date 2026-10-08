@@ -1,4 +1,5 @@
-//! Scribe's local session core. Original hook payloads never enter persistence.
+//! Scribe's local session core. Persistence contains validated display data;
+//! raw hook envelopes, credentials and human answer payloads are excluded.
 mod decisions;
 mod interactive;
 mod mcp;

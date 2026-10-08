@@ -861,6 +861,28 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
                 .code,
             403
         );
+        if tool == "ExitPlanMode" && choice["action"] == "allow" {
+            let ui = format!("X-Scribe-UI: {}\r\n", server.ui_token());
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"allow\"}")
+                    .await
+                    .code,
+                409
+            );
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"arm\"}")
+                    .await
+                    .code,
+                204
+            );
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"allow\"}")
+                    .await
+                    .code,
+                409
+            );
+            tokio::time::sleep(Duration::from_millis(1050)).await;
+        }
         assert_eq!(
             request(
                 port,
