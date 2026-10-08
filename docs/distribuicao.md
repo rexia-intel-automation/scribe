@@ -1,5 +1,13 @@
 # Artefatos de distribuição (previews)
 
+## Verificação da instalação antes da publicação
+
+O workflow `Release` testa os cinco formatos em runners novos e separados antes de publicar: NSIS, MSI, DMG, DEB e AppImage. A instalação usa apenas os artefatos do próprio run, depois de conferir os checksums, a versão e o SHA de origem com o coletor de release. Esse teste roda em tags de release validadas ou em uma execução manual no `main`; nunca instala artefatos de uma PR.
+
+O teste abre o app instalado, confere a capacidade MCP do helper instalado e envia um único relatório com conteúdo público sintético pelo transporte autenticado. Ele não usa a feature `test-fixture`, não chama modelos e não imprime nem publica o arquivo de conexão. No Linux, a janela abre num display virtual. O job falha se a instalação, o início do app ou a chamada MCP falhar; `publish` depende desse resultado.
+
+Essa evidência cobre a instalação e o funcionamento básico nos sistemas dos runners. Ela não comprova a interação visual, o comportamento do Gatekeeper com um download pelo navegador, a política de TI do escritório ou as três sessões reais do Claude Code exigidas para a v0.1. Esses aceites continuam registrados separadamente.
+
 O workflow [Distribution previews](../.github/workflows/distribution.yml) gera pacotes de CI para revisão: NSIS e MSI no Windows, `.app` universal dentro de DMG no macOS, e DEB + AppImage no Ubuntu 22.04. Ele roda manualmente por `workflow_dispatch` ou em PRs que alterem `app/**`, scripts ou arquivos de distribuição listados no workflow. Um novo commit cancela o preview anterior da mesma PR; cada build tem limite de 45 minutos. Os downloads ficam nos artifacts daquele run por 14 dias; nenhum passo cria tag ou GitHub Release, altera a versão `0.1.0` ou declara uma fase aprovada.
 
 ## Baixar e conferir
