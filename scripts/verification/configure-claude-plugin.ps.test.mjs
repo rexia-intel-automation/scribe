@@ -41,19 +41,62 @@ public static class FakeScribeExecutable
         Record("ARGS:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(String.Join("\u001f", args))));
         if (args.Length >= 4 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "list")
         {
-            Console.WriteLine("{\"marketplaces\":[{\"name\":\"rexia-scribe\"},{\"name\":\"synthetic-other\"}]}");
+            var mode = Environment.GetEnvironmentVariable("SCRIBE_TEST_MARKETPLACE_MODE");
+            Console.WriteLine(mode == "missing"
+                ? "{\"marketplaces\":[{\"name\":\"synthetic-other\"}]}"
+                : "{\"marketplaces\":[{\"name\":\"rexia-scribe\"},{\"name\":\"synthetic-other\"}]}");
             return 0;
         }
-        if (Environment.GetEnvironmentVariable("SCRIBE_TEST_CLI_MODE") == "fail-install" &&
-            args.Length >= 2 && args[0] == "plugin" && args[1] == "install")
+        var cliMode = Environment.GetEnvironmentVariable("SCRIBE_TEST_CLI_MODE");
+        if (args.Length >= 4 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "update")
         {
-            Console.WriteLine("SYNTHETIC_CLI_SECRET");
-            Console.Error.WriteLine("SYNTHETIC_CLI_SECRET");
-            return 42;
+            if (cliMode == "fail-marketplace-update") return Fail();
+        }
+        if (args.Length >= 3 && args[0] == "plugin" && args[1] == "update")
+        {
+            if (cliMode == "fail-plugin-update") return Fail();
+        }
+        if (args.Length >= 3 && args[0] == "plugin" && args[1] == "list" && args[2] == "--json")
+        {
+            if (cliMode == "fail-plugin-list") return Fail();
+            var mode = Environment.GetEnvironmentVariable("SCRIBE_TEST_PLUGIN_LIST_MODE");
+            if (mode == "malformed") { Console.WriteLine("not JSON"); return 0; }
+            if (mode == "trailing-composite") { Console.WriteLine("[" + PluginRecord("0.1.1", true) + "],\"extra\":1"); return 0; }
+            if (mode == "envelope") { Console.WriteLine("{\"plugins\":[" + PluginRecord("0.1.1", true) + "]}"); return 0; }
+            if (mode == "missing") { Console.WriteLine("[]"); return 0; }
+            if (mode == "duplicate") { Console.WriteLine("[" + PluginRecord("0.1.1", true) + "," + PluginRecord("0.1.1", true) + "]"); return 0; }
+            if (mode == "wrong-scope") { Console.WriteLine("[" + PluginRecord("0.1.1", true, null, "scribe@rexia-scribe", "project") + "]"); return 0; }
+            if (mode == "old") { Console.WriteLine("[" + PluginRecord("0.1.0", true, "0.1.1") + "]"); return 0; }
+            if (mode == "disabled") { Console.WriteLine("[" + PluginRecord("0.1.1", false) + "]"); return 0; }
+            if (mode == "folder-current") { Console.WriteLine("[" + PluginRecord("0.1.1", true, "0.1.1") + "]"); return 0; }
+            if (mode == "folder-old") { Console.WriteLine("[" + PluginRecord("0.1.1", true, "0.1.0") + "]"); return 0; }
+            Console.WriteLine("[" + PluginRecord("0.1.1", true) + "]");
+            return 0;
+        }
+        if (cliMode == "fail-install" && args.Length >= 2 && args[0] == "plugin" && args[1] == "install")
+        {
+            return Fail();
         }
         if (Array.IndexOf(args, "--values-stdin") >= 0)
             Record("STDIN:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Console.In.ReadToEnd())));
         return 0;
+    }
+
+    private static int Fail()
+    {
+        Console.WriteLine("SYNTHETIC_CLI_SECRET");
+        Console.Error.WriteLine("SYNTHETIC_CLI_SECRET");
+        return 42;
+    }
+
+    private static string PluginRecord(string version, bool enabled, string folderVersion = null, string id = "scribe@rexia-scribe", string scope = "user")
+    {
+        var folder = folderVersion == null ? "" : ",\"folderVersion\":\"" + folderVersion + "\"";
+        return "{\"id\":\"" + id + "\",\"version\":\"" + version +
+            "\",\"scope\":\"" + scope + "\",\"enabled\":" + (enabled ? "true" : "false") +
+            ",\"projectEnabled\":false,\"installPath\":\"SYNTHETIC_INSTALL_PATH\"," +
+            "\"installedAt\":\"2026-10-08T00:00:00Z\",\"lastUpdated\":\"2026-10-08T00:00:00Z\"," +
+            "\"mcpServers\":{},\"hasUserConfig\":true" + folder + "}";
     }
 }`;
 
@@ -191,8 +234,28 @@ windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and p
       const args = calls.filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
       const configPayloads = calls.filter(call => call.kind === 'STDIN').map(call => JSON.parse(call.value));
       const expectedHelperPath = await realpath(fixture.helperPath);
+      assert.deepEqual(args.map(values => values.slice(0, 3)), [
+        ['plugin', 'marketplace', 'list'],
+        ['plugin', 'marketplace', 'update'],
+        ['plugin', 'install', 'scribe@rexia-scribe'],
+        ['plugin', 'update', 'scribe@rexia-scribe'],
+        ['plugin', 'list', '--json'],
+        ['plugin', 'configure', 'scribe@rexia-scribe'],
+        ['plugin', 'marketplace', 'list'],
+        ['plugin', 'marketplace', 'update'],
+        ['plugin', 'install', 'scribe@rexia-scribe'],
+        ['plugin', 'update', 'scribe@rexia-scribe'],
+        ['plugin', 'list', '--json'],
+        ['plugin', 'configure', 'scribe@rexia-scribe'],
+      ]);
       assert.equal(args.filter(values => values[2] === 'list').length, 2);
       assert.equal(args.filter(values => values[1] === 'install').length, 2);
+      assert.equal(args.filter(values => values[1] === 'marketplace' && values[2] === 'update').length, 2);
+      assert.equal(args.filter(values => values[1] === 'update' && values[2] === 'scribe@rexia-scribe').length, 2);
+      for (const values of args.filter(values => values[1] === 'update' && values[2] === 'scribe@rexia-scribe')) {
+        assert.deepEqual(values.slice(-2), ['--scope', 'user']);
+      }
+      assert.equal(args.filter(values => values[1] === 'list' && values[2] === '--json').length, 2);
       assert.equal(configPayloads.length, 2);
       for (const values of args.filter(values => values[1] === 'install')) {
         const configArgs = values.slice(-2);
@@ -211,6 +274,76 @@ windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and p
         assert.doesNotMatch(JSON.stringify(payload), /SYNTHETIC_BEARER|SYNTHETIC_INDEPENDENT_HOOK_KEY|token|hook_key|port/i);
       }
     });
+  }
+});
+
+windowsTest('PowerShell 5.1 and 7 upgrade the marketplace default plugin source and install a new marketplace plugin', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'valid', SCRIBE_TEST_MARKETPLACE_MODE: 'missing', SCRIBE_TEST_PLUGIN_LIST_MODE: 'folder-current' });
+      assert.equal(result.status, 0, diagnostic(result, fixture));
+      const calls = (await recordedCalls(fixture.logPath)).filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
+      assert.deepEqual(calls.map(values => values.slice(0, 3)), [
+        ['plugin', 'marketplace', 'list'],
+        ['plugin', 'install', 'scribe'],
+        ['plugin', 'update', 'scribe@rexia-scribe'],
+        ['plugin', 'list', '--json'],
+        ['plugin', 'configure', 'scribe@rexia-scribe'],
+      ]);
+      assert.ok(calls[1].includes('--marketplace'));
+    });
+  }
+});
+
+windowsTest('PowerShell 5.1 and 7 refuse stale, disabled, ambiguous, missing, malformed, or incompatible plugin inventory', async t => {
+  const cases = [
+    ['5.1', 'old', /plugin version check/, /marketplace did not provide an enabled Scribe plugin at version 0\.1\.1/i],
+    ['5.1', 'disabled', /plugin version check/, /marketplace did not provide an enabled Scribe plugin at version 0\.1\.1/i],
+    ['5.1', 'folder-old', /plugin version check/, /marketplace did not provide an enabled Scribe plugin at version 0\.1\.1/i],
+    ['5.1', 'duplicate', /plugin version check/, /multiple user-scope Scribe plugins/i],
+    ['7', 'missing', /plugin version check/, /marketplace did not provide plugin version 0\.1\.1/i],
+    ['7', 'wrong-scope', /plugin version check/, /marketplace did not provide plugin version 0\.1\.1/i],
+    ['7', 'envelope', /plugin version check/, /did not provide a valid plugin list/i],
+    ['7', 'malformed', /plugin version check/, /did not provide a valid plugin list/i],
+    ['7', 'trailing-composite', /plugin version check/, /did not provide a valid plugin list/i],
+  ];
+  for (const [shell, mode, stage, reason] of cases) {
+    await t.test(`PowerShell ${shell} ${mode}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'valid', SCRIBE_TEST_PLUGIN_LIST_MODE: mode });
+      assert.equal(result.status, 1, diagnostic(result, fixture));
+      assert.match(result.stderr, stage, diagnostic(result, fixture));
+      assert.match(result.stderr, reason, diagnostic(result, fixture));
+      assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SYNTHETIC_(?:CLI_SECRET|INSTALL_PATH|BEARER|INDEPENDENT_HOOK_KEY)/);
+      const calls = (await recordedCalls(fixture.logPath)).filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
+      assert.equal(calls.some(values => values[1] === 'configure'), false);
+    });
+  }
+});
+
+windowsTest('PowerShell 5.1 and 7 report marketplace and plugin command failures without leaking CLI output', async t => {
+  const cases = [
+    ['fail-marketplace-update', 'marketplace update'],
+    ['fail-plugin-update', 'plugin update'],
+    ['fail-plugin-list', 'plugin version check'],
+  ];
+  for (const shell of ['5.1', '7']) {
+    for (const [mode, stage] of cases) {
+      await t.test(`PowerShell ${shell} ${mode}`, async t2 => {
+        const fixture = await makeFixture(shell);
+        t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+        const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'valid', SCRIBE_TEST_CLI_MODE: mode });
+        assert.equal(result.status, 1, diagnostic(result, fixture));
+        assert.ok(result.stderr.includes(`${stage} (exit code 42)`), diagnostic(result, fixture));
+        assert.match(result.stderr, /CLI output was withheld/);
+        assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SYNTHETIC_CLI_SECRET|SYNTHETIC_INSTALL_PATH|SYNTHETIC_BEARER|SYNTHETIC_INDEPENDENT_HOOK_KEY/);
+        const calls = (await recordedCalls(fixture.logPath)).filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
+        assert.equal(calls.some(values => values[1] === 'configure'), false);
+      });
+    }
   }
 });
 
