@@ -571,6 +571,47 @@ async fn failed_decision_commit_never_releases_permission_and_policy_is_bounded(
 }
 
 #[tokio::test]
+async fn missing_permission_target_stays_empty_and_never_authorizes() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "missing-target");
+    let body = json!({"hook_event_name":"PermissionRequest", "session_id":"missing-target", "cwd":"/public/project", "tool_name":"Bash", "tool_input":{}}).to_string();
+    let wait = core.permission(body.as_bytes(), 120).unwrap();
+    let card = core.snapshot(now_ms()).unwrap().decisions.remove(0);
+    assert!(
+        card.target.is_empty(),
+        "a localized fallback belongs in the UI, not in the target data"
+    );
+    assert!(!card.can_allow);
+    for action in ["arm", "allow"] {
+        assert!(core
+            .resolve_decision(&card.id, input(json!({"action":action})))
+            .is_err());
+    }
+    core.resolve_decision(&card.id, input(json!({"action":"terminal"})))
+        .unwrap();
+    assert_eq!(wait.receive().await["answer"], Value::Null);
+
+    let literal = "Ferramenta sem alvo informado";
+    let wait = core
+        .permission(&permission("missing-target", literal), 120)
+        .unwrap();
+    let card = core
+        .snapshot(now_ms())
+        .unwrap()
+        .decisions
+        .into_iter()
+        .find(|d| d.status == "pending")
+        .unwrap();
+    assert_eq!(card.target, literal);
+    assert!(
+        card.can_allow,
+        "a literal command must never be rewritten as a display fallback"
+    );
+    drop(wait);
+}
+
+#[tokio::test]
 async fn hidden_and_unknown_targets_cannot_be_allowed_even_after_arming() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();

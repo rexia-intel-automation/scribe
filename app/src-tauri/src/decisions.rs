@@ -145,7 +145,7 @@ impl Core {
         let raw_target = if complete && hook.tool_input.as_object().unwrap().len() > 1 {
             serde_json::to_string_pretty(&hook.tool_input)?
         } else {
-            target.unwrap_or("Ferramenta sem alvo informado").to_owned()
+            target.unwrap_or_default().to_owned()
         };
         let redacted = sanitize::redact(&raw_target);
         let mut display_target: String = redacted.chars().take(8000).collect();

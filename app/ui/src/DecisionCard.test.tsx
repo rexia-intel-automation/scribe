@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DecisionCard } from "./DecisionCard";
 import * as bridge from "./bridge";
 import type { Decision } from "./types";
+import { t } from "./i18n";
 import axe from "axe-core";
 vi.mock("./bridge", async () => ({
   ...(await vi.importActual<typeof import("./bridge")>("./bridge")),
@@ -90,6 +91,243 @@ beforeEach(() => {
   vi.mocked(bridge.resolveDecision).mockResolvedValue(bridge.initial);
 });
 describe("human decision card", () => {
+  it("localizes permission and question headers and keeps plans unchanged", () => {
+    const props = {
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const { rerender } = render(
+      <DecisionCard {...props} decision={fixture()} language="en" />,
+    );
+    expect(
+      screen.getByText("public-project · asks for permission"),
+    ).toBeVisible();
+    rerender(<DecisionCard {...props} decision={fixture()} language="pt-BR" />);
+    expect(screen.getByText("public-project · pede permissão")).toBeVisible();
+
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{ ...fixture(), kind: "question", question: "Choose" }}
+        language="en"
+      />,
+    );
+    expect(screen.getByText("public-project · has a question")).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{ ...nativeQuestionFixture(), project: "public-project" }}
+        language="pt-BR"
+      />,
+    );
+    expect(screen.getByText("public-project · tem uma pergunta")).toBeVisible();
+    rerender(
+      <DecisionCard {...props} decision={planFixture()} language="en" />,
+    );
+    expect(screen.getByText("public-project")).toBeVisible();
+  });
+  it("keeps the risk warning and confirmation label separate in both languages", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <DecisionCard
+        decision={{ ...fixture(), risk: true }}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Risky action. Check the target; allowing requires two clicks.",
+    );
+    await user.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "arm",
+    });
+    rerender(
+      <DecisionCard
+        decision={{ ...fixture(), risk: true, armed: true }}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Ação de risco. Confira o alvo; permitir exige dois cliques.",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Confirmar: este comando é arriscado",
+      }),
+    ).toBeDisabled();
+    rerender(
+      <DecisionCard
+        decision={{ ...fixture(), risk: true, armed: true }}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Confirm: this command is risky",
+      }),
+    ).toBeDisabled();
+  });
+  it("shows the allowed time when valid and falls back to generic status otherwise", () => {
+    const resolvedAt = new Date(2026, 9, 8, 14, 7).getTime();
+    const formatted = new Intl.DateTimeFormat("en", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(resolvedAt);
+    const props = {
+      language: "en" as const,
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const { rerender } = render(
+      <DecisionCard
+        {...props}
+        decision={{ ...fixture(), status: "allowed", resolvedAt }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      `Allowed at ${formatted}`,
+    );
+    const formattedPt = new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(resolvedAt);
+    rerender(
+      <DecisionCard
+        {...props}
+        language="pt-BR"
+        decision={{ ...fixture(), status: "allowed", resolvedAt }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      `Permitido às ${formattedPt}`,
+    );
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{ ...fixture(), status: "allowed", resolvedAt: null }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Allowed");
+    expect(screen.getByRole("status")).not.toHaveTextContent("at");
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{ ...fixture(), status: "allowed", resolvedAt: NaN }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Allowed");
+  });
+  it("localizes only missing targets that cannot be allowed and translates notification bodies", () => {
+    const props = {
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const { rerender } = render(
+      <DecisionCard
+        {...props}
+        decision={{ ...fixture(), canAllow: false, target: "" }}
+        language="en"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "No target was provided" }),
+    ).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          canAllow: false,
+          target: "",
+        }}
+        language="pt-BR"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Alvo não informado" }),
+    ).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          tool: "Write",
+          canAllow: false,
+          target: "Ferramenta sem alvo informado",
+        }}
+        language="pt-BR"
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ferramenta sem alvo informado",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(t("pt-BR", "hiddenTarget"))).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          tool: "Write",
+          canAllow: false,
+          target: "Ferramenta sem alvo informado",
+        }}
+        language="en"
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ferramenta sem alvo informado",
+      }),
+    ).toBeVisible();
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{
+          ...fixture(),
+          tool: "Write",
+          canAllow: true,
+          target: "Ferramenta sem alvo informado",
+        }}
+        language="en"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Ferramenta sem alvo informado" }),
+    ).toBeVisible();
+
+    expect(t("en", "notificationPermission", { project: "Example" })).toBe(
+      "Example needs your permission",
+    );
+    expect(t("pt-BR", "notificationPermission", { project: "Example" })).toBe(
+      "Example precisa da sua permissão",
+    );
+    expect(t("en", "notificationQuestion", { project: "Example" })).toBe(
+      "Example has a question",
+    );
+    expect(t("pt-BR", "notificationQuestion", { project: "Example" })).toBe(
+      "Example tem uma pergunta",
+    );
+    expect(t("en", "notificationPlan", { project: "Example" })).toBe(
+      "Example needs your plan approval",
+    );
+    expect(t("pt-BR", "notificationPlan", { project: "Example" })).toBe(
+      "Example precisa da sua aprovação do plano",
+    );
+  });
   it("sends allow and deny through the desktop bridge", async () => {
     const user = userEvent.setup();
     const receive = vi.fn();
@@ -136,7 +374,7 @@ describe("human decision card", () => {
       <DecisionCard {...props} decision={{ ...decision, armed: true }} />,
     );
     const confirm = screen.getByRole("button", {
-      name: "Confirmar permissão",
+      name: "Confirmar: este comando é arriscado",
     });
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm, { detail: 2 });
@@ -145,7 +383,9 @@ describe("human decision card", () => {
     fireEvent.click(confirm, { detail: 2 });
     expect(bridge.resolveDecision).toHaveBeenCalledTimes(1);
     await user.click(
-      screen.getByRole("button", { name: "Confirmar permissão" }),
+      screen.getByRole("button", {
+        name: "Confirmar: este comando é arriscado",
+      }),
     );
     expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
       action: "allow",
