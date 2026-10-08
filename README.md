@@ -15,7 +15,7 @@ does not require a separate Node installation.
 
 ## Windows beta test
 
-When the prerelease is published, download these assets from the
+Download these assets from the published
 [v0.1.0-beta.1 release page](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1):
 
 - `Scribe_*_x64-setup.exe`

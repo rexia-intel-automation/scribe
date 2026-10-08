@@ -1,0 +1,116 @@
+name: Distribution previews
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/distribution.yml'
+      - 'app/src-tauri/tauri.distribution.conf.json'
+      - 'scripts/build-distribution.mjs'
+      - 'scripts/verification/distribution.test.mjs'
+      - 'docs/distribuicao.md'
+      - 'app/src-tauri/tauri.conf.json'
+      - 'app/src-tauri/Cargo.lock'
+      - 'app/hook-client/Cargo.lock'
+      - 'app/package-lock.json'
+      - 'app/**'
+      - 'scripts/build-windows-installer.ps1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribution-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  planner-tests:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: node --test scripts/verification/distribution.test.mjs
+      - name: Smoke-test the no-build planning command
+        shell: bash
+        run: node scripts/build-distribution.mjs plan --platform linux > /dev/null
+
+  bundles:
+    needs: planner-tests
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-latest
+            bundle_root: app/src-tauri/target/release/bundle
+          - platform: macos
+            runner: macos-latest
+            bundle_root: app/src-tauri/target/universal-apple-darwin/release/bundle
+          - platform: linux
+            runner: ubuntu-22.04
+            bundle_root: app/src-tauri/target/release/bundle
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+      - name: Install Rust Apple architectures for universal app and hook
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Install Linux Tauri bundle dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl file libayatana-appindicator3-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf wget
+      - name: Ensure Windows MSI prerequisite is available
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $capability = Get-WindowsCapability -Online -Name 'VBSCRIPT*' -ErrorAction Stop |
+            Where-Object { $_.Name -like 'VBSCRIPT~~~~*' } |
+            Select-Object -First 1
+          if (-not $capability) { throw 'Windows runner does not expose the VBScript capability required for MSI.' }
+          if ($capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop | Out-Null
+          }
+          $capability = Get-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop
+          if ($capability.State -ne 'Installed' -or -not (Test-Path (Join-Path $env:WINDIR 'System32\vbscript.dll'))) {
+            throw 'VBScript capability is not installed and available for the Windows MSI build.'
+          }
+      - name: Install locked frontend dependencies
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Show target and bundle plan
+        run: node scripts/build-distribution.mjs plan --platform ${{ matrix.platform }}
+      - name: Build and stage platform sidecar
+        run: node scripts/build-distribution.mjs prepare --platform ${{ matrix.platform }}
+      - name: Build Windows MSI and NSIS previews
+        if: matrix.platform == 'windows'
+        working-directory: app
+        run: npm run tauri -- build --config src-tauri/tauri.distribution.conf.json --bundles nsis,msi --ci -- --locked
+      - name: Build universal macOS app and DMG preview
+        if: matrix.platform == 'macos'
+        working-directory: app
+        run: npm run tauri -- build --config src-tauri/tauri.distribution.conf.json --target universal-apple-darwin --bundles app,dmg --ci -- --locked
+      - name: Build Linux DEB and AppImage previews
+        if: matrix.platform == 'linux'
+        working-directory: app
+        run: npm run tauri -- build --config src-tauri/tauri.distribution.conf.json --bundles deb,appimage --ci -- --locked
+      - name: Validate bundles and generate checksums
+        run: node scripts/build-distribution.mjs finalize --platform ${{ matrix.platform }} --bundle-root ${{ matrix.bundle_root }} --artifact-dir .artifacts/distribution-preview/${{ matrix.platform }} --source-sha ${{ github.sha }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: scribe-distribution-preview-${{ matrix.platform }}-${{ github.sha }}
+          path: .artifacts/distribution-preview/${{ matrix.platform }}/*
+          if-no-files-found: error
+          retention-days: 14
