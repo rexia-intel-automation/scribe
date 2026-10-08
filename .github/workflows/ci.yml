@@ -66,6 +66,8 @@ jobs:
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
+        env:
+          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
       - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --features desktop,tauri/custom-protocol --locked --bin scribe
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'

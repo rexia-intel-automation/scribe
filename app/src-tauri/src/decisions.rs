@@ -387,7 +387,11 @@ impl Core {
 
     /// Resolve exactly once, after validating type, deadline and risk confirmation.
     pub fn resolve_decision(&self, id: &str, input: DecisionInput) -> Result<()> {
+        #[cfg(debug_assertions)]
+        let diagnostic_start = std::time::Instant::now();
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        #[cfg(debug_assertions)]
+        let diagnostic_lock = diagnostic_start.elapsed();
         let pending = data.decisions.get(id).ok_or("Unknown decision")?;
         let mut view = pending.view.clone();
         if view.status != "pending"
@@ -529,7 +533,13 @@ impl Core {
             response
         };
         view.resolved_at = Some(now_ms());
+        #[cfg(debug_assertions)]
+        let diagnostic_save_start = std::time::Instant::now();
         data.store.save_decision(&view)?;
+        #[cfg(debug_assertions)]
+        let diagnostic_save = diagnostic_save_start.elapsed();
+        #[cfg(debug_assertions)]
+        let diagnostic_publish_start = std::time::Instant::now();
         let pending = data.decisions.get_mut(id).unwrap();
         pending.view = view.clone();
         pending.original_input = None;
@@ -543,6 +553,22 @@ impl Core {
             }
         }
         let _ = self.events.send(StateEvent::Decision(view));
+        #[cfg(debug_assertions)]
+        if diagnostic_start.elapsed() >= Duration::from_millis(50)
+            && std::env::var("SCRIBE_DIAGNOSTIC_DECISION_LATENCY").as_deref() == Ok("1")
+        {
+            eprintln!(
+                "NFR02 core resolve ms total={} lock={} prepare={} save={} publish={}",
+                diagnostic_start.elapsed().as_millis(),
+                diagnostic_lock.as_millis(),
+                diagnostic_save_start
+                    .duration_since(diagnostic_start)
+                    .saturating_sub(diagnostic_lock)
+                    .as_millis(),
+                diagnostic_save.as_millis(),
+                diagnostic_publish_start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
