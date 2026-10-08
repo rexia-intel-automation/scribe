@@ -159,7 +159,7 @@ $configureValues = $null
 $marketplaceOutput = $null
 try {
     $script:Stage = 'locate Claude CLI'
-    $claudeCommand = Get-Command claude -ErrorAction Stop
+    $claudeCommand = Get-Command claude -CommandType Application -ErrorAction Stop
     if ($claudeCommand.CommandType -ne 'Application' -or
         [IO.Path]::GetExtension($claudeCommand.Source) -ne '.exe') {
         throw 'Claude Code native executable is unavailable.'
