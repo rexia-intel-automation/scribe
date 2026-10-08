@@ -94,6 +94,23 @@ Evidências JSON: `docs/evidence/desktop-*.json`. Artefatos locais brutos estão
 em `.artifacts/phase-3-*` na cópia D. Os testes não substituem os ensaios humanos
 de permitir/negar/expirar e três sessões reais exigidos nas Fases 4 e 6.
 
+## Arraste nativo Windows — verificação automatizada isolada
+
+Em 2026-10-08, um executável de `9c02948` (Fase 4, que contém por merge a
+correção de arraste `d4d69d0` sem alterar seu fluxo) foi aberto com o
+identificador Tauri exclusivo `com.rexia.scribe.dragtest`, conexão e histórico
+privados no diretório de teste. SHA-256 do executável:
+`35C2DC65E1FD847C0863E6EA70FEEE0BC2EEEC4B3706A770FBD9BCEC21438664`.
+O mesmo HWND de 56×56 px mudou de `(1480,408)-(1536,464)` para
+`(1498,520)-(1554,576)`, deslocamento de **+18 px X / +112 px Y**, medido com
+`GetWindowRect` antes/depois. O gesto primário foi enviado por Win32 `SendInput`
+à janela em primeiro plano; nenhum `SetWindowPos` foi usado. O processo instalado
+PID 34604 não foi iniciado, ativado nem encerrado. É evidência automatizada de
+um gesto entregue à janela Windows real, não um ensaio com mouse físico nem
+aceite humano. Instrumento e JSON bruto local:
+`.artifacts/phase-3-drag/measure-drag.ps1` e
+`.artifacts/phase-3-drag/run-20261008-002231-998/result.json`.
+
 ## Capturas para revisão visual
 
 ![Dez formas no claro, 24/40/96 px](public/phase-3/forms-light-24-40-96.png)
@@ -400,3 +417,38 @@ global da Fase 3 ou da v0.1; os relatórios anteriores foram preservados.
 O recheck independente em `docs/reviews/instalacao-local-recheck.md` confirmou
 as duas correções: regressão 1/1 e compilador sintético encerrado aos 30 s,
 com falha esperada e sem processo remanescente. Não houve achado novo no escopo.
+
+## Itens não bloqueantes do review da PR #5
+
+Registro dos sete pontos não bloqueantes do review 5450649324 (base `d4d69d0`);
+os estados abaixo descrevem esta árvore, sem reclassificar os bloqueadores.
+
+1. **Contador de pendências na Fase 3 — adiado para a Fase 4.** A Fase 3 exibe
+   estados de sessão. O contador ligado a decisões humanas pertence ao fluxo de
+   decisões da Fase 4 e não foi retroativamente tratado como requisito desta fase.
+2. **Conflito de atalho impede salvar os demais campos — adiado.** O salvamento
+   registra o atalho antes de persistir o restante; se o registro falhar, a
+   preferência inteira é rejeitada e o estado anterior permanece. Permanece a
+   oportunidade de separar o campo de atalho dos demais sem gravar configuração
+   parcialmente nesta rodada.
+3. **Poda periódica percorre passos com `json_each` — adiado como otimização.**
+   `snapshot` executa poda e o armazenamento inspeciona passos JSON para remover
+   os expirados. A manutenção ocorre nos snapshots; esta rodada não mediu custo
+   com histórico grande nem alterou o formato persistido.
+4. **Empate de prioridade pode divergir entre bandeja e UI — adiado.** A UI
+   conserva o primeiro estado de mesma prioridade na lista; o ícone da bandeja
+   usa `max_by_key`, que conserva o último empate. Em sessões simultâneas com
+   formas distintas de prioridade igual, a forma pode diferir; falta uma regra
+   de desempate única.
+5. **Rascunho de notificações pode sobrescrever mudança da bandeja — adiado.**
+   O formulário mantém o rascunho aberto enquanto o menu da bandeja pode alterar
+   `notifications`. Salvar um rascunho antigo pode restaurar o valor anterior;
+   não houve reconciliação de edição concorrente nesta fase.
+6. **Ausência de monitor primário — adiado.** O layout tenta monitores
+   disponíveis e depois o monitor primário; se ambas as APIs não retornarem um
+   monitor, responde `bridgeUnavailable`, e o `expect` no setup pode encerrar o
+   app. Não foi acrescentada posição fallback sem uma área de trabalho válida.
+7. **Página-fixture de formas no build do frontend — adiado.**
+   `app/ui/test/formas-24px.html` continua como entrada de build Vite ao lado do
+   app. Removê-la exige separar o catálogo de inspeção do frontend distribuído;
+   isso não foi feito nesta rodada.
