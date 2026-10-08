@@ -583,6 +583,11 @@ export default function App({
   const pendingCount = decisions.filter(
     (d) => d.status === "pending" && now < d.expiresAt,
   ).length;
+  const pendingLabel = t(
+    language,
+    pendingCount === 1 ? "decisionWaiting" : "decisionsWaiting",
+    { count: pendingCount },
+  );
   const problem = (error || view.error) as Message | null;
   if (view.preferences.collapsed)
     return (
@@ -643,12 +648,7 @@ export default function App({
       >
         <Gota form={form} size={56} label={t(language, form)} theme={theme} />
         {pendingCount > 0 && (
-          <span
-            className="decision-count"
-            aria-label={t(language, "decisionsWaiting", {
-              count: pendingCount,
-            })}
-          >
+          <span className="decision-count" aria-label={pendingLabel}>
             {pendingCount}
           </span>
         )}
@@ -672,9 +672,7 @@ export default function App({
             {t(language, active.length === 1 ? "summaryOne" : "summary", {
               count: active.length,
             })}
-            {pendingCount > 0 && (
-              <> · {t(language, "decisionsWaiting", { count: pendingCount })}</>
-            )}
+            {pendingCount > 0 && <> · {pendingLabel}</>}
           </p>
         </div>
         <button
@@ -700,8 +698,8 @@ export default function App({
       <div className="content">
         {decisions.length > 0 && (
           <section aria-label={t(language, "decisionsTitle")}>
-            <h2 aria-live="polite">
-              {t(language, "decisionsWaiting", { count: pendingCount })}
+            <h2 aria-live={pendingCount > 0 ? "polite" : undefined}>
+              {pendingCount > 0 ? pendingLabel : t(language, "decisionsTitle")}
             </h2>
             {decisions.map((decision) => (
               <div

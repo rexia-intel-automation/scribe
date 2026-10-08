@@ -58,6 +58,61 @@ fn unicode_questions(question_length: usize) -> Value {
 }
 
 #[tokio::test]
+async fn pending_session_action_distinguishes_questions_plans_and_permissions() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    for session in ["mcp", "native", "plan", "permission"] {
+        start(&core, session);
+    }
+    let waits = [
+        core.question("mcp", "Choose?", &["A".into(), "B".into()], 60).unwrap(),
+        core.interactive(&question_input("native", json!([native_question("Choose?", false)])), 60).unwrap(),
+        core.interactive(&plan_input("plan", "1. Inspect", "/public/plan.md"), 60).unwrap(),
+        core.permission(&json!({"hook_event_name":"PermissionRequest", "session_id":"permission", "cwd":"/public/project", "tool_name":"Bash", "tool_input":{"command":"echo public"}}).to_string().into_bytes(), 60).unwrap(),
+    ];
+    let snapshot = core.snapshot(now_ms()).unwrap();
+    for (session_id, expected) in [
+        ("mcp", "Fez uma pergunta"),
+        ("native", "Fez uma pergunta"),
+        ("plan", "Esperando sua aprovação do plano"),
+        ("permission", "Esperando sua permissão"),
+    ] {
+        let session = snapshot
+            .sessions
+            .iter()
+            .find(|s| s.id == session_id)
+            .unwrap();
+        assert_eq!(session.action, expected);
+        let decision = snapshot
+            .decisions
+            .iter()
+            .find(|d| d.session_id == session_id)
+            .unwrap();
+        core.resolve_decision(&decision.id, input(json!({"action":"terminal"})))
+            .unwrap();
+        let resolved = core.snapshot(now_ms()).unwrap();
+        assert!(!resolved
+            .decisions
+            .iter()
+            .any(|d| d.session_id == session_id && d.status == "pending"));
+        // A permission returned to the terminal is still waiting there. The
+        // question/plan overlay, however, must not outlive its pending card.
+        if session_id != "permission" {
+            assert_ne!(
+                resolved
+                    .sessions
+                    .iter()
+                    .find(|s| s.id == session_id)
+                    .unwrap()
+                    .action,
+                expected
+            );
+        }
+    }
+    drop(waits);
+}
+
+#[tokio::test]
 async fn questions_with_oversized_valid_answers_stay_in_terminal() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
