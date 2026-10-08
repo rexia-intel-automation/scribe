@@ -96,22 +96,61 @@ test -x "$SCRIBE_HELPER"
 ### Configure the paired plugin
 
 After installing and launching the app once, set `SCRIBE_HELPER` to the absolute
-helper path found above and use the native Claude Code CLI. These argument forms
-match the candidate setup script; that PowerShell script itself is Windows-only.
+helper path found above and use the native Claude Code CLI. First require a
+successful helper capability check:
+
+```sh
+"$SCRIBE_HELPER" --mcp-check
+```
+
+Continue only when its JSON reports `name` `scribe-hook`, `version` `0.1.0`,
+and `mcp_transport` `attested-stdio-v1`. This confirms the helper build can
+start; it does not prove that the desktop app is running or validate a live MCP
+call.
+
+List marketplaces and update `rexia-scribe` only if it is already present:
+
+```sh
+claude plugin marketplace list --json
+claude plugin marketplace update rexia-scribe
+```
+
+When that marketplace exists, install its plugin and update the user-scope
+installation:
+
+```sh
+claude plugin install scribe@rexia-scribe --scope user --config "client_path=$SCRIBE_HELPER"
+claude plugin update scribe@rexia-scribe --scope user
+```
+
+If it is absent, skip the marketplace update and install from the public source:
 
 ```sh
 claude plugin install scribe --marketplace rexia-intel-automation/scribe --scope user --config "client_path=$SCRIBE_HELPER"
+claude plugin update scribe@rexia-scribe --scope user
 ```
 
-To set or refresh the path on an already installed plugin, provide only the
-`client_path` JSON on standard input:
+Before configuration or restarting Claude Code, inspect `claude plugin list
+--json`. Require exactly one user-scope `scribe@rexia-scribe` entry at version
+`0.1.1`, enabled (`enabled: true`), and `folderVersion: 0.1.1` if that field is
+reported. Stop for missing, disabled, duplicate, or mismatched entries.
+
+Set or refresh only the helper path through `--values-stdin`. Python 3 is needed
+for this step to JSON-encode paths safely, including spaces and backslashes:
 
 ```sh
-printf '%s\n' "{\"client_path\":\"$SCRIBE_HELPER\"}" | claude plugin configure scribe@rexia-scribe --values-stdin
+printf '%s\n' "$SCRIBE_HELPER" | python3 -c 'import json,sys; print(json.dumps({"client_path": sys.stdin.read().rstrip("\n")}))' | claude plugin configure scribe@rexia-scribe --values-stdin
 ```
 
-These commands do not require copying the Scribe token. The plugin stores only
-the helper path; the helper reads its connection from the private profile of
-the current OS account. Restart Claude Code after setup. CLI setup on macOS and
-Linux, clean package installation, and visual app behavior remain unvalidated;
-this guide does not claim those manual acceptance results.
+The plugin stores only the helper path; the helper reads the connection from
+the private profile of the current OS account. Do not copy the Scribe token.
+Restart Claude Code after configuration. CLI setup on macOS and Linux, clean
+package installation, and visual app behavior remain unvalidated; this guide
+does not claim those manual acceptance results.
+
+For AppImage updates, close Scribe and all Claude Code sessions first. Verify
+the paired new AppImage and extract it into a new empty permanent directory.
+Launch the updated AppImage once and set `SCRIBE_HELPER` to the helper in the
+new extraction. Repeat the helper capability check, plugin version check, and
+`plugin configure` step before restarting Claude Code. Keep the old extraction
+until the new helper path is configured; then it can be removed.
