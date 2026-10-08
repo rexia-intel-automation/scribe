@@ -25,6 +25,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 pub struct Preferences {
     language: String,
     theme: String,
+    #[serde(default = "default_drop_color")]
+    drop_color: String,
     shortcut: String,
     notifications: bool,
     retention_days: u16,
@@ -40,6 +42,18 @@ pub struct Preferences {
 fn default_permission_seconds() -> u16 {
     120
 }
+fn default_drop_color() -> String {
+    "clay".into()
+}
+fn drop_rgb(color: &str) -> [u8; 3] {
+    match color {
+        "blue" => [47, 63, 146],
+        "green" => [95, 112, 80],
+        "wine" => [110, 47, 82],
+        "ochre" => [196, 145, 47],
+        _ => [217, 119, 87],
+    }
+}
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -50,6 +64,7 @@ impl Default for Preferences {
             }
             .into(),
             theme: "auto".into(),
+            drop_color: default_drop_color(),
             shortcut: if cfg!(target_os = "macos") {
                 "Super+Shift+Space"
             } else {
@@ -72,6 +87,10 @@ impl Preferences {
     fn validate(&self) -> Result<(), String> {
         if !matches!(self.language.as_str(), "en" | "pt-BR")
             || !matches!(self.theme.as_str(), "light" | "dark" | "auto")
+            || !matches!(
+                self.drop_color.as_str(),
+                "clay" | "blue" | "green" | "wine" | "ochre"
+            )
             || !(1..=365).contains(&self.retention_days)
             || !(1..=1440).contains(&self.completed_minutes)
             || !(1..=120).contains(&self.permission_seconds)
@@ -633,8 +652,14 @@ async fn set_preferences(
     update_tray(&app)?;
     view(&data)
 }
-fn icon(state: Option<SessionState>) -> tauri::image::Image<'static> {
+fn icon(state: Option<SessionState>, color: &str) -> tauri::image::Image<'static> {
     let mut bytes = vec![0; 24 * 24 * 4];
+    let [red, green, blue] = drop_rgb(color);
+    let ink = if matches!(color, "blue" | "green" | "wine") {
+        [250, 249, 245, 255]
+    } else {
+        [20, 20, 19, 255]
+    };
     for y in 0..24 {
         for x in 0..24 {
             let a = (x as f64 - 11.5) / 8.0;
@@ -671,12 +696,12 @@ fn icon(state: Option<SessionState>) -> tauri::image::Image<'static> {
             };
             if inside {
                 let i = (y * 24 + x) * 4;
-                bytes[i..i + 4].copy_from_slice(&[217, 119, 87, 255]);
+                bytes[i..i + 4].copy_from_slice(&[red, green, blue, 255]);
                 if state == Some(SessionState::Selo)
                     && ((-0.45..=-0.05).contains(&a) && (b - a - 0.45).abs() < 0.12
                         || (-0.05..=0.45).contains(&a) && (b + a - 0.35).abs() < 0.12)
                 {
-                    bytes[i..i + 4].copy_from_slice(&[20, 20, 19, 255]);
+                    bytes[i..i + 4].copy_from_slice(&ink);
                 }
             }
         }
@@ -735,7 +760,7 @@ fn update_tray(app: &AppHandle) -> Result<(), String> {
         .map(|s| s.state);
     if let Some(tray) = app.tray_by_id("scribe") {
         tray.set_menu(Some(menu)).map_err(|_| "bridgeUnavailable")?;
-        tray.set_icon(Some(icon(priority)))
+        tray.set_icon(Some(icon(priority, &p.drop_color)))
             .map_err(|_| "bridgeUnavailable")?;
     }
     Ok(())
@@ -833,7 +858,7 @@ pub fn run() {
                     .map_err(|_| "Error lock unavailable")? = Some("shortcutConflict".into());
             }
             TrayIconBuilder::with_id("scribe")
-                .icon(icon(None))
+                .icon(icon(None, &p.drop_color))
                 .tooltip("Scribe")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -1050,11 +1075,53 @@ mod tests {
         .validate()
         .is_err());
         assert!(Preferences {
+            drop_color: "#d97757".into(),
+            ..valid.clone()
+        }
+        .validate()
+        .is_err());
+        assert!(Preferences {
             y: Some(f64::INFINITY),
             ..valid
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn legacy_preferences_keep_clay_and_tray_color_does_not_encode_state() {
+        let mut legacy = serde_json::to_value(Preferences::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("dropColor");
+        let restored: Preferences = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.drop_color, "clay");
+        let states = [
+            None,
+            Some(SessionState::Respingo),
+            Some(SessionState::Gota),
+            Some(SessionState::Orbita),
+            Some(SessionState::Pena),
+            Some(SessionState::Interrogacao),
+            Some(SessionState::Ampulheta),
+            Some(SessionState::Mancha),
+            Some(SessionState::Divisao),
+            Some(SessionState::Selo),
+        ];
+        for color in ["clay", "blue", "green", "wine", "ochre"] {
+            let preferences = Preferences {
+                drop_color: color.into(),
+                ..restored.clone()
+            };
+            assert!(preferences.validate().is_ok());
+            let [r, g, b] = drop_rgb(color);
+            for state in states {
+                let image = icon(state, color);
+                assert!(image.rgba().chunks_exact(4).any(|p| p == [r, g, b, 255]));
+                assert!(image.rgba().chunks_exact(4).all(|p| p[3] == 0
+                    || p == [r, g, b, 255]
+                    || p == [20, 20, 19, 255]
+                    || p == [250, 249, 245, 255]));
+            }
+        }
     }
 
     #[test]
@@ -1065,10 +1132,12 @@ mod tests {
         write_private(&path, &Preferences::default()).unwrap();
         let next = Preferences {
             theme: "dark".into(),
+            drop_color: "blue".into(),
             ..Preferences::default()
         };
         write_private(&path, &next).unwrap();
         assert_eq!(read_json::<Preferences>(&path).unwrap().theme, "dark");
+        assert_eq!(read_json::<Preferences>(&path).unwrap().drop_color, "blue");
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
         let blocked = directory.join("blocked.json");
         fs::create_dir(&blocked).unwrap();

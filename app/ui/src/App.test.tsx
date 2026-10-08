@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import * as bridge from "./bridge";
 import { t, action } from "./i18n";
-import { priority, type View } from "./types";
+import { priority, type Preferences, type View } from "./types";
 vi.mock("./bridge", async () => {
   const actual = await vi.importActual<typeof import("./bridge")>("./bridge");
   return {
@@ -134,6 +134,79 @@ describe("session window", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(screen.getByText("Editing …/project/test.ts")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const dropColor = screen.getByLabelText("Drop color");
+    expect(
+      within(dropColor)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Clay", "Blue", "Green", "Wine", "Ochre"]);
+  });
+  it("saves the selected drop palette and restores it for a collapsed view", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    let savedView: View | undefined;
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => {
+        savedView = {
+          ...data,
+          revision: data.revision + 1,
+          preferences,
+        };
+        return savedView;
+      },
+    );
+    const app = render(<App initialView={data} />);
+    const originalForms = [...app.container.querySelectorAll("canvas")].map(
+      (canvas) => canvas.getAttribute("aria-label"),
+    );
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const dropColor = screen.getByLabelText("Cor da gota");
+    expect(
+      within(dropColor)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Terracota", "Azul", "Verde", "Vinho", "Ocre"]);
+    await user.selectOptions(dropColor, "blue");
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("blue"),
+    );
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({ dropColor: "blue" }),
+    );
+    expect(
+      [...app.container.querySelectorAll("canvas")].map((canvas) =>
+        canvas.getAttribute("aria-label"),
+      ),
+    ).toEqual(originalForms);
+    expect(savedView?.preferences.dropColor).toBe("blue");
+
+    app.unmount();
+    render(
+      <App
+        initialView={{
+          ...savedView!,
+          preferences: { ...savedView!.preferences, collapsed: true },
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("blue"),
+    );
+    expect(screen.getByRole("button", { name: "Abrir Scribe" })).toBeVisible();
+  });
+  it("normalizes an older preference snapshot without dropColor to clay", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    delete (data.preferences as Partial<Preferences>).dropColor;
+    render(<App initialView={data} />);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("clay"),
+    );
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    expect(screen.getByLabelText("Cor da gota")).toHaveValue("clay");
   });
   it("does not call clear until explicit confirmation and retains failure details", async () => {
     const user = userEvent.setup();
