@@ -54,6 +54,7 @@ export interface View {
   sessions: Session[];
   preferences: Preferences;
   error: string | null;
+  warning?: string | null;
   decisions?: Decision[];
   notificationDecisionId?: string | null;
 }

@@ -99,6 +99,35 @@ permanece em memória enquanto o cartão está pendente e é descartado ao resol
 ou expirar. Arquivos privados usam 0600/0700 no Unix e DACL do usuário no Windows.
 Planos são texto inerte na UI; o app não executa HTML nem lê planFilePath.
 
+No Windows, o histórico fica no Known Folder Local da conta, em
+`com.rexia.scribe/history`; conexão e preferências permanecem em Roaming.
+Antes de abrir SQLite, o upgrade copia o histórico antigo de Roaming a uma área
+privada no volume do destino, incluindo banco, journal, WAL, SHM e demais
+arquivos regulares. Compara manifestos SHA-256 da origem e da cópia, sincroniza
+os arquivos e publica a pasta sem substituir um destino existente. Um marcador
+privado permite retomar interrupções antes da limpeza da origem. A publicação
+verificada tem um recibo próprio antes de qualquer remoção da origem; falhas
+posteriores de limpeza geram aviso e não impedem o uso do histórico local.
+Uma origem recebida que conflita com o destino local fica preservada em uma
+pasta separada, sem mescla ou sobrescrita, com aviso para a TI. Metadados
+inválidos e mudanças durante a cópia ainda interrompem o armazenamento,
+preservando os dados e deixando as decisões no terminal.
+Se a pasta local publicada tiver sido removida, uma cópia integral verificável
+é recuperada antes de abrir o banco. Quando não existem origem, stage, tombstone
+ou marcadores de limpeza pendentes, o app inicia um histórico vazio e exibe um
+aviso; artefatos parciais ou inválidos continuam interrompendo a recuperação.
+Para apagar dados pessoais, feche o app e o harness e remova tanto a pasta Local
+quanto a Roaming do Scribe, incluindo os artefatos de migração e conflitos.
+
+Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
+corporativo, backups ou bytes remanescentes em SSD ou HD. O histórico é por
+máquina; VDI/RDS que descartam o armazenamento local no logoff descartam também
+esse histórico. Não há sincronização automática do histórico entre máquinas.
+A sincronização dos arquivos
+e a publicação com write-through no Windows não são prova de recuperação diante
+de toda falha de energia ou implementação de servidor de arquivos. O ensaio em
+perfil de domínio permanece necessário.
+
 ## Tentativas de ataque cobertas
 
 As linhas abaixo são cenários distintos, exercitados nos testes indicados. Uma
