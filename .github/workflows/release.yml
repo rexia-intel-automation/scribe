@@ -21,6 +21,9 @@ jobs:
   validate:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       source_sha: ${{ steps.version.outputs.source_sha }}
@@ -61,7 +64,7 @@ jobs:
           SOURCE_SHA: ${{ steps.version.outputs.source_sha }}
         run: |
           set -euo pipefail
-          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&event=push&status=success&per_page=100" --jq '.workflow_runs[0].id // empty')
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&branch=main&event=push&status=success&per_page=100" --jq '.workflow_runs[0].id // empty')
           test -n "$run_id"
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" --jq '.jobs' > ci-jobs.json
           jq -s -e 'add | [.[] | select(.conclusion == "success") | .name] as $names | ["dependency-audit", "native-and-plugin (windows-latest)", "native-and-plugin (macos-latest)", "native-and-plugin (ubuntu-22.04)"] | all(. as $name | $names | index($name) != null)' ci-jobs.json
@@ -121,8 +124,6 @@ jobs:
         run: node scripts/build-distribution.mjs prepare --platform ${{ matrix.platform }}
       - name: Build bundles without publishing
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         with:
           projectPath: app
           tauriScript: npm run tauri --
@@ -196,9 +197,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
           set -euo pipefail
+          remote_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)
+          test "$remote_sha" = "$SOURCE_SHA"
           files=(.artifacts/release-verified/*)
           gh release create "$RELEASE_TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Scribe $RELEASE_TAG" --notes-file .artifacts/release-verified/RELEASE-NOTES.md
           if [[ "$PRERELEASE" == true ]]; then

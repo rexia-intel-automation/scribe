@@ -47,7 +47,8 @@ existente. A saída inclui os READMEs, licença, script de configuração, rotei
 da TI, `SHA256SUMS.txt` em UTF-8/LF, metadados e notas de release.
 
 Só o job final recebe `contents: write`. Ele repete a conferência dos inputs
-antes de criar uma release nova em draft e subir os arquivos. A publicação
+e confirma que a tag remota ainda aponta para o SHA compilado antes de criar
+uma release nova em draft e subir os arquivos. A publicação
 ocorre depois de o upload terminar com sucesso. Sufixos SemVer marcam a
 versão como prerelease e não a tornam Latest; uma tag estável vira Latest.
 

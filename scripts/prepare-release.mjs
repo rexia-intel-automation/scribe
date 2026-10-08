@@ -27,7 +27,7 @@ const sourceFiles = [
 function validSemVer(value) {
   if (typeof value !== 'string' || value.includes('+')) return false;
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(value);
-  if (!match) return false;
+  if (!match || match[0] !== value) return false;
   return !match[4]?.split('.').some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith('0'));
 }
 
@@ -123,6 +123,10 @@ function expectedBundles(platform, filenames) {
 
 function checkPlatform({ inputRoot, platform, tag, version, sourceSha }) {
   const directory = join(inputRoot, `release-${platform}`);
+  const directoryStat = lstatSync(directory, { throwIfNoEntry: false });
+  if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) {
+    throw new Error(`Missing regular platform directory: ${directory}`);
+  }
   const buildMetadata = join(directory, 'BUILD-METADATA.txt');
   const sumsPath = join(directory, 'SHA256SUMS.txt');
   const metadata = parseKeyValue(strictText(buildMetadata), 'BUILD-METADATA.txt', [
@@ -161,7 +165,13 @@ function checkPlatform({ inputRoot, platform, tag, version, sourceSha }) {
 
 function releaseNotes({ tag, version, prerelease, sourceSha, artifactNames }) {
   const status = prerelease ? 'Prerelease' : 'Release';
-  return `# Scribe ${tag}\n\n${status} build from source commit \`${sourceSha}\`. These artifacts are unsigned and have not been notarized. This preparation step does not claim human acceptance or certify installation.\n\nDownload the platform assets from [GitHub Releases](https://github.com/rexia-intel-automation/scribe/releases/tag/${tag}) and verify them against [SHA256SUMS.txt](SHA256SUMS.txt) before use. Windows setup guidance is in [README.md](README.md) and [README.pt-BR.md](README.pt-BR.md).\n\nPackage version: \`${version}\`.\n\nArtifacts: ${artifactNames.join(', ')}.\n`;
+  const download = (filename) => `https://github.com/rexia-intel-automation/scribe/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(filename)}`;
+  const links = [
+    ...artifactNames.map((filename) => `[${filename}](${download(filename)})`),
+    ...['README.md', 'README.pt-BR.md', 'LICENSE', 'configure-claude-plugin.ps1', 'teste-equipe-ti.md', 'SHA256SUMS.txt']
+      .map((filename) => `[${filename}](${download(filename)})`),
+  ];
+  return `# Scribe ${tag}\n\n${status} build from source commit \`${sourceSha}\`. These artifacts are unsigned and have not been notarized. This preparation step does not claim human acceptance or certify installation.\n\nDownload the platform packages and documentation below. Verify each downloaded file against [SHA256SUMS.txt](${download('SHA256SUMS.txt')}) before use. Windows setup guidance is in [README.md](${download('README.md')}) and [README.pt-BR.md](${download('README.pt-BR.md')}).\n\nPackage version: \`${version}\`.\n\n${links.join('\n')}.\n`;
 }
 
 export function collectReleaseArtifacts({ inputRoot, outputDir, tag, sourceSha }) {
@@ -199,7 +209,8 @@ export function collectReleaseArtifacts({ inputRoot, outputDir, tag, sourceSha }
   }
   const parent = dirname(resolvedOutput);
   mkdirSync(parent, { recursive: true });
-  const staging = mkdtempSync(join(parent, `.scribe-release-${basename(resolvedOutput)}-`));
+  const stagingPrefix = `.scribe-release-${basename(resolvedOutput)}-`;
+  const staging = mkdtempSync(join(parent, stagingPrefix));
   try {
     for (const [filename, source] of byName) copyFileSync(source, join(staging, filename));
     const checksums = [...byName.keys()].sort().map((filename) => {
@@ -221,7 +232,10 @@ export function collectReleaseArtifacts({ inputRoot, outputDir, tag, sourceSha }
     }), 'utf8');
     renameSync(staging, resolvedOutput);
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
+    const resolvedStaging = resolve(staging);
+    if (dirname(resolvedStaging) === resolve(parent) && basename(resolvedStaging).startsWith(stagingPrefix)) {
+      rmSync(resolvedStaging, { recursive: true, force: true });
+    }
     throw error;
   }
   return {

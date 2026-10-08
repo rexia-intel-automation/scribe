@@ -10,11 +10,14 @@ import { createBuildPlan } from '../build-distribution.mjs';
 import { collectReleaseArtifacts, validateReleaseTag } from '../prepare-release.mjs';
 
 const sourceSha = '0123456789abcdef0123456789abcdef01234567';
-const version = '0.1.0';
+const version = JSON.parse(readFileSync(new URL('../../app/src-tauri/tauri.conf.json', import.meta.url), 'utf8')).version;
+const tag = `v${version}`;
+const versionParts = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+const differentValidTag = `v${versionParts[1]}.${versionParts[2]}.${Number(versionParts[3]) + 1}`;
 const artifactNames = {
-  windows: ['Scribe_0.1.0_x64-setup.exe', 'Scribe_0.1.0_x64_en-US.msi'],
-  macos: ['Scribe_0.1.0_universal.dmg'],
-  linux: ['scribe_0.1.0_amd64.deb', 'scribe_0.1.0_amd64.AppImage'],
+  windows: [`Scribe_${version}_x64-setup.exe`, `Scribe_${version}_x64_en-US.msi`],
+  macos: [`Scribe_${version}_universal.dmg`],
+  linux: [`scribe_${version}_amd64.deb`, `scribe_${version}_amd64.AppImage`],
 };
 
 function fixture(t) {
@@ -49,7 +52,7 @@ function collect(paths, overrides = {}) {
   return collectReleaseArtifacts({
     inputRoot: paths.inputRoot,
     outputDir: paths.outputDir,
-    tag: `v${version}`,
+    tag,
     sourceSha,
     ...overrides,
   });
@@ -67,21 +70,25 @@ test('release tag validation accepts stable and prerelease SemVer but requires e
     assert.throws(() => validateReleaseTag(tag, versions), /tag/);
   }
   assert.throws(() => validateReleaseTag('v0.1.0-beta.1', { ...versions, plugin: '0.1.0' }), /exactly match/);
+  const newlineVersions = { app: '0.1.0\n', desktop: '0.1.0\n', plugin: '0.1.0\n' };
+  assert.throws(() => validateReleaseTag('v0.1.0\n', newlineVersions), /supported SemVer/);
+  const tabVersions = { app: '0.1.0\t', desktop: '0.1.0\t', plugin: '0.1.0\t' };
+  assert.throws(() => validateReleaseTag('v0.1.0\t', tabVersions), /supported SemVer/);
 });
 
 test('validate-tag CLI reports the checked version, prerelease, and normalized source SHA', () => {
   const script = fileURLToPath(new URL('../prepare-release.mjs', import.meta.url));
-  const output = execFileSync(process.execPath, [script, 'validate-tag', '--tag', 'v0.1.0', '--source-sha', sourceSha.toUpperCase()], { encoding: 'utf8' });
+  const output = execFileSync(process.execPath, [script, 'validate-tag', '--tag', tag, '--source-sha', sourceSha.toUpperCase()], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(output), {
-    tag: 'v0.1.0', version: '0.1.0', prerelease: false, sourceSha,
+    tag, version, prerelease: version.includes('-'), sourceSha,
   });
-  assert.throws(() => execFileSync(process.execPath, [script, 'validate-tag', '--tag', 'v0.2.0', '--source-sha', sourceSha], { encoding: 'utf8', stdio: 'pipe' }));
+  assert.throws(() => execFileSync(process.execPath, [script, 'validate-tag', '--tag', differentValidTag, '--source-sha', sourceSha], { encoding: 'utf8', stdio: 'pipe' }));
 });
 
 test('collect validates all three platform manifests, copies only release inputs, and writes checksums', (t) => {
   const paths = fixture(t);
   const result = collect(paths);
-  assert.equal(result.tag, 'v0.1.0');
+  assert.equal(result.tag, tag);
   assert.equal(result.sourceSha, sourceSha);
   assert.equal(result.files.length, 10);
   for (const name of [...artifactNames.windows, ...artifactNames.macos, ...artifactNames.linux,
@@ -99,11 +106,12 @@ test('collect validates all three platform manifests, copies only release inputs
     assert.equal(digest, createHash('sha256').update(readFileSync(join(paths.outputDir, filename))).digest('hex'));
   }
   const metadata = readFileSync(join(paths.outputDir, 'BUILD-METADATA.txt'), 'utf8');
-  assert.match(metadata, /^tag=v0\.1\.0$/m);
+  assert.ok(metadata.split('\n').includes(`tag=${tag}`));
   assert.match(metadata, /^status=unsigned$/m);
   const notes = readFileSync(join(paths.outputDir, 'RELEASE-NOTES.md'), 'utf8');
   assert.match(notes, /unsigned and have not been notarized/);
   assert.match(notes, /does not claim human acceptance/);
+  assert.ok(notes.includes(`https://github.com/rexia-intel-automation/scribe/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent('SHA256SUMS.txt')}`));
   assert.throws(() => collect(paths), /already exists/);
 });
 
@@ -114,8 +122,18 @@ test('collect rejects tampered file hashes, version metadata, unsafe manifest pa
 
   const badVersion = fixture(t);
   const metadataPath = join(badVersion.inputRoot, 'release-macos', 'BUILD-METADATA.txt');
-  writeFileSync(metadataPath, readFileSync(metadataPath, 'utf8').replace('version=0.1.0', 'version=0.2.0'));
+  writeFileSync(metadataPath, readFileSync(metadataPath, 'utf8').replace(`version=${version}`, `version=${differentValidTag.slice(1)}`));
   assert.throws(() => collect(badVersion), /does not match/);
+
+  const badSourceSha = fixture(t);
+  const windowsMetadata = join(badSourceSha.inputRoot, 'release-windows', 'BUILD-METADATA.txt');
+  writeFileSync(windowsMetadata, readFileSync(windowsMetadata, 'utf8').replace(sourceSha, 'f'.repeat(40)));
+  assert.throws(() => collect(badSourceSha), /does not match/);
+
+  const badTarget = fixture(t);
+  const linuxMetadata = join(badTarget.inputRoot, 'release-linux', 'BUILD-METADATA.txt');
+  writeFileSync(linuxMetadata, readFileSync(linuxMetadata, 'utf8').replace('x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu'));
+  assert.throws(() => collect(badTarget), /does not match/);
 
   const unsafe = fixture(t);
   writeFileSync(join(unsafe.inputRoot, 'release-linux', 'SHA256SUMS.txt'), `${'0'.repeat(64)}  ../escape.deb\n`);
@@ -131,6 +149,10 @@ test('collect rejects tampered file hashes, version metadata, unsafe manifest pa
   const partial = fixture(t);
   rmSync(join(partial.inputRoot, 'release-macos', artifactNames.macos[0]));
   assert.throws(() => collect(partial), /must contain exactly/);
+
+  const missingPlatform = fixture(t);
+  rmSync(join(missingPlatform.inputRoot, 'release-macos'), { recursive: true });
+  assert.throws(() => collect(missingPlatform), /Missing regular platform directory/);
 });
 
 test('collect rejects extra/duplicate entries and malformed metadata or checksum encoding', (t) => {
