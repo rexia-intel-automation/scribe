@@ -19,6 +19,7 @@ tauri-build = { version = "=2.7.1", optional = true }
 
 [dependencies]
 scribe-hook-protocol = { path = "../hook-protocol" }
+sha2 = "=0.10.9"
 socket2 = "0.6"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.23"
@@ -42,7 +43,10 @@ sys-locale = { version = "=0.3.2", optional = true }
 notify-rust = { version = "=4.18.1", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
