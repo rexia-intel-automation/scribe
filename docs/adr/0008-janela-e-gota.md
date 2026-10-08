@@ -36,11 +36,13 @@ Os dois arquivos JSON e o banco não formam uma transação distribuída: interr
 entre gravações pode exigir recuperação na abertura, e nenhuma decisão é tomada.
 
 No Windows, o início do arraste usa `WM_NCLBUTTONDOWN` com coordenadas de tela
-empacotadas e verifica que o botão esquerdo está pressionado. O Tao 0.37.1
+empacotadas. O frontend só solicita arraste após movimento de um ponteiro
+primário com botão esquerdo; o backend exige foco. O Tao 0.37.1
 resolvido passa um ponteiro a `POINTS` nesse parâmetro. A documentação Win32
 especifica os valores x/y em `lParam`; a adaptação fica restrita ao Windows.
-O teste automatizado ainda não demonstrou deslocamento da gota, portanto este
-caminho aguarda confirmação funcional e revisão; macOS/Linux usam a API Tauri.
+Um gesto automatizado SendInput demonstrou deslocamento do HWND real no Windows
+em 2026-10-08; a evidência e seus limites estão em docs/fase-3.md. O aceite humano
+permanece pendente; macOS/Linux usam a API Tauri.
 
 Canvas2D com scheduler compartilhado, 30 desenhos/s nos tamanhos pequenos e
 60 no de 96 px. Transições de 450 ms, DPR nativo, pausa em documento oculto e
