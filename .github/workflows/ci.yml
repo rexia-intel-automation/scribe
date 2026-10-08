@@ -12,9 +12,20 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install locked frontend dependencies for audit
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Audit all frontend dependencies
+        working-directory: app
+        run: npm audit --audit-level=low
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
+      # GTK3 upstream exceptions with reachability rationale in docs/dependencias-desktop.md.
+      - run: cargo audit --file app/src-tauri/Cargo.lock --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429
   native-and-plugin:
     strategy:
       fail-fast: false
@@ -29,10 +40,39 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
         with:
           components: rustfmt, clippy
+      - name: Install Linux desktop build dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Install locked frontend dependencies
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Check frontend
+        working-directory: app
+        run: |
+          npm run lint
+          npm run format:check
+          npm run test
+          npm run build
+      - name: Browser keyboard and accessibility checks
+        if: matrix.os == 'ubuntu-22.04'
+        working-directory: app
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
       - run: cargo fmt --manifest-path app/hook-client/Cargo.toml --check
       - run: cargo clippy --manifest-path app/hook-client/Cargo.toml --locked -- -D warnings
       - run: cargo test --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
+      - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
+      - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --features desktop,tauri/custom-protocol --locked --bin scribe
+      - name: Enforce local core line coverage
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked --version 0.9.1
+          cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --locked --test core --test decisions --test interactive --test session_title --test policies --ignore-filename-regex '/tests/' --fail-under-lines 85 -- --test-threads=1
       - run: node --test scripts/verification/*.test.mjs
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs

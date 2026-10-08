@@ -32,6 +32,21 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "^(AskUserQuestion|ExitPlanMode)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${user_config.client_path}",
+            "args": [
+              "--hook",
+              "PreToolUse"
+            ],
+            "timeout": 130
+          }
+        ]
+      },
+      {
+        "matcher": "^(?!(AskUserQuestion|ExitPlanMode)$).*",
         "hooks": [
           {
             "type": "command",

@@ -1,0 +1,141 @@
+{
+  "theme": "dark",
+  "ink": [
+    20,
+    20,
+    19
+  ],
+  "clay": [
+    224,
+    133,
+    98
+  ],
+  "edge": [
+    190,
+    113,
+    83
+  ],
+  "nominalMinimum": 4.9827389531619275,
+  "samples": [
+    {
+      "form": "interrogacao",
+      "size": 24,
+      "darkest": [
+        20,
+        20,
+        19
+      ],
+      "body": [
+        204,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.658899442765375
+    },
+    {
+      "form": "interrogacao",
+      "size": 40,
+      "darkest": [
+        20,
+        19,
+        18
+      ],
+      "body": [
+        202,
+        120,
+        88
+      ],
+      "corePixelContrast": 5.601501617157353
+    },
+    {
+      "form": "interrogacao",
+      "size": 56,
+      "darkest": [
+        20,
+        19,
+        18
+      ],
+      "body": [
+        203,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.671921290061311
+    },
+    {
+      "form": "interrogacao",
+      "size": 96,
+      "darkest": [
+        20,
+        19,
+        18
+      ],
+      "body": [
+        204,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.6968162573491545
+    },
+    {
+      "form": "selo",
+      "size": 24,
+      "darkest": [
+        20,
+        20,
+        19
+      ],
+      "body": [
+        204,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.658899442765375
+    },
+    {
+      "form": "selo",
+      "size": 40,
+      "darkest": [
+        20,
+        20,
+        19
+      ],
+      "body": [
+        202,
+        120,
+        88
+      ],
+      "corePixelContrast": 5.564219196834509
+    },
+    {
+      "form": "selo",
+      "size": 56,
+      "darkest": [
+        20,
+        19,
+        18
+      ],
+      "body": [
+        203,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.671921290061311
+    },
+    {
+      "form": "selo",
+      "size": 96,
+      "darkest": [
+        20,
+        19,
+        18
+      ],
+      "body": [
+        204,
+        121,
+        89
+      ],
+      "corePixelContrast": 5.6968162573491545
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "failed-move",
+  "width": 56,
+  "height": 56,
+  "theme": "dark",
+  "alerts": [
+    "Não foi possível salvar as configurações. Verifique o acesso à pasta de configuração do Scribe."
+  ],
+  "badgeVisible": true,
+  "collapsed": true,
+  "description": "Não foi possível salvar as configurações. Verifique o acesso à pasta de configuração do Scribe. Use as setas para mover a gota para cima, para baixo ou para uma borda da tela. Enter abre o Scribe.",
+  "title": "Não foi possível salvar as configurações. Verifique o acesso à pasta de configuração do Scribe.",
+  "focusedButton": "Abrir Scribe"
+}

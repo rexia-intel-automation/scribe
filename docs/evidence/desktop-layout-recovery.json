@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-06",
+  "observationMethod": "Computer Use native Windows UI",
+  "readOnlyFailure": {
+    "fileReadOnlyRestored": true,
+    "window": {
+      "height": 784,
+      "width": 372
+    },
+    "persistedCollapsed": false
+  },
+  "keyboard": {
+    "right": {
+      "x": 1850,
+      "side": "right",
+      "y": 490
+    },
+    "logicalSize": 56,
+    "left": {
+      "persistedY": 408,
+      "x": 0,
+      "side": "left",
+      "y": 510
+    },
+    "up": {
+      "persistedY": 392,
+      "x": 0,
+      "side": "left",
+      "y": 490
+    },
+    "focusMaintained": true,
+    "scale": 1.25
+  },
+  "physicalDragConfirmed": false
+}

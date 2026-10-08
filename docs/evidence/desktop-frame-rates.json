@@ -1,0 +1,129 @@
+{
+  "rates": [
+    {
+      "size": 96,
+      "draws": 61
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 30
+    },
+    {
+      "size": 40,
+      "draws": 30
+    },
+    {
+      "size": 96,
+      "draws": 61
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    },
+    {
+      "size": 24,
+      "draws": 0
+    },
+    {
+      "size": 40,
+      "draws": 0
+    },
+    {
+      "size": 96,
+      "draws": 0
+    }
+  ],
+  "reducedMotionStopped": true
+}

@@ -7,7 +7,19 @@ no Claude Code. A v0.2 e a v0.3 ficam fora deste ciclo.
 
 - Revisões continuam até aprovação, mantendo mínimos e contexto independente.
 - Repositório: rexia-intel-automation/scribe. Marketplace: rexia-scribe.
+- Direção de produto: interface amigável para aproveitar PowerShell; expansão
+  futura para OpenCode e Codex. Integração opcional por Claude Mods em avaliação
+  após a v0.1; ver [pesquisa de Mods](claude-mods.md).
+- Em 2026-10-08, o usuário definiu uma direção para a v0.3: tornar o Scribe a
+  interface interativa da cooperação entre agentes de diferentes harness,
+  tomando o fórum Codex/Claude deste projeto como protótipo do fluxo.
+  Conversa compartilhada, tarefas, revisão cruzada, travas de recursos e decisões
+  humanas são hipóteses de produto; não são capacidades já entregues da v0.1.
 - Referências: scribe-conceito.html e ZIPs/vídeos locais. Gota em argila.
+- Em 2026-10-07, o humano autorizou instalar a compilação local e adiou a parte
+  visual, priorizando o lançamento. Instalação e desenvolvimento das decisões
+  podem prosseguir sem esse aceite; a nota G8 e os limites funcionais registrados
+  não são convertidos em aprovação. Ver ADR 0009.
 - Certificados Windows/Apple e GitHub Pages: pergunta agrupada enviada; respostas
   restantes ainda pendentes. Assinatura é opcional conforme seção 11 do prompt.
 
@@ -66,5 +78,50 @@ A Fase 0 foi aprovada na rodada 5: A9 B8 C8 D8 F8 J8. Quatorze testes passaram,
 Build Tools foi instalado; observador Rust compilou e passou seis cenários,
 com os limites descritos no ADR 0005. A Fase 1 foi aprovada na rodada 3:
 A9 B8 C8 D8 E8 F8 J8 K8. Dezoito testes Node e um Rust passaram; CI verde
-em três plataformas e auditoria de dependências. O próximo passo é a Fase 2.
-O app de produção ainda não existe e nenhuma versão está publicada.
+em três plataformas e auditoria de dependências. A Fase 2 está em implementação
+e revisão: vinte e dois testes Rust passaram no PowerShell, com 46 fixtures públicos,
+Clippy sem avisos e auditoria sem vulnerabilidades. O p95 local entre evento
+HTTP e estado gravado foi 11 ms em 32 amostras; a janela ainda não é medida.
+Primeira revisão reprovou cinco casos; correções e regressões passaram, inclusive
+o harness independente. A segunda rodada encontrou valor dotenv com espaços,
+prazo de concluídas que exigia reinício e Mancha substituída pelo silêncio.
+Os três casos foram corrigidos, com regressões para ambos os caminhos de
+higienização, redução/ampliação de prazo, falha de banco e capacidade limitada.
+A terceira rodada encontrou Authorization concatenado/escapado e caminhos
+após redirecionamento. Foi adotada omissão do restante após cabeçalho/chave
+sensível e encurtamento junto a operadores; novas regressões e os oito casos
+do harness da rodada passaram. A quarta rodada encontrou caminhos junto a
+flags de compilador e retenção de sessões/passos vencidos. As correções
+incluem limpeza ociosa e transação única para política e histórico; os oito
+testes dessa rodada passaram em verificação do construtor. Os quatro
+relatórios reprovados estão preservados.
+Cobertura de produção local 95,82%, sem código de testes. A quinta rodada
+aprovou a Fase 2 em 2026-10-06: A9 B9 C9 D9 E8 F9 I8 J8, 33 regressões
+e nove tentativas novas passaram. Ambos os CIs do commit final passaram
+em três plataformas. Falhas temporais anteriores do Windows foram registradas
+e corrigidas na execução dos testes, mantendo limites e concorrência interna.
+A Fase 3 está em verificação, usando as referências locais e a gota em argila.
+Janela Windows de produção abre e recebe fixtures públicas pelo núcleo real;
+13 testes de UI, quatro Playwright e testes de políticas/origem passaram.
+Latência nativa p95 17,46 ms; recursos e avisos GTK estão documentados em
+docs/fase-3.md para avaliação independente. A Fase 3 ainda não passou a catraca.
+Nenhuma versão está publicada; decisões e instalação limpa seguem pendentes.
+
+Em 2026-10-07, o fluxo local de decisões foi implementado e os executáveis
+na visão virtualizada do Codex foram atualizados. Permitir, negar e perguntar passaram com Claude
+real no Windows, inclusive expiração de 120 s e resposta tardia após 125 s.
+Testes locais e cobertura de 94,41% estão em docs/fase-4.md. Isto não aprova
+a Fase 4 completa: notificações, aceite humano, revisão independente e demais
+catracas de entrega continuam registradas como pendentes.
+
+Diagnóstico externo em 2026-10-07 encontrou divergência MSIX/AppData. Claude
+reparou e verificou a instalação externa. Em 2026-10-08, o instalador NSIS
+por usuário também passou um ensaio de atualização: preservou histórico e token,
+migrou hook_key e recebeu hooks HMAC reais. Primeiro uso com perfil limpo e
+desinstalação ainda exigem ensaio. A v0.1 continua em construção, sem release.
+
+A PR #5 foi integrada após revisão cruzada e CI verde nas três plataformas.
+A PR #6 continua draft: o delta de segurança, o empacotamento e títulos de
+sessão foram revisados, mas isso não aprova a fase inteira. AskUserQuestion,
+ExitPlanMode, notificações, configuração inicial e gates de entrega permanecem
+no caminho crítico; seus checks e relatórios ficam registrados nos próximos lotes.

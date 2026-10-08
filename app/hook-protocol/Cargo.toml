@@ -1,0 +1,10 @@
+[package]
+name = "scribe-hook-protocol"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+base64 = "0.23"

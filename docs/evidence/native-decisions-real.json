@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "label": "native-allow",
+      "passed": true,
+      "clickToHookMs": 106.03500000000008
+    },
+    {
+      "label": "native-deny",
+      "passed": true,
+      "clickToHookMs": 41.842899999999645
+    },
+    {
+      "label": "native-risk",
+      "passed": true,
+      "clickToHookMs": 40.30880000000025
+    },
+    {
+      "label": "real-allow-1791391181241",
+      "passed": true,
+      "realClaude": true,
+      "fileExists": true,
+      "responseMatched": true
+    },
+    {
+      "label": "real-deny-1791391187297",
+      "passed": true,
+      "realClaude": true,
+      "fileExists": false,
+      "responseMatched": true
+    },
+    {
+      "label": "real-claude-question",
+      "passed": true,
+      "realClaude": true,
+      "responseMatched": true,
+      "delayMs": 0
+    },
+    {
+      "label": "real-expire-1791391201431",
+      "passed": true,
+      "realClaude": true,
+      "fileExists": false,
+      "responseMatched": true
+    },
+    {
+      "label": "real-claude-late-question",
+      "passed": true,
+      "realClaude": true,
+      "responseMatched": true,
+      "delayMs": 125000
+    }
+  ],
+  "automatedUiClicks": true,
+  "isolatedProfile": true
+}

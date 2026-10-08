@@ -1,0 +1,46 @@
+[package]
+name = "scribe-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Local session state and authenticated HTTP server for Scribe"
+
+[[bin]]
+name = "scribe"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-opener", "dep:directories", "dep:sys-locale", "dep:notify-rust"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", optional = true }
+
+[dependencies]
+scribe-hook-protocol = { path = "../hook-protocol" }
+socket2 = "0.6"
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+base64 = "0.23"
+futures-util = "0.3"
+rand = "0.10"
+regex = "1"
+rmcp = { version = "=3.5.0", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "libsqlite3-sys"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+subtle = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time", "io-util"] }
+tokio-util = "0.7"
+tauri = { version = "=2.12.1", optional = true, features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-global-shortcut = { version = "=2.4.0", optional = true }
+tauri-plugin-single-instance = { version = "=2.5.2", optional = true }
+tauri-plugin-opener = { version = "=2.7.0", optional = true }
+directories = { version = "=6.0.0", optional = true }
+sys-locale = { version = "=0.3.2", optional = true }
+notify-rust = { version = "=4.18.1", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+
+[dev-dependencies]
+tempfile = "3"
