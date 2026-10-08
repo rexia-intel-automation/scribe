@@ -1,0 +1,53 @@
+name: AppImage inspection
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/appimage-inspect.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          github-token: ${{ github.token }}
+          run-id: 37848312699
+          pattern: release-*
+          path: .artifacts/inspect-input
+      - name: Verify all artifacts from the failed dispatch before inspection
+        run: node scripts/prepare-release.mjs collect --input-root .artifacts/inspect-input --output-dir .artifacts/inspect-verified --tag v0.1.0 --source-sha 0efee03f64bfd55b11635fb64d9ded9cd5f29867
+      - name: Inspect dependencies and FUSE without starting the desktop or opening a profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 binutils
+          appimage=("$PWD"/.artifacts/inspect-verified/*.AppImage)
+          test "${#appimage[@]}" = 1
+          chmod +x "${appimage[0]}"
+          test -e /dev/fuse && ls -l /dev/fuse || true
+          mkdir .artifacts/appimage-static
+          cd .artifacts/appimage-static
+          "${appimage[0]}" --appimage-extract > extraction.log
+          readelf -d squashfs-root/usr/bin/scribe | sed -n '/NEEDED/p'
+          LD_LIBRARY_PATH="$PWD/squashfs-root/usr/lib:$PWD/squashfs-root/usr/lib/x86_64-linux-gnu" ldd squashfs-root/usr/bin/scribe
+          file squashfs-root/AppRun
+          if head -c 2 squashfs-root/AppRun | grep -q '^#!$'; then
+            sed -n '1,160p' squashfs-root/AppRun
+          else
+            readelf -d squashfs-root/AppRun | sed -n '/NEEDED/p'
+          fi
+          grep -nE 'libwebkit|fuse|AppRun' extraction.log | head -40 || true
