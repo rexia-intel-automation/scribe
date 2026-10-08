@@ -105,7 +105,8 @@ Janela Windows de produção abre e recebe fixtures públicas pelo núcleo real;
 13 testes de UI, quatro Playwright e testes de políticas/origem passaram.
 Latência nativa p95 17,46 ms; recursos e avisos GTK estão documentados em
 docs/fase-3.md para avaliação independente. A Fase 3 ainda não passou a catraca.
-Nenhuma versão está publicada; decisões e instalação limpa seguem pendentes.
+Nesse ponto da Fase 3, nenhuma versão estava publicada; decisões e instalação
+limpa seguiam pendentes. O estado de publicação atualizado está abaixo.
 
 Em 2026-10-07, o fluxo local de decisões foi implementado e os executáveis
 na visão virtualizada do Codex foram atualizados. Permitir, negar e perguntar passaram com Claude
@@ -118,10 +119,23 @@ Diagnóstico externo em 2026-10-07 encontrou divergência MSIX/AppData. Claude
 reparou e verificou a instalação externa. Em 2026-10-08, o instalador NSIS
 por usuário também passou um ensaio de atualização: preservou histórico e token,
 migrou hook_key e recebeu hooks HMAC reais. Primeiro uso com perfil limpo e
-desinstalação ainda exigem ensaio. A v0.1 continua em construção, sem release.
+desinstalação ainda exigiam ensaio naquele momento.
 
 A PR #5 foi integrada após revisão cruzada e CI verde nas três plataformas.
-A PR #6 continua draft: o delta de segurança, o empacotamento e títulos de
-sessão foram revisados, mas isso não aprova a fase inteira. AskUserQuestion,
-ExitPlanMode, notificações, configuração inicial e gates de entrega permanecem
-no caminho crítico; seus checks e relatórios ficam registrados nos próximos lotes.
+A PR #6 foi integrada após revisão cruzada e CI verde nas três plataformas.
+Isso não aprova a fase inteira. A PR #8 documentou o ensaio de primeiro uso
+com perfil limpo e desinstalação no Windows, também com revisão e CI verdes.
+
+Em 2026-10-08, a
+[v0.1.0-beta.1](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1)
+foi publicada como prerelease Windows para avaliação pela TI, sem ser a release
+final. Os arquivos publicados e seus hashes permanecem imutáveis. Perguntas
+nativas, aprovação de planos, notificações, sessões simultâneas e os demais
+gates de entrega continuam sujeitos aos ensaios e aceites registrados.
+
+Os lotes seguintes estão separados nas PRs #7 (notificações), #9 (padrões de
+risco), #10 (paleta), #11 (distribuição multiplataforma), #12 (sugestões de
+permissão) e #13 (site bilíngue). Não estão incluídos na beta.1. Seus builds e
+checks automatizados não substituem revisão cruzada, instalação limpa nas
+plataformas correspondentes nem aceite humano. A v0.1 final continua em
+construção; os relatórios anteriores são mantidos como histórico.
