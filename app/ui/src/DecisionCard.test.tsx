@@ -66,6 +66,25 @@ function planFixture(canAllow = true): Decision {
     canAllow,
   };
 }
+function permissionUpdatesFixture(canAllow = true): Decision {
+  return {
+    ...fixture(),
+    canAllow,
+    permissionUpdates: [
+      {
+        type: "addRules",
+        destination: "userSettings",
+        rules: [{ toolName: "Bash", ruleContent: "Bash(git status)" }],
+      },
+      { type: "setMode", destination: "session", mode: "default" },
+      {
+        type: "removeRules",
+        destination: "projectSettings",
+        rules: [{ toolName: "Bash" }],
+      },
+    ],
+  };
+}
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(bridge.resolveDecision).mockResolvedValue(bridge.initial);
@@ -131,6 +150,96 @@ describe("human decision card", () => {
     expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
       action: "allow",
     });
+  });
+  it("shows literal change data and binds confirmation to the selected suggestion", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const props = {
+      language: "en" as const,
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const decision = permissionUpdatesFixture();
+    const { container, rerender } = render(
+      <DecisionCard {...props} decision={decision} />,
+    );
+    const once = screen.getByRole("radio", { name: "This call only" });
+    const addRule = screen.getByRole("radio", {
+      name: "Add permission rules · All projects",
+    });
+    const sessionMode = screen.getByRole("radio", {
+      name: "Change permission mode · This session only",
+    });
+    expect(once).toBeChecked();
+    expect(sessionMode).not.toBeChecked();
+    expect(
+      screen.queryByText("Always in this project"),
+    ).not.toBeInTheDocument();
+    await user.click(addRule);
+    expect(
+      container.querySelector(".permission-update-json"),
+    ).toHaveTextContent('"ruleContent": "Bash(git status)"');
+    expect(container.querySelector("img")).toBeNull();
+    await user.click(
+      screen.getByRole("radio", {
+        name: "Remove permission rules · Shared project settings",
+      }),
+    );
+    expect(screen.getByText(/The rule content is missing/)).toBeVisible();
+
+    await user.click(sessionMode);
+    expect(
+      screen.getByRole("button", { name: "Review change and allow" }),
+    ).toBeVisible();
+    fireEvent.keyDown(container.querySelector("article")!, { key: "a" });
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+    fireEvent.keyDown(container.querySelector("article")!, { key: "d" });
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "deny",
+    });
+    vi.mocked(bridge.resolveDecision).mockClear();
+
+    await user.click(
+      screen.getByRole("button", { name: "Review change and allow" }),
+    );
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "arm",
+      option: 1,
+    });
+    const armed = {
+      ...decision,
+      armed: true,
+      armedUpdate: 1,
+    };
+    rerender(<DecisionCard {...props} decision={armed} />);
+    expect(
+      screen.getByRole("radio", {
+        name: "Change permission mode · This session only",
+      }),
+    ).toBeChecked();
+    const confirm = screen.getByRole("button", { name: "Confirm permission" });
+    await waitFor(() => expect(confirm).toBeEnabled(), { timeout: 1500 });
+    await user.click(confirm);
+    expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
+      action: "allow",
+      option: 1,
+    });
+  });
+  it("hides suggested changes when permission details cannot be allowed", () => {
+    render(
+      <DecisionCard
+        decision={permissionUpdatesFixture(false)}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Revisar mudança e permitir" }),
+    ).not.toBeInTheDocument();
   });
   it("requires the terminal when the target is hidden and blocks the allow shortcut", async () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
