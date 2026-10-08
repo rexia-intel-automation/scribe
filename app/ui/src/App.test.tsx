@@ -74,6 +74,38 @@ function pendingDecision(id: string): Decision {
 }
 beforeEach(() => vi.clearAllMocks());
 describe("session window", () => {
+  it.each(["historyConflictPreserved", "historyCleanupPending"] as const)(
+    "keeps sessions and permission choices usable with %s",
+    async (warning) => {
+      const user = userEvent.setup();
+      const data = fixture();
+      data.warning = warning;
+      const decision = pendingDecision("public-migration-warning");
+      data.decisions = [decision];
+      vi.mocked(bridge.resolveDecision).mockResolvedValue({
+        ...data,
+        revision: 2,
+        decisions: [{ ...decision, status: "allowed", resolvedAt: Date.now() }],
+      });
+      render(<App initialView={data} />);
+      expect(screen.getByText(t("pt-BR", warning))).toHaveAttribute(
+        "role",
+        "status",
+      );
+      expect(screen.getByText("public-project")).toBeVisible();
+      await user.click(
+        screen.getByRole("button", { name: t("pt-BR", "allowOnce") }),
+      );
+      expect(bridge.resolveDecision).toHaveBeenCalledWith(decision.id, {
+        action: "allow",
+      });
+      expect(screen.getByText(t("pt-BR", warning))).toHaveAttribute(
+        "role",
+        "status",
+      );
+      expect(data.error).toBeNull();
+    },
+  );
   it("shows a custom title while keeping the project name visible", () => {
     const data = fixture();
     data.sessions[0].title = "Release prep";

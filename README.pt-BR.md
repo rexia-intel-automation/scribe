@@ -34,10 +34,16 @@ antigos não são importados nem apagados. Preserve-os antes de atualizar.
 
 No Windows, o histórico usa `%LOCALAPPDATA%\com.rexia.scribe\history`; conexão
 e preferências continuam em `%APPDATA%\com.rexia.scribe`. O upgrade migra o
-histórico antigo antes de abrir o banco. Se houver dois históricos ou a origem
-mudar durante a cópia, o Scribe preserva os dados e indica falha de armazenamento;
-responda no terminal até a TI resolver o conflito. Cópias antigas em backups ou
-no servidor de Roaming da empresa não são apagadas pelo Scribe.
+histórico antigo antes de abrir o banco. Um histórico recebido que conflita com
+o histórico local existente é preservado separadamente para a TI; o Scribe
+continua usando a cópia local e mostra um aviso. Falhas na limpeza após a
+publicação verificada também geram um aviso, mantendo o histórico local em uso.
+Mudanças durante a cópia ou metadados de migração inválidos preservam os dados e
+interrompem o armazenamento até a TI resolver a situação.
+O histórico é por máquina. Em VDI/RDS que descartam armazenamento local no
+logoff, o histórico é perdido quando esse armazenamento é descartado; confira
+a política da sua TI. Cópias antigas em backups ou no servidor de Roaming da
+empresa não são apagadas pelo Scribe.
 
 ## Teste do candidato no Windows
 

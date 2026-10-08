@@ -588,7 +588,7 @@ export default function App({
     pendingCount === 1 ? "decisionWaiting" : "decisionsWaiting",
     { count: pendingCount },
   );
-  const problem = (error || view.error) as Message | null;
+  const problem = (error || view.error || view.warning) as Message | null;
   if (view.preferences.collapsed)
     return (
       <button
@@ -728,6 +728,11 @@ export default function App({
         {(error || view.error) && (
           <p className="error" role="alert">
             {t(language, (error || view.error) as Message)}
+          </p>
+        )}
+        {view.warning && (
+          <p className="error" role="status">
+            {t(language, view.warning as Message)}
           </p>
         )}
         {!view.sessions.length && (

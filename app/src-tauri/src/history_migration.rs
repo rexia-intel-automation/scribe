@@ -9,6 +9,12 @@ use std::{
 
 const MARKER_VERSION: u32 = 1;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MigrationNotice {
+    ConflictPreserved,
+    CleanupPending,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
@@ -34,14 +40,26 @@ struct CleanupMarker {
     manifest_sha256: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PublishedMarker {
+    version: u32,
+    operation: String,
+    manifest_sha256: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Checkpoint {
     BeforeMarkerPublish,
+    AfterStageFile,
     BeforePublish,
     AfterPublish,
+    BeforePublishedMarker,
     BeforeTombstone,
     AfterTombstone,
     BeforeCleanup,
+    AfterCleanup,
+    BeforeMarkerCleanup,
 }
 
 #[cfg(test)]
@@ -66,7 +84,7 @@ fn checkpoint(_: Checkpoint) -> io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn migrate(source: &Path, destination: &Path) -> io::Result<()> {
+pub(crate) fn migrate(source: &Path, destination: &Path) -> io::Result<Option<MigrationNotice>> {
     if !source.is_absolute() || !destination.is_absolute() {
         return Err(invalid("migration paths must be absolute"));
     }
@@ -86,7 +104,7 @@ pub(crate) fn migrate(source: &Path, destination: &Path) -> io::Result<()> {
         require_directory(destination)?;
     }
     if same_path(source, destination)? {
-        return Ok(());
+        return Ok(None);
     }
     if overlaps(source, destination) {
         return Err(invalid("source and destination overlap"));
@@ -104,67 +122,236 @@ pub(crate) fn migrate(source: &Path, destination: &Path) -> io::Result<()> {
     let stage_path = destination_parent.join(format!(".scribe-history-stage-{operation}"));
     let tombstone_path = source_parent.join(format!(".scribe-history-tombstone-{operation}"));
     let cleanup_path = source_parent.join(format!(".scribe-history-cleanup-{operation}.json"));
+    let receipt_path =
+        destination_parent.join(format!(".scribe-history-published-{operation}.json"));
     let marker_exists = path_exists(&marker_path)?;
+    let marker_pending = marker_path.with_extension("pending");
+    let receipt_pending = receipt_path.with_extension("pending");
+    let pending_exists = path_exists(&marker_pending)?;
+    let receipt_exists_at_start = path_exists(&receipt_path)?;
+    let stage_exists = path_exists(&stage_path)?;
+    let tombstone_exists = path_exists(&tombstone_path)?;
+    let cleanup_exists = path_exists(&cleanup_path)?;
+    let cleanup_pending_exists = path_exists(&cleanup_path.with_extension("pending"))?;
+    let receipt_pending_exists = path_exists(&receipt_pending)?;
+
+    if path_exists(source_parent)? {
+        require_directory(source_parent)?;
+    }
+    if path_exists(destination_parent)? {
+        require_directory(destination_parent)?;
+    }
+
+    if !marker_exists && pending_exists {
+        let pending = read_marker(&marker_pending, &operation)?;
+        validate_marker(&pending, &operation)?;
+        let stage_is_valid = stage_exists && verify_tree(&stage_path, &pending.manifest).is_ok();
+        if source_exists {
+            verify_tree(source, &pending.manifest)?;
+        } else if !stage_is_valid || destination_exists {
+            return Err(invalid(
+                "orphan migration marker cannot be recovered safely",
+            ));
+        }
+        crate::private_fs::directory(destination_parent)?;
+        publish_no_replace(&marker_pending, &marker_path)?;
+    }
+
+    let marker_exists = path_exists(&marker_path)?;
+    let marker_pending_exists = path_exists(&marker_pending)?;
+    let receipt_exists = path_exists(&receipt_path)?;
+    let orphans_without_marker = stage_exists
+        || tombstone_exists
+        || cleanup_exists
+        || cleanup_pending_exists
+        || receipt_pending_exists
+        || marker_pending_exists;
+
+    if !marker_exists && receipt_exists_at_start {
+        return Err(invalid(
+            "published receipt exists without its migration marker",
+        ));
+    }
+
+    if !marker_exists && orphans_without_marker {
+        return Err(invalid("orphan history migration artifact exists"));
+    }
+
+    if !marker_exists && source_exists && destination_exists {
+        return preserve_conflict(source, &operation).map(Some);
+    }
 
     if !marker_exists && !source_exists {
-        return Ok(());
-    }
-    if !marker_exists && destination_exists {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "history destination already exists without a migration marker",
-        ));
+        return Ok(None);
     }
 
     crate::private_fs::directory(destination_parent)?;
-
-    if marker_exists {
+    if source_exists {
         crate::private_fs::directory(source_parent)?;
+    }
+
+    let marker = if marker_exists {
         let marker = read_marker(&marker_path, &operation)?;
-        if marker.version != MARKER_VERSION {
-            return Err(invalid("unsupported migration marker version"));
+        validate_marker(&marker, &operation)?;
+        marker
+    } else {
+        if !source_exists || destination_exists {
+            return Err(invalid("history migration state changed during setup"));
         }
-        validate_manifest(&marker.manifest)?;
-        if destination_exists {
-            verify_tree(destination, &marker.manifest)?;
+        let manifest = scan_tree(source)?;
+        let marker = Marker {
+            version: MARKER_VERSION,
+            operation: operation.clone(),
+            manifest,
+        };
+        write_new_json(&marker_path, &marker)?;
+        marker
+    };
+
+    let mut notice = None;
+    if receipt_exists {
+        let receipt = read_published_marker(&receipt_path, &operation)?;
+        validate_receipt(&receipt, &marker)?;
+        if !destination_exists {
+            recover_published_destination(
+                source,
+                &stage_path,
+                destination,
+                source_exists,
+                stage_exists,
+                &marker,
+            )?;
         } else {
-            if !source_exists {
-                return Err(invalid(
-                    "migration marker exists without source or destination",
-                ));
-            }
-            verify_tree(source, &marker.manifest)?;
-            publish_source(source, destination, &stage_path, &marker)?;
+            require_directory(destination)?;
         }
-        cleanup_source(source, destination, &tombstone_path, &cleanup_path, &marker)?;
-        remove_marker(&marker_path)?;
+        if source_exists && verify_tree(source, &marker.manifest).is_err() {
+            notice = Some(preserve_conflict(source, &operation)?);
+        } else if cleanup_source(source, destination, &tombstone_path, &cleanup_path, &marker)
+            .is_err()
+        {
+            notice = Some(MigrationNotice::CleanupPending);
+        }
+        return Ok(notice);
+    }
+
+    if destination_exists {
+        verify_tree(destination, &marker.manifest)?;
+    } else {
+        recover_unpublished_destination(
+            source,
+            destination,
+            &stage_path,
+            source_exists,
+            stage_exists,
+            &marker,
+        )?;
+    }
+    write_published_marker(&receipt_path, &marker)?;
+
+    if source_exists && verify_tree(source, &marker.manifest).is_err() {
+        notice = Some(preserve_conflict(source, &operation)?);
+    } else if cleanup_source(source, destination, &tombstone_path, &cleanup_path, &marker).is_err()
+    {
+        notice = Some(MigrationNotice::CleanupPending);
+    }
+    Ok(notice)
+}
+
+fn validate_marker(marker: &Marker, operation: &str) -> io::Result<()> {
+    if marker.version != MARKER_VERSION || marker.operation != operation {
+        return Err(invalid("migration marker does not match this migration"));
+    }
+    validate_manifest(&marker.manifest)
+}
+
+fn validate_receipt(receipt: &PublishedMarker, marker: &Marker) -> io::Result<()> {
+    if receipt.version != MARKER_VERSION
+        || receipt.operation != marker.operation
+        || receipt.manifest_sha256 != manifest_hash(&marker.manifest)?
+    {
+        return Err(invalid("published receipt does not match migration marker"));
+    }
+    Ok(())
+}
+
+fn write_published_marker(path: &Path, marker: &Marker) -> io::Result<()> {
+    checkpoint(Checkpoint::BeforePublishedMarker)?;
+    write_new_json(
+        path,
+        &PublishedMarker {
+            version: MARKER_VERSION,
+            operation: marker.operation.clone(),
+            manifest_sha256: manifest_hash(&marker.manifest)?,
+        },
+    )
+}
+
+fn recover_unpublished_destination(
+    source: &Path,
+    destination: &Path,
+    stage: &Path,
+    source_exists: bool,
+    stage_exists: bool,
+    marker: &Marker,
+) -> io::Result<()> {
+    let stage_valid = stage_exists && verify_tree(stage, &marker.manifest).is_ok();
+    if source_exists {
+        verify_tree(source, &marker.manifest)?;
+    }
+    if stage_valid {
+        if !source_exists {
+            publish_no_replace(stage, destination)?;
+            verify_tree(destination, &marker.manifest)?;
+            return Ok(());
+        }
+        publish_no_replace(stage, destination)?;
+        verify_tree(destination, &marker.manifest)?;
         return Ok(());
     }
-
-    // A marker can only reach this branch if it disappeared during setup.
-    if !source_exists || destination_exists {
-        return Err(invalid("history migration state changed during setup"));
+    if !source_exists {
+        return Err(invalid("no verified copy remains for migration recovery"));
     }
-    crate::private_fs::directory(source_parent)?;
-    if path_exists(&stage_path)? || path_exists(&tombstone_path)? || path_exists(&cleanup_path)? {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "unrecognized history migration artifact exists",
-        ));
-    }
+    publish_source(source, destination, stage, marker).map(|_| ())
+}
 
-    let manifest = scan_tree(source)?;
-    let marker = Marker {
-        version: MARKER_VERSION,
-        operation,
-        manifest,
-    };
-    write_new_json(&marker_path, &marker)?;
-    publish_source(source, destination, &stage_path, &marker)?;
-    verify_tree(destination, &marker.manifest)?;
-    cleanup_source(source, destination, &tombstone_path, &cleanup_path, &marker)?;
-    remove_marker(&marker_path)?;
-    Ok(())
+fn recover_published_destination(
+    source: &Path,
+    stage: &Path,
+    destination: &Path,
+    source_exists: bool,
+    stage_exists: bool,
+    marker: &Marker,
+) -> io::Result<()> {
+    let stage_valid = stage_exists && verify_tree(stage, &marker.manifest).is_ok();
+    if stage_valid {
+        publish_no_replace(stage, destination)?;
+        return Ok(());
+    }
+    if source_exists && verify_tree(source, &marker.manifest).is_ok() {
+        publish_source(source, destination, stage, marker)?;
+        return Ok(());
+    }
+    Err(invalid("published history has no verified local copy"))
+}
+
+fn preserve_conflict(source: &Path, operation: &str) -> io::Result<MigrationNotice> {
+    let parent = source
+        .parent()
+        .ok_or_else(|| invalid("source has no parent"))?;
+    require_directory(parent)?;
+    for suffix in 0u32.. {
+        let name = if suffix == 0 {
+            format!("history.conflict-{operation}")
+        } else {
+            format!("history.conflict-{operation}-{suffix}")
+        };
+        let conflict = parent.join(name);
+        if !path_exists(&conflict)? {
+            publish_no_replace(source, &conflict)?;
+            return Ok(MigrationNotice::ConflictPreserved);
+        }
+    }
+    Err(invalid("could not allocate a history conflict path"))
 }
 
 fn publish_source(
@@ -211,7 +398,7 @@ fn cleanup_source(
     }
 
     if path_exists(tombstone)? {
-        verify_tree(destination, &marker.manifest)?;
+        require_directory(destination)?;
         require_directory(tombstone)?;
         let cleanup = if path_exists(cleanup_marker_path)? {
             read_cleanup_marker(cleanup_marker_path, marker)?
@@ -233,6 +420,7 @@ fn cleanup_source(
         verify_remaining_tree(tombstone, &marker.manifest)?;
         checkpoint(Checkpoint::BeforeCleanup)?;
         remove_tree(tombstone)?;
+        checkpoint(Checkpoint::AfterCleanup)?;
     }
 
     if path_exists(cleanup_marker_path)? {
@@ -242,6 +430,7 @@ fn cleanup_source(
                 "migration cleanup marker does not match destination",
             ));
         }
+        checkpoint(Checkpoint::BeforeMarkerCleanup)?;
         remove_marker(cleanup_marker_path)?;
     }
     Ok(())
@@ -276,6 +465,7 @@ fn populate_stage(source: &Path, stage: &Path, manifest: &[Entry]) -> io::Result
         if length != entry.length || Some(copied_hash) != entry.sha256 {
             return Err(invalid("history changed while it was being copied"));
         }
+        checkpoint(Checkpoint::AfterStageFile)?;
     }
     Ok(())
 }
@@ -410,7 +600,10 @@ fn create_new_private_file(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
-fn write_new_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
+fn write_new_json<T>(path: &Path, value: &T) -> io::Result<()>
+where
+    T: Serialize + for<'de> Deserialize<'de> + PartialEq,
+{
     let bytes =
         serde_json::to_vec(value).map_err(|_| invalid("could not encode migration marker"))?;
     // An interrupted metadata write must not leave a partial authoritative marker.
@@ -418,8 +611,13 @@ fn write_new_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let pending = path.with_extension("pending");
     if path_exists(&pending)? {
         require_regular_file(&fs::symlink_metadata(&pending)?)?;
-        fs::remove_file(&pending)?;
-        sync_parent(&pending)?;
+        crate::private_fs::file(&pending)?;
+        let existing: T = serde_json::from_slice(&fs::read(&pending)?)
+            .map_err(|_| invalid("pending migration marker is invalid"))?;
+        if &existing != value {
+            return Err(invalid("pending migration marker does not match"));
+        }
+        return publish_no_replace(&pending, path);
     }
     let mut file = create_new_private_file(&pending)?;
     file.write_all(&bytes)?;
@@ -444,6 +642,23 @@ fn read_marker(path: &Path, operation: &str) -> io::Result<Marker> {
         return Err(invalid(
             "history migration marker does not match this migration",
         ));
+    }
+    Ok(marker)
+}
+
+fn read_published_marker(path: &Path, operation: &str) -> io::Result<PublishedMarker> {
+    let metadata = fs::symlink_metadata(path)?;
+    require_regular_file(&metadata)?;
+    crate::private_fs::file(path)?;
+    let marker: PublishedMarker = serde_json::from_slice(&fs::read(path)?)
+        .map_err(|_| invalid("published history marker is invalid"))?;
+    if marker.operation != operation || marker.version != MARKER_VERSION {
+        return Err(invalid(
+            "published history marker does not match this migration",
+        ));
+    }
+    if !valid_hash(&marker.manifest_sha256) {
+        return Err(invalid("published history marker hash is invalid"));
     }
     Ok(marker)
 }
@@ -883,7 +1098,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let (source, destination) = paths(&temp);
         let original_database = write_history(&source);
-        migrate(&source, &destination).unwrap();
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
         assert_eq!(fs::read(destination.join("state.db-wal")).unwrap(), b"");
         assert_eq!(
             fs::read(destination.join("state.db-shm")).unwrap(),
@@ -904,11 +1119,11 @@ mod tests {
     fn same_path_and_absent_source_are_noops_but_unmarked_destination_is_preserved() {
         let temp = TempDir::new().unwrap();
         let source = temp.path().join("missing source");
-        migrate(&source, &source).unwrap();
+        assert_eq!(migrate(&source, &source).unwrap(), None);
         let destination = temp.path().join("destination");
         fs::create_dir(&destination).unwrap();
         fs::write(destination.join("keep.txt"), b"public-existing").unwrap();
-        migrate(&source, &destination).unwrap();
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
         assert_eq!(
             fs::read(destination.join("keep.txt")).unwrap(),
             b"public-existing"
@@ -916,41 +1131,195 @@ mod tests {
     }
 
     #[test]
-    fn existing_destination_with_source_fails_without_merging() {
+    fn existing_destination_preserves_source_as_conflict_without_merging() {
         let temp = TempDir::new().unwrap();
         let (source, destination) = paths(&temp);
-        write_history(&source);
+        let original = write_history(&source);
         fs::create_dir(&destination).unwrap();
         fs::write(destination.join("keep.txt"), b"public-existing").unwrap();
         assert_eq!(
-            migrate(&source, &destination).unwrap_err().kind(),
-            io::ErrorKind::AlreadyExists
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::ConflictPreserved)
         );
-        assert!(source.join("state.db").exists());
+        assert!(!source.exists());
+        let conflict = fs::read_dir(source.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("history.conflict-")
+            })
+            .unwrap();
+        assert!(conflict.join("state.db").exists());
+        assert_eq!(fs::read(conflict.join("state.db")).unwrap(), original);
         assert_eq!(
             fs::read(destination.join("keep.txt")).unwrap(),
             b"public-existing"
         );
+    }
+
+    #[test]
+    fn source_resync_after_success_is_preserved_as_conflict() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        let original = write_history(&source);
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("resynced.db"), b"public-resynced-history").unwrap();
+
+        assert_eq!(
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::ConflictPreserved)
+        );
+        assert!(!source.exists());
+        let conflict = fs::read_dir(source.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("history.conflict-")
+            })
+            .unwrap();
+        assert_eq!(
+            fs::read(conflict.join("resynced.db")).unwrap(),
+            b"public-resynced-history"
+        );
+        assert_eq!(fs::read(destination.join("state.db")).unwrap(), original);
+    }
+
+    #[test]
+    fn published_history_stays_openable_when_cleanup_waits_and_database_changes() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        let original = write_history(&source);
+        fail_once(Checkpoint::AfterTombstone);
+        assert_eq!(
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::CleanupPending)
+        );
+        assert!(destination.join("state.db").exists());
+
+        let connection = Connection::open(destination.join("state.db")).unwrap();
+        connection
+            .execute(
+                "INSERT INTO events(value) VALUES ('public-after-restart')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let current = fs::read(destination.join("state.db")).unwrap();
+        assert_ne!(current, original);
+
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
+        assert!(!source.exists());
+        let reopened = Connection::open(destination.join("state.db")).unwrap();
+        let count: i64 = reopened
+            .query_row("SELECT count(*) FROM events", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn orphan_stage_without_marker_fails_closed_and_preserves_files() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        write_history(&source);
+        let operation = operation_id(&source, &destination);
+        let stage = destination
+            .parent()
+            .unwrap()
+            .join(format!(".scribe-history-stage-{operation}"));
+        fs::create_dir(&stage).unwrap();
+        fs::write(stage.join("keep.txt"), b"public-orphan-stage").unwrap();
+
+        assert!(migrate(&source, &destination).is_err());
+        assert!(!destination.exists());
+        assert!(source.join("state.db").exists());
+        assert_eq!(
+            fs::read(stage.join("keep.txt")).unwrap(),
+            b"public-orphan-stage"
+        );
+    }
+
+    #[test]
+    fn orphan_tombstone_and_pending_markers_fail_closed() {
+        for artifact_kind in ["tombstone", "cleanup", "cleanup-pending", "receipt-pending"] {
+            let temp = TempDir::new().unwrap();
+            let (source, destination) = paths(&temp);
+            let original = write_history(&source);
+            let operation = operation_id(&source, &destination);
+            let artifact = match artifact_kind {
+                "tombstone" => source
+                    .parent()
+                    .unwrap()
+                    .join(format!(".scribe-history-tombstone-{operation}")),
+                "cleanup" => source
+                    .parent()
+                    .unwrap()
+                    .join(format!(".scribe-history-cleanup-{operation}.json")),
+                "cleanup-pending" => source
+                    .parent()
+                    .unwrap()
+                    .join(format!(".scribe-history-cleanup-{operation}.pending")),
+                "receipt-pending" => destination
+                    .parent()
+                    .unwrap()
+                    .join(format!(".scribe-history-published-{operation}.pending")),
+                _ => unreachable!(),
+            };
+            if artifact_kind == "tombstone" {
+                fs::create_dir(&artifact).unwrap();
+                fs::write(artifact.join("keep.txt"), b"public-orphan").unwrap();
+            } else {
+                fs::write(&artifact, b"public-orphan").unwrap();
+            }
+
+            assert!(migrate(&source, &destination).is_err(), "{artifact_kind}");
+            assert!(!destination.exists());
+            assert_eq!(fs::read(source.join("state.db")).unwrap(), original);
+            assert!(artifact.exists());
+        }
     }
 
     #[test]
     fn resumes_at_each_publication_and_cleanup_checkpoint() {
         for point in [
             Checkpoint::BeforeMarkerPublish,
+            Checkpoint::AfterStageFile,
             Checkpoint::BeforePublish,
             Checkpoint::AfterPublish,
+            Checkpoint::BeforePublishedMarker,
             Checkpoint::BeforeTombstone,
             Checkpoint::AfterTombstone,
             Checkpoint::BeforeCleanup,
+            Checkpoint::AfterCleanup,
+            Checkpoint::BeforeMarkerCleanup,
         ] {
             let temp = TempDir::new().unwrap();
             let (source, destination) = paths(&temp);
             let original_database = write_history(&source);
             fail_once(point);
-            assert!(
-                migrate(&source, &destination).is_err(),
-                "checkpoint {point:?}"
-            );
+            let interrupted = migrate(&source, &destination);
+            if matches!(
+                point,
+                Checkpoint::BeforeTombstone
+                    | Checkpoint::AfterTombstone
+                    | Checkpoint::BeforeCleanup
+                    | Checkpoint::AfterCleanup
+                    | Checkpoint::BeforeMarkerCleanup
+            ) {
+                assert_eq!(
+                    interrupted.unwrap(),
+                    Some(MigrationNotice::CleanupPending),
+                    "{point:?}"
+                );
+            } else {
+                assert!(interrupted.is_err(), "checkpoint {point:?}");
+            }
             migrate(&source, &destination).unwrap();
             assert_history(&destination, &original_database);
             assert!(!source.exists());
@@ -971,9 +1340,10 @@ mod tests {
             .join(format!(".scribe-history-migration-{operation}.json"));
         assert!(!marker.exists());
         fs::write(marker.with_extension("pending"), b"{").unwrap();
-        migrate(&source, &destination).unwrap();
-        assert_history(&destination, &original);
-        assert!(!source.exists());
+        assert!(migrate(&source, &destination).is_err());
+        assert!(!destination.exists());
+        assert!(source.join("state.db").exists());
+        assert_eq!(fs::read(source.join("state.db")).unwrap(), original);
     }
 
     #[test]
@@ -1010,7 +1380,10 @@ mod tests {
             let (source, destination) = paths(&temp);
             let original = write_history(&source);
             fail_once(Checkpoint::BeforeCleanup);
-            assert!(migrate(&source, &destination).is_err());
+            assert_eq!(
+                migrate(&source, &destination).unwrap(),
+                Some(MigrationNotice::CleanupPending)
+            );
             let operation = operation_id(&source, &destination);
             let tombstone = source
                 .parent()
@@ -1019,7 +1392,10 @@ mod tests {
             fs::remove_file(tombstone.join("state.db-wal")).unwrap();
             if change {
                 fs::write(tombstone.join("new.txt"), b"public-new-content").unwrap();
-                assert!(migrate(&source, &destination).is_err());
+                assert_eq!(
+                    migrate(&source, &destination).unwrap(),
+                    Some(MigrationNotice::CleanupPending)
+                );
                 assert_eq!(
                     fs::read(tombstone.join("new.txt")).unwrap(),
                     b"public-new-content"
@@ -1097,5 +1473,76 @@ mod tests {
         drop(_cleanup);
         assert!(!junction.exists());
         assert_eq!(fs::read(target.join("keep.txt")).unwrap(), b"public-target");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_junction_parents_for_stage_and_tombstone_paths() {
+        use std::process::Command;
+
+        struct JunctionCleanup(PathBuf);
+        impl Drop for JunctionCleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir(&self.0);
+            }
+        }
+
+        fn create_junction(path: &Path, target: &Path) -> JunctionCleanup {
+            let quote = |path: &Path| format!("'{}'", path.to_string_lossy().replace('\'', "''"));
+            let command = format!(
+                "New-Item -ItemType Junction -Path {} -Target {} -ErrorAction Stop | Out-Null",
+                quote(path),
+                quote(target)
+            );
+            let output = Command::new("powershell.exe")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &command])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "could not create synthetic junction: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let metadata = fs::symlink_metadata(path).unwrap();
+            assert_ne!(metadata.file_attributes() & 0x400, 0);
+            JunctionCleanup(path.to_path_buf())
+        }
+
+        // The destination's parent controls where the stage and final directory
+        // would be published. It must not redirect either path through a junction.
+        let temp = TempDir::new().unwrap();
+        let source_parent = temp.path().join("source-parent");
+        fs::create_dir(&source_parent).unwrap();
+        let source = source_parent.join("history");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("state.db"), b"public-source").unwrap();
+        let stage_target = temp.path().join("stage-target");
+        fs::create_dir(&stage_target).unwrap();
+        let destination_parent = temp.path().join("stage-parent-link");
+        let _destination_parent = create_junction(&destination_parent, &stage_target);
+        let destination = destination_parent.join("history");
+        assert!(migrate(&source, &destination).is_err());
+        assert!(source.join("state.db").exists());
+        assert!(!destination.exists());
+        assert!(fs::read_dir(&stage_target).unwrap().next().is_none());
+
+        // The source's parent controls the tombstone rename. Reject it before
+        // publishing the destination or moving any source data.
+        let second = TempDir::new().unwrap();
+        let source_target = second.path().join("source-target");
+        let source_real = source_target.join("history");
+        fs::create_dir_all(&source_real).unwrap();
+        fs::write(source_real.join("state.db"), b"public-source").unwrap();
+        let source_parent_link = second.path().join("source-parent-link");
+        let _source_parent = create_junction(&source_parent_link, &source_target);
+        let source = source_parent_link.join("history");
+        let destination = second.path().join("destination");
+        assert!(migrate(&source, &destination).is_err());
+        assert!(!destination.exists());
+        assert_eq!(
+            fs::read(source_real.join("state.db")).unwrap(),
+            b"public-source"
+        );
+        assert!(source_parent_link.exists());
     }
 }

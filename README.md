@@ -34,10 +34,14 @@ before upgrading.
 
 On Windows, history uses `%LOCALAPPDATA%\com.rexia.scribe\history`; connection
 and preferences stay in `%APPDATA%\com.rexia.scribe`. The upgrade migrates old
-history before opening SQLite. If both histories exist or the source changes
-during copying, Scribe preserves data and reports storage failure; answer in the
-terminal until IT resolves the conflict. Old backups and corporate Roaming
-server copies are not deleted by Scribe.
+history before opening SQLite. Incoming history that conflicts with an existing
+local history is preserved separately for IT; Scribe keeps using the local copy
+and displays a notice. Cleanup failures after verified publication also display
+a notice while local history stays usable. Changes during copying or invalid
+migration metadata preserve the data and stop storage until IT resolves them.
+History is per machine. In VDI/RDS environments that discard local storage at
+logoff, history is lost when that storage is discarded; confirm your IT policy.
+Old backups and corporate Roaming server copies are not deleted by Scribe.
 
 ## Windows candidate test
 

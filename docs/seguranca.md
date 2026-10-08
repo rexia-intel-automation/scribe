@@ -105,12 +105,19 @@ Antes de abrir SQLite, o upgrade copia o histórico antigo de Roaming a uma áre
 privada no volume do destino, incluindo banco, journal, WAL, SHM e demais
 arquivos regulares. Compara manifestos SHA-256 da origem e da cópia, sincroniza
 os arquivos e publica a pasta sem substituir um destino existente. Um marcador
-privado permite retomar interrupções antes da limpeza da origem. Conflitos ou
-mudanças na origem interrompem o armazenamento, preservando os dados e deixando
-as decisões no terminal. A migração não mescla dois históricos.
+privado permite retomar interrupções antes da limpeza da origem. A publicação
+verificada tem um recibo próprio antes de qualquer remoção da origem; falhas
+posteriores de limpeza geram aviso e não impedem o uso do histórico local.
+Uma origem recebida que conflita com o destino local fica preservada em uma
+pasta separada, sem mescla ou sobrescrita, com aviso para a TI. Metadados
+inválidos e mudanças durante a cópia ainda interrompem o armazenamento,
+preservando os dados e deixando as decisões no terminal.
 
 Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
-corporativo, backups ou bytes remanescentes em SSD. A sincronização dos arquivos
+corporativo, backups ou bytes remanescentes em SSD ou HD. O histórico é por
+máquina; VDI/RDS que descartam o armazenamento local no logoff descartam também
+esse histórico. Não há sincronização automática do histórico entre máquinas.
+A sincronização dos arquivos
 e a publicação com write-through no Windows não são prova de recuperação diante
 de toda falha de energia ou implementação de servidor de arquivos. O ensaio em
 perfil de domínio permanece necessário.
