@@ -655,7 +655,10 @@ export default function App({
         {problem && (
           <span className="collapsed-error">
             <span aria-hidden="true">!</span>
-            <span className="sr-only" role="alert">
+            <span
+              className="sr-only"
+              role={error || view.error ? "alert" : "status"}
+            >
               {t(language, problem)}
             </span>
           </span>

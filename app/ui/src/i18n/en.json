@@ -87,6 +87,7 @@
   "storageUnavailable": "History could not be opened. Check access to the Scribe data folder and restart the app.",
   "historyConflictPreserved": "The incoming history was preserved separately. Scribe is using this machine's local history; your IT team can review the other copy.",
   "historyCleanupPending": "Local history is in use. An older copy could not be removed; cleanup will be retried when Scribe restarts.",
+  "historyReset": "The local history folder was removed and no recoverable copy was found. Scribe has started a new history on this computer.",
   "configUnavailable": "Settings could not be saved. Check access to the Scribe configuration folder.",
   "invalidPreferences": "Check the port, history durations and shortcut, then try again.",
   "bridgeUnavailable": "Scribe could not refresh the sessions. Try again.",

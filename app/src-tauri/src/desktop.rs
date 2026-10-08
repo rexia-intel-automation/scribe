@@ -262,6 +262,9 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
                                 crate::history_migration::MigrationNotice::CleanupPending => {
                                     "historyCleanupPending"
                                 }
+                                crate::history_migration::MigrationNotice::HistoryReset => {
+                                    "historyReset"
+                                }
                             }
                             .into()
                         });

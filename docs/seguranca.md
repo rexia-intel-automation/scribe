@@ -112,6 +112,12 @@ Uma origem recebida que conflita com o destino local fica preservada em uma
 pasta separada, sem mescla ou sobrescrita, com aviso para a TI. Metadados
 inválidos e mudanças durante a cópia ainda interrompem o armazenamento,
 preservando os dados e deixando as decisões no terminal.
+Se a pasta local publicada tiver sido removida, uma cópia integral verificável
+é recuperada antes de abrir o banco. Quando não existem origem, stage, tombstone
+ou marcadores de limpeza pendentes, o app inicia um histórico vazio e exibe um
+aviso; artefatos parciais ou inválidos continuam interrompendo a recuperação.
+Para apagar dados pessoais, feche o app e o harness e remova tanto a pasta Local
+quanto a Roaming do Scribe, incluindo os artefatos de migração e conflitos.
 
 Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
 corporativo, backups ou bytes remanescentes em SSD ou HD. O histórico é por

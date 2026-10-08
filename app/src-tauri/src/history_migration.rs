@@ -13,6 +13,7 @@ const MARKER_VERSION: u32 = 1;
 pub(crate) enum MigrationNotice {
     ConflictPreserved,
     CleanupPending,
+    HistoryReset,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -213,14 +214,17 @@ pub(crate) fn migrate(source: &Path, destination: &Path) -> io::Result<Option<Mi
         let receipt = read_published_marker(&receipt_path, &operation)?;
         validate_receipt(&receipt, &marker)?;
         if !destination_exists {
-            recover_published_destination(
+            if recover_published_destination(
                 source,
-                &stage_path,
                 destination,
                 source_exists,
                 stage_exists,
+                tombstone_exists,
                 &marker,
-            )?;
+            )? {
+                create_private_directory(destination)?;
+                return Ok(Some(MigrationNotice::HistoryReset));
+            }
         } else {
             require_directory(destination)?;
         }
@@ -316,20 +320,53 @@ fn recover_unpublished_destination(
 
 fn recover_published_destination(
     source: &Path,
-    stage: &Path,
     destination: &Path,
     source_exists: bool,
     stage_exists: bool,
+    tombstone_exists: bool,
     marker: &Marker,
-) -> io::Result<()> {
-    let stage_valid = stage_exists && verify_tree(stage, &marker.manifest).is_ok();
+) -> io::Result<bool> {
+    let operation = &marker.operation;
+    let stage = destination
+        .parent()
+        .ok_or_else(|| invalid("destination has no parent"))?
+        .join(format!(".scribe-history-stage-{operation}"));
+    let tombstone = source
+        .parent()
+        .ok_or_else(|| invalid("source has no parent"))?
+        .join(format!(".scribe-history-tombstone-{operation}"));
+    let cleanup_marker = tombstone
+        .parent()
+        .ok_or_else(|| invalid("tombstone has no parent"))?
+        .join(format!(".scribe-history-cleanup-{operation}.json"));
+    let cleanup_pending = cleanup_marker.with_extension("pending");
+    let stage_valid = stage_exists && verify_tree(&stage, &marker.manifest).is_ok();
+    if path_exists(&cleanup_pending)? {
+        return Err(invalid("migration cleanup marker is incomplete"));
+    }
+    if tombstone_exists {
+        require_directory(&tombstone)?;
+        verify_tree(&tombstone, &marker.manifest)?;
+        if path_exists(&cleanup_marker)? {
+            let cleanup = read_cleanup_marker(&cleanup_marker, marker)?;
+            if cleanup.manifest_sha256 != manifest_hash(&marker.manifest)? {
+                return Err(invalid("migration cleanup marker does not match tombstone"));
+            }
+        }
+        publish_no_replace(&tombstone, destination)?;
+        verify_tree(destination, &marker.manifest)?;
+        return Ok(false);
+    }
     if stage_valid {
-        publish_no_replace(stage, destination)?;
-        return Ok(());
+        publish_no_replace(&stage, destination)?;
+        return Ok(false);
     }
     if source_exists && verify_tree(source, &marker.manifest).is_ok() {
-        publish_source(source, destination, stage, marker)?;
-        return Ok(());
+        publish_source(source, destination, &stage, marker)?;
+        return Ok(false);
+    }
+    if !source_exists && !stage_exists && !path_exists(&cleanup_marker)? {
+        return Ok(true);
     }
     Err(invalid("published history has no verified local copy"))
 }
@@ -1221,6 +1258,66 @@ mod tests {
             .query_row("SELECT count(*) FROM events", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn missing_published_history_resets_once_when_all_verified_copies_are_gone() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        write_history(&source);
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
+        fs::remove_dir_all(&destination).unwrap();
+
+        assert_eq!(
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::HistoryReset)
+        );
+        assert!(destination.is_dir());
+        assert!(fs::read_dir(&destination).unwrap().next().is_none());
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
+    }
+
+    #[test]
+    fn missing_published_history_recovers_verified_tombstone() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        let original = write_history(&source);
+        fail_once(Checkpoint::AfterTombstone);
+        assert_eq!(
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::CleanupPending)
+        );
+        fs::remove_dir_all(&destination).unwrap();
+
+        assert_eq!(migrate(&source, &destination).unwrap(), None);
+        assert_history(&destination, &original);
+        assert!(!source.exists());
+    }
+
+    #[test]
+    fn missing_published_history_does_not_hide_invalid_tombstone() {
+        let temp = TempDir::new().unwrap();
+        let (source, destination) = paths(&temp);
+        write_history(&source);
+        fail_once(Checkpoint::AfterTombstone);
+        assert_eq!(
+            migrate(&source, &destination).unwrap(),
+            Some(MigrationNotice::CleanupPending)
+        );
+        fs::remove_dir_all(&destination).unwrap();
+        let operation = operation_id(&source, &destination);
+        let tombstone = source
+            .parent()
+            .unwrap()
+            .join(format!(".scribe-history-tombstone-{operation}"));
+        fs::write(tombstone.join("state.db"), b"public-corrupt-tombstone").unwrap();
+
+        assert!(migrate(&source, &destination).is_err());
+        assert!(!destination.exists());
+        assert_eq!(
+            fs::read(tombstone.join("state.db")).unwrap(),
+            b"public-corrupt-tombstone"
+        );
     }
 
     #[test]

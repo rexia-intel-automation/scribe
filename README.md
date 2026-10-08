@@ -143,16 +143,21 @@ non-interactive mode is not the test path for interactive AskUserQuestion
 prompts. Follow the
 [IT test guide](docs/teste-equipe-ti.md), also included as the downloaded
 `teste-equipe-ti.md`, and record failures without including
-tokens, secrets, or the contents of `%APPDATA%\com.rexia.scribe`.
+tokens, secrets, or the contents of either Scribe data folder.
 
 ### Update and uninstall
 
 Close Scribe from its tray menu and run the candidate installer to update. The
 previous beta upgrade test preserved history and credentials; the candidate
 update still needs its own validation. Uninstall through **Settings →
-Apps → Scribe**; this removes the app while keeping its profile in
-`%APPDATA%\com.rexia.scribe`. To remove personal history too, close the app and
-remove that profile explicitly. Reinstalling after removing `connection.json`
+Apps → Scribe**; this removes the app while keeping configuration in
+`%APPDATA%\com.rexia.scribe` and local history in
+`%LOCALAPPDATA%\com.rexia.scribe`. To remove personal data too, close Scribe and
+all Claude Code sessions, then explicitly remove **both** folders. This includes
+local migration receipts and preserved Roaming conflict or cleanup copies.
+Older corporate backups and server copies require your IT team's retention
+procedure; deleting these folders does not erase those copies or disk remnants.
+Reinstalling after removing `connection.json`
 creates new credentials: run the configuration script again. After updating
 Scribe, run the configuration script again to refresh the helper path stored by
 the plugin.
