@@ -418,11 +418,14 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     let Ok(text) = response
         .body_mut()
         .with_config()
-        .limit(8192)
+        .limit(8193)
         .read_to_string()
     else {
         return;
     };
+    if text.len() > 8192 {
+        return;
+    }
     if !scribe_hook_protocol::verify(
         &config.hook_key,
         &[
