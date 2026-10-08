@@ -20,6 +20,7 @@ vi.mock("./bridge", async () => {
     savePreferences: vi.fn(),
     toggle: vi.fn(),
     move: vi.fn(),
+    drag: vi.fn(),
     clearHistory: vi.fn(),
   };
 });
@@ -288,6 +289,55 @@ describe("session window", () => {
     expect(bridge.move).toHaveBeenCalledWith("ArrowLeft");
     expect(bridge.toggle).not.toHaveBeenCalled();
     expect(drop).toHaveFocus();
+  });
+  it("starts drag only for primary pointer gestures, including pen and touch", () => {
+    const data = fixture();
+    data.preferences.collapsed = true;
+    render(<App initialView={data} />);
+    const drop = screen.getByRole("button", { name: "Abrir Scribe" });
+    drop.setPointerCapture = vi.fn();
+    vi.mocked(bridge.drag).mockResolvedValue();
+
+    fireEvent.pointerDown(drop, {
+      button: 0,
+      isPrimary: false,
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(drop, {
+      isPrimary: false,
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 10,
+    });
+    expect(bridge.drag).not.toHaveBeenCalled();
+
+    for (const [pointerId, pointerType] of [
+      [2, "mouse"],
+      [3, "pen"],
+      [4, "touch"],
+    ] as const) {
+      fireEvent.pointerDown(drop, {
+        button: 0,
+        isPrimary: true,
+        pointerId,
+        pointerType,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(drop, {
+        isPrimary: true,
+        pointerId,
+        pointerType,
+        clientX: 20,
+        clientY: 10,
+      });
+      expect(bridge.drag).toHaveBeenCalledTimes(pointerId - 1);
+      fireEvent.pointerUp(drop, { isPrimary: true, pointerId, pointerType });
+    }
   });
   it("clears a transient toggle error after recovery and reopening", async () => {
     const user = userEvent.setup();

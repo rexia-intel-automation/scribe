@@ -155,7 +155,7 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
     let mut preferences = read_json::<Preferences>(&prefs_path)
         .filter(|p| p.validate().is_ok())
         .unwrap_or_default();
-    if std::env::args_os().skip(1).any(|arg| arg == "--open") {
+    if has_open_arg(std::env::args_os().skip(1)) {
         preferences.collapsed = false;
     }
     let mut error = None;
@@ -235,6 +235,10 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
         view_revision: Mutex::new(0),
         saving: tokio::sync::Mutex::new(()),
     })
+}
+
+fn has_open_arg(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
+    args.into_iter().any(|arg| arg == "--open")
 }
 fn local_url(url: &tauri::Url) -> bool {
     url.scheme() == "tauri" && url.host_str() == Some("localhost")
@@ -446,18 +450,15 @@ fn start_drag(window: WebviewWindow) -> Result<(), String> {
         use windows_sys::Win32::{
             Foundation::POINT,
             UI::{
-                Input::KeyboardAndMouse::{GetAsyncKeyState, ReleaseCapture, VK_LBUTTON},
+                Input::KeyboardAndMouse::ReleaseCapture,
                 WindowsAndMessaging::{GetCursorPos, PostMessageW, HTCAPTION, WM_NCLBUTTONDOWN},
             },
         };
         let mut cursor = POINT { x: 0, y: 0 };
         let handle = window.hwnd().map_err(|_| "bridgeUnavailable")?.0;
         // WM_NCLBUTTONDOWN takes packed screen coordinates, never a POINTS pointer.
-        // The left button must still be held when the webview hands off its drag.
         unsafe {
-            if GetAsyncKeyState(i32::from(VK_LBUTTON)) & (0x8000u16 as i16) == 0
-                || GetCursorPos(&mut cursor) == 0
-            {
+            if GetCursorPos(&mut cursor) == 0 {
                 return Err("bridgeUnavailable".into());
             }
             ReleaseCapture();
@@ -906,6 +907,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cold_launch_recognizes_the_hook_open_argument() {
+        assert!(has_open_arg([std::ffi::OsString::from("--open")]));
+        assert!(!has_open_arg([std::ffi::OsString::from("--show")]));
+    }
 
     #[cfg(windows)]
     #[test]

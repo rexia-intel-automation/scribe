@@ -433,7 +433,7 @@ export default function App({
           }
         }}
         onPointerDown={(event) => {
-          if (event.button === 0) {
+          if (event.isPrimary && event.button === 0) {
             dragStart.current = { x: event.clientX, y: event.clientY };
             event.currentTarget.setPointerCapture(event.pointerId);
           }
@@ -441,6 +441,7 @@ export default function App({
         onPointerMove={(event) => {
           const start = dragStart.current;
           if (
+            event.isPrimary &&
             start &&
             Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4
           ) {
@@ -448,8 +449,8 @@ export default function App({
             void bridge.drag().catch(fail);
           }
         }}
-        onPointerUp={() => {
-          if (dragStart.current) {
+        onPointerUp={(event) => {
+          if (event.isPrimary && dragStart.current) {
             dragStart.current = null;
             void toggle();
           }
