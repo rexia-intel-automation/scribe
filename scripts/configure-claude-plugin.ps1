@@ -153,6 +153,7 @@ $script:TimedOut = $false
 $script:FailureExitCode = $null
 $script:FailureReason = $null
 $script:ClaudeExecutable = $null
+$script:ExpectedPluginVersion = '0.1.1'
 $connectionText = $null
 $connection = $null
 $configureValues = $null
@@ -227,6 +228,17 @@ try {
     $marketplaceOutput = $null
     $marketplaceEntries = $null
 
+    if ($existingMarketplace) {
+        $script:Stage = 'marketplace update'
+        $marketplaceUpdateExitCode = Invoke-ClaudeCli -Arguments @(
+            'plugin', 'marketplace', 'update', 'rexia-scribe'
+        ) -InputText $null
+        if ($marketplaceUpdateExitCode -ne 0) {
+            $script:FailureExitCode = $marketplaceUpdateExitCode
+            throw 'Marketplace update failed.'
+        }
+    }
+
     $installArguments = @('plugin', 'install')
     if ($existingMarketplace) {
         $installArguments += 'scribe@rexia-scribe'
@@ -244,6 +256,90 @@ try {
     if ($installExitCode -ne 0) {
         $script:FailureExitCode = $installExitCode
         throw 'Plugin install failed.'
+    }
+
+    $script:Stage = 'plugin update'
+    $pluginUpdateExitCode = Invoke-ClaudeCli -Arguments @(
+        'plugin', 'update', 'scribe@rexia-scribe', '--scope', 'user'
+    ) -InputText $null
+    if ($pluginUpdateExitCode -ne 0) {
+        $script:FailureExitCode = $pluginUpdateExitCode
+        throw 'Plugin update failed.'
+    }
+
+    $script:Stage = 'plugin version check'
+    $pluginListResult = Invoke-ClaudeCli -Arguments @(
+        'plugin', 'list', '--json'
+    ) -InputText $null -CaptureOutput
+    if ($pluginListResult.ExitCode -ne 0) {
+        $script:FailureExitCode = $pluginListResult.ExitCode
+        throw 'Plugin list failed.'
+    }
+
+    try {
+        # Wrapping preserves the JSON array shape for zero- and one-row results
+        # in both Windows PowerShell 5.1 and PowerShell 7.
+        $null = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $pluginListResult.Output -ErrorAction Stop
+        $pluginListEnvelope = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject ('{"plugins":' + $pluginListResult.Output + '}') -ErrorAction Stop
+        $pluginListProperty = $pluginListEnvelope.PSObject.Properties['plugins']
+        if ($null -eq $pluginListProperty -or $pluginListProperty.Value -isnot [array]) {
+            throw 'Invalid plugin list shape.'
+        }
+
+        $matchingPlugins = @()
+        foreach ($pluginEntry in $pluginListProperty.Value) {
+            if ($null -eq $pluginEntry -or $pluginEntry -isnot [pscustomobject]) {
+                throw 'Invalid plugin list entry.'
+            }
+            $idProperty = $pluginEntry.PSObject.Properties['id']
+            $versionProperty = $pluginEntry.PSObject.Properties['version']
+            $scopeProperty = $pluginEntry.PSObject.Properties['scope']
+            $enabledProperty = $pluginEntry.PSObject.Properties['enabled']
+            if ($null -eq $idProperty -or $idProperty.Value -isnot [string] -or
+                $null -eq $versionProperty -or $versionProperty.Value -isnot [string] -or
+                $null -eq $scopeProperty -or $scopeProperty.Value -isnot [string] -or
+                $null -eq $enabledProperty -or $enabledProperty.Value -isnot [bool]) {
+                throw 'Invalid plugin list entry fields.'
+            }
+            if ($idProperty.Value -ceq 'scribe@rexia-scribe' -and $scopeProperty.Value -ceq 'user') {
+                $matchingPlugins += $pluginEntry
+            }
+        }
+
+        if ($matchingPlugins.Count -gt 1) {
+            $script:FailureReason = 'Claude Code reports multiple user-scope Scribe plugins. Resolve the duplicate plugin entries and retry.'
+            throw 'Plugin list is ambiguous.'
+        }
+        if ($matchingPlugins.Count -ne 1) {
+            $script:FailureReason = "The configured marketplace did not provide plugin version $script:ExpectedPluginVersion. Update the marketplace and retry."
+            throw 'Required Scribe plugin version is unavailable.'
+        }
+
+        $installedPlugin = $matchingPlugins[0]
+        $installedVersionProperty = $installedPlugin.PSObject.Properties['version']
+        $installedEnabledProperty = $installedPlugin.PSObject.Properties['enabled']
+        $folderVersionProperty = $installedPlugin.PSObject.Properties['folderVersion']
+        if ($installedVersionProperty.Value -cne $script:ExpectedPluginVersion -or
+            $installedEnabledProperty.Value -ne $true -or
+            ($null -ne $folderVersionProperty -and
+                ($folderVersionProperty.Value -isnot [string] -or
+                    $folderVersionProperty.Value -cne $script:ExpectedPluginVersion))) {
+            $script:FailureReason = "The configured marketplace did not provide an enabled Scribe plugin at version $script:ExpectedPluginVersion. Update the marketplace and retry."
+            throw 'Required Scribe plugin version is unavailable.'
+        }
+    }
+    catch {
+        if ($null -eq $script:FailureReason) {
+            $script:FailureReason = 'Claude Code did not provide a valid plugin list. Update the marketplace and retry.'
+        }
+        throw 'Plugin version verification failed.'
+    }
+    finally {
+        $pluginListEnvelope = $null
+        $pluginListProperty = $null
+        $matchingPlugins = $null
+        $installedPlugin = $null
+        $pluginListResult = $null
     }
 
     $configureValues = [ordered]@{

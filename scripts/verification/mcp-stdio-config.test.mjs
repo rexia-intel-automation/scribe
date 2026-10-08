@@ -24,8 +24,22 @@ test('Scribe MCP uses the configured native helper over stdio without HTTP crede
 });
 
 test('configuration script validates the independent helper key and configures only client_path', async () => {
-  const source = await read('scripts/configure-claude-plugin.ps1');
+  const [source, manifestText] = await Promise.all([
+    read('scripts/configure-claude-plugin.ps1'),
+    read('plugins/scribe/.claude-plugin/plugin.json'),
+  ]);
+  const manifest = JSON.parse(manifestText);
+  const expectedVersion = source.match(/\$script:ExpectedPluginVersion\s*=\s*'([^']+)'/);
   const configBlock = source.match(/\$configureValues = \[ordered\]@\{([\s\S]*?)\n    \} \| (?:Microsoft\.PowerShell\.Utility\\)?ConvertTo-Json/);
+  assert.ok(expectedVersion, 'the onboarding script pins the required plugin version');
+  assert.equal(expectedVersion[1], manifest.version, 'the required plugin version matches the manifest');
+  assert.match(source, /'plugin', 'marketplace', 'update', 'rexia-scribe'/);
+  assert.match(source, /'plugin', 'update', 'scribe@rexia-scribe', '--scope', 'user'/);
+  assert.match(source, /'plugin', 'list', '--json'/);
+  assert.match(source, /WaitForExit\(120000\)/);
+  assert.match(source, /plugin version check/);
+  assert.match(source, /ConvertFrom-Json -InputObject \$pluginListResult\.Output -ErrorAction Stop/);
+  assert.match(source, /ConvertFrom-Json -InputObject \('\{"plugins":' \+ \$pluginListResult\.Output \+ '\}'\)/);
   assert.ok(configBlock, 'configuration JSON block is present');
   assert.match(source, /\[IO\.Path\]::Combine\(\$env:LOCALAPPDATA, 'Scribe\\scribe-hook\.exe'\)/);
   assert.match(source, /\$hookKeyProperty\.Value -notmatch '\^\[A-Za-z0-9_-\]\{32,128\}\$'/);
