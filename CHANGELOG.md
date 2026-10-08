@@ -4,6 +4,14 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ## [Não lançado]
 
+### Corrigido
+
+- Listagem de ferramentas MCP por stdio e HTTP inclui `ttlMs: 0` e
+  `cacheScope: "private"`, evitando a rejeição de `tools/list` observada no
+  Claude Code 2.1.294. Mantém a negociação `2025-11-25` e as definições de
+  `scribe_ask` e `scribe_report`. Smoke com a CLI real usa perfil temporário
+  sem login; instalação e sessões interativas ainda precisam de ensaio.
+
 ### Adicionado
 
 - Driver HTTP local com até 32 conexões, prazo de 2 segundos para cabeçalhos,

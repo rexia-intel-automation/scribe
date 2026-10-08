@@ -87,6 +87,9 @@ jobs:
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs
       - name: Install authoritative manifest validator
-        run: npm install --global @anthropic-ai/claude-code@2.1.289
+        run: npm install --global @anthropic-ai/claude-code@2.1.294
+      - name: Smoke-test isolated Claude MCP discovery
+        if: matrix.os == 'windows-latest'
+        run: node scripts/verification/claude-mcp-discovery-smoke.mjs
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/scribe

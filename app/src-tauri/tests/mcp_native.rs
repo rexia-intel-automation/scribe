@@ -120,6 +120,8 @@ async fn helper_discovers_offline_recovers_and_keeps_pending_question_concurrent
         .send(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
         .await;
     let listed = helper.reply(2).await;
+    assert_eq!(listed["result"]["ttlMs"], 0);
+    assert_eq!(listed["result"]["cacheScope"], "private");
     assert_eq!(
         listed["result"]["tools"],
         serde_json::from_str::<Value>(scribe_hook_protocol::MCP_TOOLS).unwrap()
