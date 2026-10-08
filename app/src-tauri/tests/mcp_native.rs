@@ -210,6 +210,7 @@ async fn modern_client_without_initialize_discovers_and_forwards_calls() {
         .await;
     let offline = helper.reply(2).await;
     assert_eq!(offline["result"]["isError"], true);
+    assert_eq!(offline["result"]["resultType"], "complete");
     assert!(!offline.to_string().contains(TOKEN));
 
     let core = Core::open(&temp.path().join("modern state.db"), scribe_core::now_ms()).unwrap();
@@ -227,7 +228,9 @@ async fn modern_client_without_initialize_discovers_and_forwards_calls() {
         .send(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
             "_meta":meta,"name":"scribe_report","arguments":{"session_id":"public-modern-session","text":"PUBLIC MODERN RECOVERED"}}}))
         .await;
-    assert_ne!(helper.reply(3).await["result"]["isError"], true);
+    let recovered = helper.reply(3).await;
+    assert_ne!(recovered["result"]["isError"], true);
+    assert_eq!(recovered["result"]["resultType"], "complete");
     assert!(core.snapshot(scribe_core::now_ms()).unwrap().sessions[0]
         .steps
         .iter()
@@ -256,7 +259,9 @@ async fn modern_client_without_initialize_discovers_and_forwards_calls() {
         .send(json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
             "_meta":meta,"name":"scribe_report","arguments":{"session_id":"public-modern-session","text":"PUBLIC MODERN CONCURRENT"}}}))
         .await;
-    assert_ne!(helper.reply(5).await["result"]["isError"], true);
+    let concurrent = helper.reply(5).await;
+    assert_ne!(concurrent["result"]["isError"], true);
+    assert_eq!(concurrent["result"]["resultType"], "complete");
     assert!(core.snapshot(scribe_core::now_ms()).unwrap().sessions[0]
         .steps
         .iter()
@@ -268,6 +273,7 @@ async fn modern_client_without_initialize_discovers_and_forwards_calls() {
     .unwrap();
     let answered = helper.reply(4).await;
     assert_ne!(answered["result"]["isError"], true);
+    assert_eq!(answered["result"]["resultType"], "complete");
     let answer: Value =
         serde_json::from_str(answered["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(answer["answer"], "B");

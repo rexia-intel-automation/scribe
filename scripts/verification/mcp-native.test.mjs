@@ -146,7 +146,7 @@ test('modern MCP client skips initialize and forwards attested tools/call withou
       assert.equal(call.params._meta, undefined);
       assert.equal(call.params.name, 'scribe_report');
       assert.equal(call.params.arguments.text, 'PUBLIC CONTENT');
-      const result = JSON.stringify({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
+      const result = JSON.stringify({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: '{"ok":true}' }], structuredContent: { ok: true } } });
       res.writeHead(200, { 'content-type': 'application/json', 'x-scribe-proof': sign(['mcp-response', req.headers['x-scribe-nonce'], fresh, '200', result]) }); res.end(result);
     }
   }, 'modern');
@@ -156,7 +156,7 @@ test('modern MCP client skips initialize and forwards attested tools/call withou
   assert.deepEqual(listed.result.tools.map(tool => tool.name).sort(), ['scribe_ask', 'scribe_report']);
   f.send({ ...report, id: 2, params: { ...report.params, _meta: modernMeta } });
   const response = await f.reply(2);
-  assert.deepEqual(response.result, { content: [{ type: 'text', text: '{"ok":true}' }] });
+  assert.deepEqual(response.result, { resultType: 'complete', content: [{ type: 'text', text: '{"ok":true}' }], structuredContent: { ok: true } });
   assert.equal(calls, 1); assert.equal(connections, 1);
   await f.finish();
 });
