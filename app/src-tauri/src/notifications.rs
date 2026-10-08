@@ -1,4 +1,4 @@
-//! Notifications contain a project label only. Activation opens a live card;
+//! Notifications contain a session/project label only. Activation opens a live card;
 //! it never carries a decision action or credentials.
 use crate::Decision;
 use std::{
@@ -62,6 +62,11 @@ impl Notifications {
 pub(crate) fn body(project: &str, template: &str) -> String {
     // The project was sanitized by the core; keep OS previews small and omit
     // paths, commands, question/plan text and answers.
+    let project = if crate::sanitize::ambiguous_text(project) {
+        "Scribe"
+    } else {
+        project
+    };
     let project: String = project.chars().take(80).collect();
     template.replace("{project}", &project)
 }
@@ -131,6 +136,7 @@ mod tests {
         assert!(preview.contains("demo"));
         assert!(!preview.contains(&decision.target));
         assert!(body("demo", "{project} needs a response").contains("needs a response"));
+        assert_eq!(body("demo\u{202e}hidden", "{project}"), "Scribe");
         assert_eq!(
             escape_markup("<a href='x'>A&B</a>"),
             "&lt;a href='x'&gt;A&amp;B&lt;/a&gt;"
