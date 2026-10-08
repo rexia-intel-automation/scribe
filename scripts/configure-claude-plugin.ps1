@@ -129,7 +129,7 @@ function Test-ScribeMcpHelper {
             return $false
         }
 
-        $capability = ConvertFrom-Json -InputObject $capturedStdout -ErrorAction Stop
+        $capability = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $capturedStdout -ErrorAction Stop
         $nameProperty = $capability.PSObject.Properties['name']
         $versionProperty = $capability.PSObject.Properties['version']
         $transportProperty = $capability.PSObject.Properties['mcp_transport']
@@ -181,7 +181,7 @@ try {
     }
 
     $connectionText = [IO.File]::ReadAllText($connectionPath)
-    $connection = ConvertFrom-Json -InputObject $connectionText -ErrorAction Stop
+    $connection = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $connectionText -ErrorAction Stop
     $portProperty = $connection.PSObject.Properties['port']
     $hookKeyProperty = $connection.PSObject.Properties['hook_key']
     $tokenProperty = $connection.PSObject.Properties['token']
@@ -212,7 +212,7 @@ try {
         throw 'Marketplace list failed.'
     }
 
-    $marketplaceOutput = ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    $marketplaceOutput = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
     if ($marketplaceOutput -is [array]) {
         $marketplaceEntries = $marketplaceOutput
     }
@@ -248,7 +248,7 @@ try {
 
     $configureValues = [ordered]@{
         client_path = $helperPath
-    } | ConvertTo-Json -Compress
+    } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
 
     $script:Stage = 'plugin configure'
     $configureExitCode = Invoke-ClaudeCli -Arguments @(
