@@ -220,6 +220,95 @@ a {
   overflow: auto;
   font-size: 12px;
 }
+.decision-plan-title {
+  margin: 10px 0 6px;
+  font-weight: 700;
+}
+.decision-plan-path {
+  margin: 4px 0 8px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  color: var(--secundario);
+  font-size: 12px;
+}
+.decision-plan-body {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  text-align: left;
+}
+.native-questions {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.native-question {
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--linha);
+  border-radius: 9px;
+}
+.native-question legend {
+  padding: 0 4px;
+  font-weight: 700;
+}
+.native-question-prompt,
+.native-question-instruction {
+  margin: 4px 0 8px;
+  text-align: left;
+}
+.native-question-instruction,
+.native-option-description {
+  color: var(--secundario);
+  font-size: 12px;
+}
+.native-options {
+  display: grid;
+  gap: 8px;
+}
+.native-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.native-option input {
+  margin: 3px 0 0;
+}
+.native-option-label,
+.native-option-description {
+  display: block;
+}
+.native-free-answer {
+  margin-top: 2px;
+}
+.native-answer-wrap {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  text-align: left;
+}
+.native-answer-wrap textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px;
+  resize: vertical;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: var(--papel);
+  color: var(--tinta);
+  font: inherit;
+}
+.native-question-error {
+  margin: 4px 0;
+  text-align: left;
+}
 .decision-actions {
   display: flex;
   flex-wrap: wrap;

@@ -28,6 +28,44 @@ function fixture(): Decision {
     resolvedAt: null,
   };
 }
+function nativeQuestionFixture(): Decision {
+  return {
+    ...fixture(),
+    kind: "nativeQuestion",
+    question: null,
+    nativeQuestions: [
+      {
+        header: "Runtime",
+        question: "Which runtime should this use?",
+        options: [
+          { label: "Node", description: "Use the Node runtime." },
+          { label: "Bun", description: "Use the Bun runtime." },
+        ],
+        multiSelect: false,
+      },
+      {
+        header: "Checks",
+        question: "Which checks should run?",
+        options: [
+          { label: "Lint", description: "Check formatting and rules." },
+          { label: "Tests", description: "Run the project tests." },
+        ],
+        multiSelect: true,
+      },
+    ],
+  };
+}
+function planFixture(canAllow = true): Decision {
+  return {
+    ...fixture(),
+    kind: "plan",
+    tool: null,
+    question: null,
+    target: "# Plan\n\nReview <img src=x onerror=alert(1)> as text.",
+    planFilePath: "C:\\work\\plan.md",
+    canAllow,
+  };
+}
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(bridge.resolveDecision).mockResolvedValue(bridge.initial);
@@ -171,6 +209,253 @@ describe("human decision card", () => {
     await user.click(screen.getByRole("button", { name: "B" }));
     expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
       option: 1,
+    });
+  });
+  it("collects answers for every native question without preselecting an option", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <DecisionCard
+        decision={nativeQuestionFixture()}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    const send = screen.getByRole("button", { name: "Enviar respostas" });
+    expect(send).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Node/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Lint/ })).not.toBeChecked();
+    expect(screen.getByText("Use the Node runtime.")).toBeVisible();
+    expect(
+      (
+        await axe.run(container, {
+          rules: { "color-contrast": { enabled: false } },
+        })
+      ).violations,
+    ).toEqual([]);
+
+    await user.click(screen.getByRole("radio", { name: /Node/ }));
+    expect(send).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Tests/ }));
+    expect(send).toBeEnabled();
+    await user.click(send);
+
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "answer",
+      answers: [{ options: [0] }, { options: [1] }],
+    });
+  });
+  it("submits explicit native free text as text without selected option indexes", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={{
+          ...nativeQuestionFixture(),
+          nativeQuestions: [nativeQuestionFixture().nativeQuestions![0]],
+        }}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Send answers" })).toBeDisabled();
+    await user.click(
+      screen.getByRole("radio", { name: "Answer in your own words" }),
+    );
+    const answer = screen.getByRole("textbox", { name: "Your answer" });
+    expect(answer).toHaveAttribute("maxLength", "200");
+    await user.type(answer, "Use Deno");
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "answer",
+      answers: [{ options: [], text: "Use Deno" }],
+    });
+  });
+  it("keeps a multi-select free answer exclusive from option indexes", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={nativeQuestionFixture()}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("radio", { name: /Node/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Tests/ }));
+    await user.click(
+      screen.getAllByRole("checkbox", {
+        name: "Answer in your own words",
+      })[0],
+    );
+    expect(screen.getByRole("checkbox", { name: /Tests/ })).not.toBeChecked();
+    await user.type(
+      screen.getByRole("textbox", { name: "Your answer" }),
+      "Run smoke tests",
+    );
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "answer",
+      answers: [{ options: [0] }, { options: [], text: "Run smoke tests" }],
+    });
+  });
+  it("lets either question switch from free text to an option and drops the text", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={nativeQuestionFixture()}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    await user.click(
+      screen.getAllByRole("radio", { name: "Answer in your own words" })[0],
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Your answer" }),
+      "Custom runtime",
+    );
+    await user.click(screen.getByRole("radio", { name: /Bun/ }));
+    expect(screen.queryByRole("textbox", { name: "Your answer" })).toBeNull();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Answer in your own words" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Your answer" }),
+      "Run security checks",
+    );
+    await user.click(screen.getByRole("checkbox", { name: /Lint/ }));
+    expect(screen.queryByRole("textbox", { name: "Your answer" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "answer",
+      answers: [{ options: [1] }, { options: [0] }],
+    });
+  });
+  it("resets native answers when the decision ID changes", async () => {
+    const user = userEvent.setup();
+    const props = {
+      language: "en" as const,
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const first = nativeQuestionFixture();
+    const { rerender } = render(<DecisionCard {...props} decision={first} />);
+    await user.click(screen.getByRole("radio", { name: /Node/ }));
+    rerender(
+      <DecisionCard
+        {...props}
+        decision={{ ...nativeQuestionFixture(), id: "another-decision" }}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: /Node/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Send answers" })).toBeDisabled();
+  });
+  it("does not send native answers when canAllow is false", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={{ ...nativeQuestionFixture(), canAllow: false }}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("radio", { name: /Node/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Tests/ }));
+    expect(screen.getByRole("button", { name: "Send answers" })).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: "Answer in terminal" }),
+    );
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "terminal",
+    });
+  });
+  it("renders a plan as inert text and supports approval, denial, and terminal actions", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const { container } = render(
+      <DecisionCard
+        decision={planFixture()}
+        language="pt-BR"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/C:\\work\\plan\.md/)).toBeVisible();
+    expect(screen.getByText(/Review <img src=x/)).toBeVisible();
+    expect(container.querySelector("img")).toBeNull();
+    const feedback = screen.getByRole("textbox", {
+      name: "Sugestão para o plano (opcional)",
+    });
+    expect(feedback).toHaveAttribute("maxLength", "200");
+    await user.type(feedback, "Add a validation step");
+    fireEvent.keyDown(container.querySelector("article")!, { key: "a" });
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Aprovar plano" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "allow",
+    });
+  });
+  it("hides plan approval when canAllow is false", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={planFixture(false)}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Approve plan" })).toBeNull();
+    await user.type(
+      screen.getByRole("textbox", { name: "Feedback for the plan (optional)" }),
+      "Add a rollback step",
+    );
+    expect(
+      screen.getByRole("button", { name: "Continue in terminal" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Continue planning" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "deny",
+      message: "Add a rollback step",
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Continue in terminal" }),
+    );
+    expect(bridge.resolveDecision).toHaveBeenLastCalledWith("public", {
+      action: "terminal",
+    });
+  });
+  it("omits plan feedback when the continue-planning text is blank", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionCard
+        decision={planFixture()}
+        language="en"
+        now={now}
+        receive={vi.fn()}
+        fail={vi.fn()}
+      />,
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Feedback for the plan (optional)" }),
+      "   ",
+    );
+    await user.click(screen.getByRole("button", { name: "Continue planning" }));
+    expect(bridge.resolveDecision).toHaveBeenCalledWith("public", {
+      action: "deny",
     });
   });
   it("prevents repeated submissions and reports bridge failure", async () => {

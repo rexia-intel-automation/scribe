@@ -1,5 +1,6 @@
 //! Scribe's local session core. Original hook payloads never enter persistence.
 mod decisions;
+mod interactive;
 mod mcp;
 pub use decisions::{Decision, DecisionInput, DecisionWait};
 mod model;
@@ -101,6 +102,7 @@ impl Core {
                         tool_key: None,
                         deadline: None,
                         armed_at: None,
+                        original_input: None,
                     },
                 )
             })
@@ -259,7 +261,12 @@ impl Core {
                     hook.tool_name.as_deref(),
                     Some("Edit" | "Write" | "NotebookEdit")
                 );
-                session.state = if editing {
+                session.state = if matches!(
+                    hook.tool_name.as_deref(),
+                    Some("AskUserQuestion" | "ExitPlanMode")
+                ) {
+                    SessionState::Interrogacao
+                } else if editing {
                     SessionState::Pena
                 } else {
                     SessionState::Orbita
@@ -354,7 +361,7 @@ impl Core {
                     .filter(|d| {
                         d.view.session_id == hook.session_id
                             && d.view.status == "pending"
-                            && d.view.kind == "permission"
+                            && d.tool_key.is_some()
                             && (hook.tool_use_id.is_some() && d.tool_use_id == hook.tool_use_id
                                 || d.tool_use_id.is_none()
                                     && d.tool_key.is_some()

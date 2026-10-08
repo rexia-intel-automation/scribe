@@ -375,11 +375,25 @@ async fn health() -> Json<serde_json::Value> {
 }
 
 async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: Bytes) -> Response {
-    if event == "PermissionRequest" {
+    let interactive = event == "PreToolUse"
+        && serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .is_some_and(|v| {
+                matches!(
+                    v["tool_name"].as_str(),
+                    Some("AskUserQuestion" | "ExitPlanMode")
+                )
+            });
+    if event == "PermissionRequest" || interactive {
         let core = state.core.clone();
-        let wait =
-            tokio::task::spawn_blocking(move || core.permission(&body, core.permission_seconds()))
-                .await;
+        let wait = tokio::task::spawn_blocking(move || {
+            if interactive {
+                core.interactive(&body, 120)
+            } else {
+                core.permission(&body, core.permission_seconds())
+            }
+        })
+        .await;
         return match wait {
             Ok(Ok(wait)) => {
                 tokio::select! {

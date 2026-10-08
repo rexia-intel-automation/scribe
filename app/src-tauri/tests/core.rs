@@ -777,6 +777,144 @@ struct Reply {
     body: String,
 }
 
+#[tokio::test]
+async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decision() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    for (tool, original, choice, terminal) in [
+        (
+            "AskUserQuestion",
+            json!({"questions":[{"question":"Choose public option?", "header":"Choice", "options":[{"label":"A","description":"First"},{"label":"B","description":"Second"}]}]}),
+            json!({"action":"answer","answers":[{"options":[1]}]}),
+            false,
+        ),
+        (
+            "ExitPlanMode",
+            json!({"plan":"1. Inspect\n2. Test", "planFilePath":"/public/plan.md"}),
+            json!({"action":"allow"}),
+            false,
+        ),
+        (
+            "ExitPlanMode",
+            json!({"plan":"1. Inspect", "planFilePath":"/public/plan.md"}),
+            json!({"action":"terminal"}),
+            true,
+        ),
+    ] {
+        apply(&core, payload("SessionStart"), scribe_core::now_ms());
+        let body = json!({"hook_event_name":"PreToolUse", "session_id":"public-session", "cwd":"/public/project", "tool_name":tool,"tool_input":original}).to_string();
+        let nonce = format!("{:032x}", rand::random::<u128>());
+        assert_eq!(
+            raw_request(
+                port,
+                "invalid",
+                "GET",
+                &format!("/v1/hooks/challenge/{nonce}"),
+                "",
+                ""
+            )
+            .await
+            .code,
+            204
+        );
+        let proof = scribe_hook_protocol::sign(
+            HOOK_KEY,
+            &[b"request", nonce.as_bytes(), b"PreToolUse", body.as_bytes()],
+        );
+        let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+        let asking = tokio::spawn(async move {
+            raw_request(
+                port,
+                "invalid",
+                "POST",
+                "/v1/hooks/PreToolUse",
+                &headers,
+                &body,
+            )
+            .await
+        });
+        let pending = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(decision) = core
+                    .snapshot(scribe_core::now_ms())
+                    .unwrap()
+                    .decisions
+                    .into_iter()
+                    .find(|d| d.status == "pending")
+                {
+                    break decision;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!asking.is_finished(), "native hook must await human input");
+        let path = format!("/v1/decisions/{}", pending.id);
+        assert_eq!(
+            request(port, TOKEN, "POST", &path, "", &choice.to_string())
+                .await
+                .code,
+            403
+        );
+        assert_eq!(
+            request(
+                port,
+                TOKEN,
+                "POST",
+                &path,
+                &format!("X-Scribe-UI: {}\r\n", server.ui_token()),
+                &choice.to_string()
+            )
+            .await
+            .code,
+            204
+        );
+        let result = asking.await.unwrap();
+        if terminal {
+            assert_eq!(result.code, 204);
+            assert!(result.body.is_empty());
+        } else {
+            assert_eq!(result.code, 200);
+            let proof = result
+                .headers
+                .lines()
+                .find_map(|line| {
+                    let (key, value) = line.split_once(':')?;
+                    key.eq_ignore_ascii_case("x-scribe-proof")
+                        .then(|| value.trim())
+                })
+                .unwrap();
+            assert!(scribe_hook_protocol::verify(
+                HOOK_KEY,
+                &[
+                    b"response",
+                    nonce.as_bytes(),
+                    b"PreToolUse",
+                    b"200",
+                    result.body.as_bytes()
+                ],
+                proof
+            ));
+            let output: Value = serde_json::from_str(&result.body).unwrap();
+            assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "allow");
+            let updated = &output["hookSpecificOutput"]["updatedInput"];
+            if tool == "AskUserQuestion" {
+                assert_eq!(updated["questions"], original["questions"]);
+                assert_eq!(updated["answers"]["Choose public option?"], "B");
+            } else {
+                assert_eq!(*updated, original);
+            }
+        }
+    }
+    let reply = request(port, TOKEN, "POST", "/v1/hooks/PreToolUse", "", &json!({"hook_event_name":"PreToolUse", "session_id":"public-session", "cwd":"/public/project","tool_name":"Bash","tool_input":{"command":"echo public"}}).to_string()).await;
+    assert_eq!(reply.code, 204, "ordinary tools remain observational");
+}
+
 async fn request(
     port: u16,
     token: &str,

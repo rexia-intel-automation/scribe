@@ -23,6 +23,10 @@ pub struct Decision {
     pub target: String,
     pub question: Option<String>,
     pub options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub native_questions: Vec<crate::interactive::NativeQuestion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_file_path: Option<String>,
     pub risk: bool,
     #[serde(default)]
     pub can_allow: bool,
@@ -40,6 +44,7 @@ pub struct DecisionInput {
     pub action: Option<String>,
     pub option: Option<usize>,
     pub message: Option<String>,
+    pub answers: Option<Vec<crate::interactive::NativeAnswer>>,
 }
 
 pub(crate) struct Pending {
@@ -49,6 +54,7 @@ pub(crate) struct Pending {
     pub tool_key: Option<String>,
     pub deadline: Option<tokio::time::Instant>,
     pub armed_at: Option<tokio::time::Instant>,
+    pub original_input: Option<Value>,
 }
 
 /// Dropping a disconnected request invalidates its card immediately.
@@ -156,6 +162,8 @@ impl Core {
             target: display_target,
             question: None,
             options: vec![],
+            native_questions: vec![],
+            plan_file_path: None,
             risk: !can_allow || RISK.is_match(&raw_target),
             can_allow,
             armed: false,
@@ -169,6 +177,7 @@ impl Core {
             hook.tool_use_id,
             tool_key,
             Duration::from_secs(seconds),
+            None,
         )
     }
 
@@ -214,6 +223,8 @@ impl Core {
                 target: String::new(),
                 question: Some(sanitize::redact(question)),
                 options: options.iter().map(|s| sanitize::redact(s)).collect(),
+                native_questions: vec![],
+                plan_file_path: None,
                 risk: false,
                 can_allow: false,
                 armed: false,
@@ -225,6 +236,55 @@ impl Core {
             None,
             None,
             Duration::from_secs(seconds),
+            None,
+        )
+    }
+
+    /// Only native interactive tools wait here; ordinary PreToolUse stays observational.
+    pub fn interactive(&self, body: &[u8], seconds: u64) -> Result<DecisionWait> {
+        let hook: Hook = serde_json::from_slice(body)?;
+        if !hook.valid("PreToolUse") || !(1..=600).contains(&seconds) {
+            return Err("Invalid interactive hook".into());
+        }
+        let (kind, native_questions, target, plan_file_path) = match hook.tool_name.as_deref() {
+            Some("AskUserQuestion") => (
+                "nativeQuestion",
+                crate::interactive::questions(&hook.tool_input)?,
+                String::new(),
+                None,
+            ),
+            Some("ExitPlanMode") => {
+                let (plan, path) = crate::interactive::plan(&hook.tool_input)?;
+                ("plan", vec![], plan.to_owned(), Some(path.to_owned()))
+            }
+            _ => return Err("Not a native interactive tool".into()),
+        };
+        self.hook("PreToolUse", body, now_ms())?;
+        let at = now_ms();
+        self.begin_decision(
+            Decision {
+                id: format!("{:032x}", rand::random::<u128>()),
+                session_id: hook.session_id,
+                project: String::new(),
+                kind: kind.into(),
+                tool: hook.tool_name.clone(),
+                target,
+                question: None,
+                options: vec![],
+                native_questions,
+                plan_file_path,
+                risk: false,
+                can_allow: true,
+                armed: false,
+                status: "pending".into(),
+                created_at: at,
+                expires_at: at + seconds * 1000,
+                resolved_at: None,
+            },
+            hook.tool_use_id,
+            tool_key(hook.tool_name.as_deref(), &hook.tool_input),
+            Duration::from_secs(seconds),
+            Some(hook.tool_input),
         )
     }
 
@@ -234,6 +294,7 @@ impl Core {
         tool_use_id: Option<String>,
         tool_key: Option<String>,
         duration: Duration,
+        original_input: Option<Value>,
     ) -> Result<DecisionWait> {
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
         let session = data
@@ -253,10 +314,7 @@ impl Core {
                     && d.view.session_id == view.session_id
                     && (view.kind == "question" && d.view.kind == "question"
                         || tool_use_id.is_some() && d.tool_use_id == tool_use_id
-                        || view.kind == "permission"
-                            && d.view.kind == "permission"
-                            && tool_key.is_some()
-                            && d.tool_key == tool_key)
+                        || tool_key.is_some() && d.tool_key == tool_key)
             })
         {
             return Err("Duplicate or excess pending decision".into());
@@ -285,6 +343,7 @@ impl Core {
                 tool_key,
                 deadline: Some(deadline),
                 armed_at: None,
+                original_input,
             },
         );
         let _ = self.events.send(StateEvent::Decision(view));
@@ -310,7 +369,34 @@ impl Core {
         {
             return Err("Decision no longer pending".into());
         }
-        let response = if view.kind == "permission" {
+        if input.action.as_deref() == Some("terminal")
+            && input.option.is_none()
+            && input.message.is_none()
+            && input.answers.is_none()
+        {
+            self.expire_locked(&mut data, id);
+            return Ok(());
+        }
+        let response = if matches!(view.kind.as_str(), "nativeQuestion" | "plan") {
+            let response = crate::interactive::answer(
+                &view.kind,
+                pending
+                    .original_input
+                    .as_ref()
+                    .ok_or("Missing native input")?,
+                &input,
+            )?;
+            view.status = match input.action.as_deref() {
+                Some("deny") => "denied",
+                Some("answer") => "answered",
+                _ => "allowed",
+            }
+            .into();
+            response
+        } else if view.kind == "permission" {
+            if input.answers.is_some() {
+                return Err("Invalid permission answers".into());
+            }
             if input.option.is_some() {
                 return Err("Invalid permission choice".into());
             }
@@ -359,7 +445,7 @@ impl Core {
                 _ => return Err("Invalid permission choice".into()),
             }
         } else {
-            if input.action.is_some() || input.message.is_some() {
+            if input.action.is_some() || input.message.is_some() || input.answers.is_some() {
                 return Err("Invalid question choice".into());
             }
             let option = input
@@ -374,6 +460,7 @@ impl Core {
         data.store.save_decision(&view)?;
         let pending = data.decisions.get_mut(id).unwrap();
         pending.view = view.clone();
+        pending.original_input = None;
         if let Some(sender) = pending.sender.take() {
             if sender.send(response).is_err() {
                 view.status = "expired".into();
@@ -400,6 +487,7 @@ impl Core {
             }
             pending.view.status = "expired".into();
             pending.view.resolved_at = Some(now_ms());
+            pending.original_input = None;
             if let Some(sender) = pending.sender.take() {
                 let _ = sender.send(json!({"answer":null,"reason":"scribe_unavailable"}));
             }

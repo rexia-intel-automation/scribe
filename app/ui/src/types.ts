@@ -57,13 +57,20 @@ export interface Decision {
   id: string;
   sessionId: string;
   project: string;
-  kind: "permission" | "question";
+  kind: "permission" | "question" | "nativeQuestion" | "plan";
   tool: string | null;
   target: string;
   question: string | null;
   options: string[];
   risk: boolean;
   canAllow?: boolean;
+  nativeQuestions?: {
+    question: string;
+    header: string;
+    options: { label: string; description: string }[];
+    multiSelect: boolean;
+  }[];
+  planFilePath?: string | null;
   armed: boolean;
   status: "pending" | "allowed" | "denied" | "answered" | "expired";
   createdAt: number;
@@ -71,9 +78,10 @@ export interface Decision {
   resolvedAt: number | null;
 }
 export interface DecisionInput {
-  action?: "allow" | "deny" | "arm" | "terminal";
+  action?: "allow" | "deny" | "arm" | "terminal" | "answer";
   option?: number;
   message?: string;
+  answers?: { options: number[]; text?: string }[];
 }
 const priorities: Record<Form, number> = {
   interrogacao: 5,

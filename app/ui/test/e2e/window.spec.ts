@@ -5,6 +5,182 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const evidence = path.resolve("../.artifacts/phase-3-browser");
 
+function decisionBridge(decision: object) {
+  return `
+    export const desktop = false;
+    export const defaults = {language:'en',theme:'light',shortcut:'Control+Shift+Space',notifications:true,retentionDays:14,completedMinutes:10,permissionSeconds:120,port:7717,collapsed:false,side:'right',y:null,monitor:null};
+    export const initial = {at:Date.now(),revision:1,sessions:[],preferences:defaults,error:null,decisions:${JSON.stringify([decision])}};
+    export async function observe(receive) { receive(initial); return () => {}; }
+    export async function resolveDecision(id, input) { window.scribeDecisionCalls.push({id,input}); return initial; }
+    export async function savePreferences() { return initial; }
+    export async function clearHistory() { return initial; }
+    export async function toggle() { return initial; }
+    export async function move() { return initial; }
+    export async function drag() {}
+    export async function openHelp() {}
+    window.scribeDecisionCalls = [];
+  `;
+}
+
+function routeDecision(
+  page: import("@playwright/test").Page,
+  decision: object,
+) {
+  return page.route("**/src/bridge.ts", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: decisionBridge(decision),
+    }),
+  );
+}
+
+test("native Claude questions support keyboard answers and require every response", async ({
+  page,
+}) => {
+  const now = Date.now();
+  await page.setViewportSize({ width: 372, height: 760 });
+  await routeDecision(page, {
+    id: "native-questions",
+    sessionId: "public-session",
+    project: "public-project",
+    kind: "nativeQuestion",
+    tool: null,
+    target: null,
+    question: null,
+    options: [],
+    nativeQuestions: [
+      {
+        header: "Runtime",
+        question: "Which runtime should this use?",
+        options: [
+          { label: "Node", description: "Use the Node runtime." },
+          { label: "Bun", description: "Use the Bun runtime." },
+        ],
+        multiSelect: false,
+      },
+      {
+        header: "Checks",
+        question: "Which checks should run?",
+        options: [
+          { label: "Lint", description: "Check formatting and rules." },
+          { label: "Tests", description: "Run the project tests." },
+        ],
+        multiSelect: true,
+      },
+    ],
+    risk: false,
+    canAllow: true,
+    armed: false,
+    status: "pending",
+    createdAt: now,
+    expiresAt: now + 120000,
+    resolvedAt: null,
+  });
+
+  await page.goto("/");
+  const submit = page.getByRole("button", { name: "Send answers" });
+  await expect(submit).toBeDisabled();
+
+  const node = page.getByRole("radio", { name: "Node" });
+  await node.focus();
+  await page.keyboard.press("Space");
+  await expect(node).toBeChecked();
+  await expect(submit).toBeDisabled();
+
+  const firstCheck = page.getByRole("checkbox", { name: "Lint" });
+  await page.keyboard.press("Tab");
+  await expect(firstCheck).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(firstCheck).toBeChecked();
+
+  const freeAnswer = page.getByRole("radio", {
+    name: "Answer in your own words",
+  });
+  await freeAnswer.focus();
+  await page.keyboard.press("Space");
+  const answer = page.getByRole("textbox", { name: "Your answer" });
+  await answer.fill("Use Deno");
+  await expect(submit).toBeEnabled();
+  await submit.click();
+
+  const calls = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          scribeDecisionCalls: { id: string; input: unknown }[];
+        }
+      ).scribeDecisionCalls,
+  );
+  expect(calls).toEqual([
+    {
+      id: "native-questions",
+      input: {
+        action: "answer",
+        answers: [{ options: [], text: "Use Deno" }, { options: [0] }],
+      },
+    },
+  ]);
+});
+
+test("plan text stays literal and wraps on mobile without exposing approval", async ({
+  page,
+}) => {
+  const target = `# Suggested plan\n<img src=x onerror=alert(1)>\n[Open this](https://example.invalid)\n${"unbroken".repeat(70)}`;
+  const now = Date.now();
+  await page.setViewportSize({ width: 372, height: 760 });
+  await routeDecision(page, {
+    id: "read-only-plan",
+    sessionId: "public-session",
+    project: "public-project",
+    kind: "plan",
+    tool: null,
+    target,
+    question: null,
+    options: [],
+    planFilePath: "C:\\public\\plan.md",
+    risk: false,
+    canAllow: false,
+    armed: false,
+    status: "pending",
+    createdAt: now,
+    expiresAt: now + 120000,
+    resolvedAt: null,
+  });
+
+  await page.goto("/");
+  const body = page.locator(".decision-plan-body");
+  await expect(body).toHaveText(target);
+  await expect(page.locator(".decision-plan-path")).toContainText(
+    "C:\\public\\plan.md",
+  );
+  await expect(body.locator("a, img, script")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Approve plan", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Continue planning", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue in terminal", exact: true }),
+  ).toBeVisible();
+
+  const layout = await body.evaluate((element) => ({
+    width: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    whiteSpace: getComputedStyle(element).whiteSpace,
+    overflowWrap: getComputedStyle(element).overflowWrap,
+  }));
+  expect(layout.width).toBeLessThanOrEqual(372);
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1);
+  expect(layout.whiteSpace).toBe("pre-wrap");
+  expect(layout.overflowWrap).toBe("anywhere");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("a long permission exposes its final operation without expanding the target", async ({
   page,
 }) => {

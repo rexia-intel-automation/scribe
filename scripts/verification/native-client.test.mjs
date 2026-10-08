@@ -19,6 +19,18 @@ function sign(key, fields) {
   return mac.digest('base64url');
 }
 
+test('PreToolUse plugin matchers give interactive tools 130s and all others 1s', async () => {
+  const manifest = JSON.parse(await readFile(resolve('plugins/scribe/hooks/hooks.json'), 'utf8'));
+  const entries = manifest.hooks.PreToolUse;
+  assert.equal(entries.length, 2);
+  for (const [tool, timeout] of [
+    ['AskUserQuestion', 130], ['ExitPlanMode', 130], ['Bash', 1], ['Write', 1],
+  ]) {
+    const selected = entries.filter(entry => new RegExp(entry.matcher).test(tool));
+    assert.equal(selected.length, 1, `${tool} must select exactly one hook`);
+    assert.equal(selected[0].hooks[0].timeout, timeout);
+  }
+});
 
 async function launch(exe, config, event, body, leaveStdinOpen = false, overrides = {}) {
   const started = performance.now();
@@ -35,7 +47,28 @@ async function launch(exe, config, event, body, leaveStdinOpen = false, override
   return { code, stdout, stderr, elapsedMs: performance.now() - started };
 }
 
-test('native client forwards eleven events, returns only permission decisions and blocks redirects/proxies', async () => {
+async function stopIsolatedFixture(pid) {
+  try { process.kill(pid); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try { process.kill(pid, 0); } catch (error) {
+      if (error.code === 'ESRCH') return;
+      throw error;
+    }
+    await new Promise(ok => setTimeout(ok, 20));
+  }
+  throw new Error('Isolated open fixture did not exit within 1 second');
+}
+
+async function removeFixtureDirectory(root) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try { await rm(root, { recursive: true, force: true }); return; } catch (error) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 9) throw error;
+      await new Promise(ok => setTimeout(ok, 50));
+    }
+  }
+}
+
+test('native client forwards eleven events, returns only supported human decisions and blocks redirects/proxies', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scribe native test '));
   const executable = join(root, process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
   await copyFile(binary, executable);
@@ -56,7 +89,8 @@ test('native client forwards eleven events, returns only permission decisions an
       res.writeHead(204, { 'x-scribe-proof': sign(key, ['challenge', nonce]) }).end();
       return;
     }
-    const event = JSON.parse(body).hook_event_name;
+    const payload = JSON.parse(body);
+    const event = payload.hook_event_name;
     assert.equal(req.url, '/v1/hooks/' + event);
     const nonce = req.headers['x-scribe-nonce'];
     assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, event, body]));
@@ -64,8 +98,28 @@ test('native client forwards eleven events, returns only permission decisions an
     if (scenario === 'stalled') return;
     if (scenario === 'redirect') { res.writeHead(307, { Location: trapUrl }).end(); return; }
     if (scenario === 'http-error') { res.writeHead(503).end(); return; }
-    const reply = scenario === 'invalid-json' ? 'invalid JSON' : JSON.stringify({ hookSpecificOutput: {
-      hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } });
+    let output;
+    if (event === 'PreToolUse') {
+      let updatedInput = payload.tool_input;
+      if (payload.tool_name === 'AskUserQuestion') updatedInput = {
+        ...payload.tool_input,
+        answers: Object.fromEntries(payload.tool_input.questions.map(question => [question.question, 'PUBLIC ANSWER'])),
+      };
+      output = { hookSpecificOutput: {
+        hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput,
+      } };
+      if (scenario === 'altered-questions') {
+        output.hookSpecificOutput.updatedInput.questions[0].question = 'ALTERED QUESTION';
+      }
+      if (scenario === 'altered-plan') {
+        output.hookSpecificOutput.updatedInput.plan = 'ALTERED PLAN';
+      }
+    } else {
+      output = { hookSpecificOutput: {
+        hookEventName: 'PermissionRequest', decision: { behavior: 'allow' },
+      } };
+    }
+    const reply = scenario === 'invalid-json' ? 'invalid JSON' : JSON.stringify(output);
     if (scenario !== 'unsigned') {
       const key = scenario === 'response-bearer-forgery' ? token : hookKey;
       const boundNonce = scenario === 'replay' ? '0'.repeat(32) : nonce;
@@ -89,6 +143,50 @@ test('native client forwards eleven events, returns only permission decisions an
       assert.ok(result.elapsedMs < 1000);
     }
     assert.deepEqual(events, EVENTS);
+    for (const [tool, toolInput] of [
+      ['AskUserQuestion', { questions: [{ question: 'PUBLIC Q?', header: 'Q', options: [
+        { label: 'A', description: 'First option' }, { label: 'B', description: 'Second option' },
+      ] }] }],
+      ['ExitPlanMode', { plan: 'PUBLIC PLAN', planFilePath: '/public/plan.md', allowedPrompts: [] }],
+    ]) {
+      const result = await launch(executable, config, 'PreToolUse', JSON.stringify({
+        hook_event_name: 'PreToolUse', session_id: 'public', cwd: '/public',
+        tool_name: tool, tool_input: toolInput,
+      }));
+      assert.equal(result.code, 0);
+      assert.equal(result.stderr, '');
+      const returned = JSON.parse(result.stdout).hookSpecificOutput;
+      assert.equal(returned.hookEventName, 'PreToolUse');
+      assert.equal(returned.permissionDecision, 'allow');
+      assert.deepEqual(returned.updatedInput, tool === 'AskUserQuestion'
+        ? { ...toolInput, answers: { 'PUBLIC Q?': 'PUBLIC ANSWER' } }
+        : toolInput);
+    }
+    assert.deepEqual(events, [...EVENTS, 'PreToolUse', 'PreToolUse']);
+    for (scenario of [
+      'unsigned', 'wrong-event', 'changed-body', 'replay', 'response-bearer-forgery',
+      'impostor', 'altered-questions', 'altered-plan',
+    ]) {
+      const countBefore = events.length;
+      const tool = scenario === 'altered-plan' ? 'ExitPlanMode' : 'AskUserQuestion';
+      const toolInput = tool === 'ExitPlanMode'
+        ? { plan: 'PUBLIC PLAN', planFilePath: '/public/plan.md', allowedPrompts: [] }
+        : { questions: [{ question: 'PUBLIC Q?', header: 'Q', options: [
+          { label: 'A', description: 'First option' }, { label: 'B', description: 'Second option' },
+        ] }] };
+      const result = await launch(executable, config, 'PreToolUse', JSON.stringify({
+        hook_event_name: 'PreToolUse', session_id: 'public', cwd: '/public',
+        tool_name: tool, tool_input: toolInput,
+      }));
+      assert.equal(result.code, 0, scenario);
+      assert.equal(result.stdout, '', `${scenario} must not return a decision`);
+      assert.equal(result.stderr, '', scenario);
+      if (['impostor', 'bearer-forgery'].includes(scenario)) {
+        assert.equal(events.length, countBefore, `${scenario} must be rejected before forwarding`);
+      } else {
+        assert.equal(events.length, countBefore + 1, `${scenario} request should reach the server`);
+      }
+    }
     for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
       const countBefore = events.length;
       const event = scenario === 'stalled' ? 'Stop' : 'PermissionRequest';
@@ -176,8 +274,13 @@ test('native open detaches the app from captured command streams', async () => {
     clearTimeout(timer);
     clearTimeout(compilerTimer);
     if (compiler?.exitCode === null) compiler.kill();
-    try { const pid = Number(await readFile(marker, 'utf8')); if (Number.isSafeInteger(pid) && pid > 0) process.kill(pid); } catch {}
+    let fixtureStopError;
+    try {
+      const pid = Number(await readFile(marker, 'utf8'));
+      if (Number.isSafeInteger(pid) && pid > 0) await stopIsolatedFixture(pid);
+    } catch (error) { if (error.code !== 'ENOENT') fixtureStopError = error; }
     if (child?.exitCode === null) child.kill();
-    await rm(root, { recursive: true, force: true });
+    await removeFixtureDirectory(root);
+    if (fixtureStopError) throw fixtureStopError;
   }
 });

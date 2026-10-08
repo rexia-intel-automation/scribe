@@ -150,3 +150,43 @@ lint/format e uma regressão Playwright de alvo longo. O teste de hooks também
 confere que Bearer isolado não cancela uma decisão real e que flood de
 challenges/provas ruins não consome a quota MCP/health. Estes resultados
 aguardam nova revisão e CI das três plataformas; não aprovam a fase.
+
+## Perguntas e planos nativos do Claude Code
+
+O Scribe recebe `AskUserQuestion` e `ExitPlanMode` pelo `PreToolUse`, conforme
+o [contrato oficial](https://code.claude.com/docs/en/hooks#tools-that-require-user-interaction).
+Um `allow` isolado não responde a essas ferramentas. A resposta inclui
+`updatedInput` com as perguntas ou o plano originais; perguntas acrescentam
+um mapa de respostas pelo texto da pergunta. A autorização vem exclusivamente
+do gesto na interface autenticada, nunca do evento de observação.
+
+O cartão de perguntas apresenta de uma a quatro perguntas, cada uma com duas
+a quatro opções, seleção única ou múltipla e uma alternativa de texto livre.
+Não há resposta pré-selecionada. Enviar exige responder a todas. A interface
+do plano mostra o conteúdo integral como texto, sem executar HTML nem abrir
+links, e oferece aprovar, continuar planejando com feedback opcional ou voltar
+ao terminal. Aprovar um plano não altera modos nem regras de permissão.
+
+A espera nativa é de 120 segundos, com orçamento do cliente de 125 segundos
+e timeout do hook de 130. Matchers exclusivos mantêm os demais PreToolUse em
+um segundo e seu cliente em 250 ms. Enquanto a espera está ativa, o diálogo
+do terminal ainda não aparece. Voltar ao terminal encerra a espera sem decisão;
+timeout, desconexão e falha de autenticação também deixam o fluxo normal seguir.
+
+O suporte é deliberadamente limitado a entradas inteiras e seguras: perguntas
+de até 200 caracteres, cabeçalhos e labels até 40, descrições até 400 e JSON
+de entrada até 5.000 bytes; planos com conteúdo e caminho até 6.000 bytes
+serializados. Campos desconhecidos, perguntas/labels duplicados, labels com
+vírgula, controles Unicode, conteúdo que seria redigido e payload maior exigem
+o terminal. `allowedPrompts` só é aceito vazio; é obsoleto no Claude Code atual.
+Não se lê o arquivo indicado por `planFilePath`. O input original necessário
+ao eco fica em memória e é descartado ao resolver ou cancelar. A persistência
+contém apenas os dados seguros apresentados; respostas livres e feedback não
+entram no banco. Toda resposta assinada permanece limitada a 8.192 bytes.
+
+Checks locais desse lote: 52 testes Rust do app com feature desktop, cinco do
+helper, 50 de UI e quatro de processo do helper passaram. Lint, tipos, formatação
+e build da UI passaram. O teste HTTP dos hooks nativos passou em 0,18 s, cobrindo
+pergunta, plano e devolução ao terminal, com rejeição de Bearer sem a credencial
+privada da UI. Isso mede o transporte local do Scribe; o ensaio de uma sessão
+real do Claude e o novo instalador ainda são necessários antes do aceite desse lote.
