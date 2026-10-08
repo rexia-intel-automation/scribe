@@ -15,6 +15,8 @@
   "permissionUpdateReview": "Revisar mudança e permitir",
   "permissionUpdateWarning": "Confira a mudança completa e seu destino. Alterações persistentes ou mais amplas afetam permissões futuras.",
   "permissionUpdateMissingRule": "O conteúdo da regra está ausente. Esta mudança pode afetar a ferramenta inteira.",
+  "permissionUpdateReplaceWarning": "Substitui todas as regras {behavior} existentes no destino selecionado, inclusive as que não aparecem aqui. Substituir regras deny ou ask pode remover bloqueios ou perguntas existentes.",
+  "permissionUpdateRemoveWarning": "Remove regras {behavior} correspondentes no destino selecionado. Remover regras deny ou ask pode remover bloqueios ou perguntas existentes.",
   "permissionUpdateBypass": "Este modo pode dispensar pedidos futuros de permissão. O Claude só o aplica quando a sessão e a política permitem; ele não é salvo como modo padrão.",
   "permissionUpdateRaw": "{value}",
   "permissionUpdateScopeRaw": "{value}",

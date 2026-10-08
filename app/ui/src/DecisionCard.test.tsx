@@ -226,6 +226,101 @@ describe("human decision card", () => {
       option: 1,
     });
   });
+  it("explains replace and remove effects only for the selected permission update", async () => {
+    const user = userEvent.setup();
+    const decision = {
+      ...fixture(),
+      permissionUpdates: [
+        {
+          type: "addRules",
+          destination: "session",
+          behavior: "allow",
+          rules: [{ toolName: "Bash", ruleContent: "Bash(git status)" }],
+        },
+        {
+          type: "replaceRules",
+          destination: "userSettings",
+          behavior: "deny",
+          rules: [{ toolName: "Bash", ruleContent: "Bash(rm *)" }],
+        },
+        {
+          type: "removeRules",
+          destination: "projectSettings",
+          behavior: "ask",
+          rules: [{ toolName: "Bash", ruleContent: "Bash(git push *)" }],
+        },
+      ],
+    };
+    const props = {
+      decision,
+      language: "en" as const,
+      now,
+      receive: vi.fn(),
+      fail: vi.fn(),
+    };
+    const { container, rerender } = render(<DecisionCard {...props} />);
+    const add = screen.getByRole("radio", {
+      name: "Add permission rules · This session only",
+    });
+    const replace = screen.getByRole("radio", {
+      name: "Replace permission rules · All projects",
+    });
+    const remove = screen.getByRole("radio", {
+      name: "Remove permission rules · Shared project settings",
+    });
+    const replaceWarning =
+      /Replaces every existing deny rule at the selected destination/;
+    const removeWarning =
+      /Removes matching ask rules at the selected destination/;
+
+    expect(screen.queryByText(replaceWarning)).not.toBeInTheDocument();
+    expect(screen.queryByText(removeWarning)).not.toBeInTheDocument();
+    await user.click(add);
+    expect(screen.queryByText(replaceWarning)).not.toBeInTheDocument();
+    expect(screen.queryByText(removeWarning)).not.toBeInTheDocument();
+
+    await user.click(replace);
+    expect(screen.getByText(replaceWarning)).toBeVisible();
+    expect(screen.queryByText(removeWarning)).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".permission-update-json"),
+    ).toHaveTextContent('"destination": "userSettings"');
+    expect(
+      container.querySelector(".permission-update-json"),
+    ).toHaveTextContent('"behavior": "deny"');
+
+    await user.click(remove);
+    expect(screen.getByText(removeWarning)).toBeVisible();
+    expect(screen.queryByText(replaceWarning)).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".permission-update-json"),
+    ).toHaveTextContent('"destination": "projectSettings"');
+    expect(
+      container.querySelector(".permission-update-json"),
+    ).toHaveTextContent('"behavior": "ask"');
+
+    rerender(<DecisionCard {...props} language="pt-BR" />);
+    expect(
+      screen.getByText(
+        /Remove regras ask correspondentes no destino selecionado/,
+      ),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("radio", {
+        name: "Substituir regras de permissão · Todos os projetos",
+      }),
+    );
+    expect(
+      screen.getByText(
+        /Substitui todas as regras deny existentes no destino selecionado/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(
+        /Remove regras ask correspondentes no destino selecionado/,
+      ),
+    ).not.toBeInTheDocument();
+  });
   it("hides suggested changes when permission details cannot be allowed", () => {
     render(
       <DecisionCard
