@@ -889,7 +889,9 @@ fn decode_component(encoded: &str) -> io::Result<std::ffi::OsString> {
         return Err(invalid("history manifest path encoding is invalid"));
     }
     let units = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect::<Vec<_>>();
     Ok(std::ffi::OsString::from_wide(&units))
@@ -919,7 +921,9 @@ fn unhex(value: &str) -> io::Result<Vec<u8>> {
     }
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let high = hex_digit(pair[0])
                 .ok_or_else(|| invalid("history manifest path encoding is invalid"))?;
@@ -1023,18 +1027,18 @@ fn publish_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
 #[cfg(target_os = "linux")]
 fn publish_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    let source = CString::new(source.as_os_str().as_bytes())
+    let source_c = CString::new(source.as_os_str().as_bytes())
         .map_err(|_| invalid("migration path contains NUL"))?;
-    let destination = CString::new(destination.as_os_str().as_bytes())
+    let destination_c = CString::new(destination.as_os_str().as_bytes())
         .map_err(|_| invalid("migration path contains NUL"))?;
     // SAFETY: both C strings are NUL-terminated and valid for the duration of the call.
     // RENAME_NOREPLACE prevents replacing a destination created by another process.
     if unsafe {
         libc::renameat2(
             libc::AT_FDCWD,
-            source.as_ptr(),
+            source_c.as_ptr(),
             libc::AT_FDCWD,
-            destination.as_ptr(),
+            destination_c.as_ptr(),
             libc::RENAME_NOREPLACE,
         )
     } != 0
@@ -1051,13 +1055,15 @@ fn publish_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
 #[cfg(target_os = "macos")]
 fn publish_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    let source = CString::new(source.as_os_str().as_bytes())
+    let source_c = CString::new(source.as_os_str().as_bytes())
         .map_err(|_| invalid("migration path contains NUL"))?;
-    let destination = CString::new(destination.as_os_str().as_bytes())
+    let destination_c = CString::new(destination.as_os_str().as_bytes())
         .map_err(|_| invalid("migration path contains NUL"))?;
     // SAFETY: both C strings are NUL-terminated and valid for the duration of the call.
     // RENAME_EXCL prevents replacing an existing destination.
-    if unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) } != 0 {
+    if unsafe { libc::renamex_np(source_c.as_ptr(), destination_c.as_ptr(), libc::RENAME_EXCL) }
+        != 0
+    {
         return Err(io::Error::last_os_error());
     }
     sync_parent(source)?;

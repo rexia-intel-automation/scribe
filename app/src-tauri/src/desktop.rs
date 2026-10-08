@@ -244,7 +244,8 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
     let mut warning = None;
     #[cfg(not(windows))]
     let warning = None;
-    let core = match (|| -> crate::Result<Core> {
+    #[cfg(windows)]
+    let core_result = (|| -> crate::Result<Core> {
         #[cfg(windows)]
         {
             #[cfg(not(feature = "test-fixture"))]
@@ -271,7 +272,10 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
             }
         }
         Core::open(&data_path.join("state.db"), now_ms())
-    })() {
+    })();
+    #[cfg(not(windows))]
+    let core_result = Core::open(&data_path.join("state.db"), now_ms());
+    let core = match core_result {
         Ok(core) => Some(core),
         Err(_) => {
             error = Some("storageUnavailable".into());
