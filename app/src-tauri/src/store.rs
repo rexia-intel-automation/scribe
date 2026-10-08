@@ -178,3 +178,194 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod benchmarks {
+    use super::*;
+    use crate::{now_ms, Core, Decision, DecisionInput};
+    use serde_json::json;
+    use std::time::Instant;
+
+    fn configure(store: &Store, mode: &str) {
+        let actual: String = store
+            .0
+            .query_row(&format!("PRAGMA journal_mode = {mode}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(actual, mode.to_ascii_lowercase());
+        store.0.execute_batch("PRAGMA synchronous = FULL;").unwrap();
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            let actual: i32 = store
+                .0
+                .pragma_query_value(None, name, |r| r.get(0))
+                .unwrap();
+            assert_eq!(actual, expected, "{mode}/{name}");
+        }
+    }
+
+    fn summary(mode: &str, operation: &str, samples: Vec<u128>) {
+        let mut ranked = samples.clone();
+        ranked.sort();
+        let n = samples.len();
+        eprintln!(
+            "SCRIBE_STORAGE_BENCH {}",
+            json!({"mode":mode,"operation":operation,"samples":n,
+                "p50_us":ranked[(n * 50).div_ceil(100) - 1],
+                "p95_us":ranked[(n * 95).div_ceil(100) - 1],
+                "max_us":ranked[n-1],"samples_us":samples})
+        );
+    }
+
+    fn checkpoint(store: &Store, path: &Path, operation: &str, action: &str, block: usize) {
+        let before = std::fs::metadata(path).unwrap().len();
+        let auto_pages: i64 = store
+            .0
+            .pragma_query_value(None, "wal_autocheckpoint", |r| r.get(0))
+            .unwrap();
+        let started = Instant::now();
+        let result: (i64, i64, i64) = store
+            .0
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        let elapsed = started.elapsed().as_micros();
+        let after = std::fs::metadata(path).unwrap().len();
+        assert_eq!(result.0, 0, "checkpoint must complete without a reader");
+        assert_eq!(after, 0, "checkpoint must truncate the public WAL");
+        eprintln!(
+            "SCRIBE_STORAGE_CHECKPOINT {}",
+            json!({"mode":"WAL","operation":operation,
+            "action":action,"block":block,"block_samples":32,"elapsed_us":elapsed,
+            "wal_before_bytes":before,"wal_after_bytes":after,"automatic_checkpoint_pages":auto_pages,
+            "busy":result.0,"log_frames":result.1,"checkpointed_frames":result.2})
+        );
+    }
+
+    // An explicit diagnostic, never a replacement for the signed HTTP SLA gate.
+    #[tokio::test]
+    #[ignore = "explicit same-runner storage comparison; creates only temporary public databases"]
+    async fn storage_mode_round_robin() {
+        const N: usize = 128;
+        const MODES: [&str; 3] = ["DELETE", "TRUNCATE", "WAL"];
+        let temp = tempfile::TempDir::new().unwrap();
+        let mut probes = Vec::new();
+        for mode in MODES {
+            let core =
+                Core::open(&temp.path().join(format!("choice-{mode}.db")), now_ms()).unwrap();
+            configure(&core.data.lock().unwrap().store, mode);
+            let start = json!({"hook_event_name":"SessionStart","session_id":"public-session","cwd":"/public/project"});
+            core.hook(
+                "SessionStart",
+                &serde_json::to_vec(&start).unwrap(),
+                now_ms(),
+            )
+            .unwrap();
+            let store = Store::open(&temp.path().join(format!("commit-{mode}.db"))).unwrap();
+            configure(&store, mode);
+            probes.push((core, store));
+        }
+
+        for action in ["allow", "deny"] {
+            let mut commits: [Vec<u128>; 3] = std::array::from_fn(|_| Vec::new());
+            let mut choices: [Vec<u128>; 3] = std::array::from_fn(|_| Vec::new());
+            // Rotate which mode goes first to distribute runner drift and ordering effects.
+            for sample in 0..N {
+                for offset in 0..MODES.len() {
+                    let index = (sample + offset) % MODES.len();
+                    let (core, store) = &probes[index];
+                    let body = json!({"hook_event_name":"PermissionRequest","session_id":"public-session",
+                        "cwd":"/public/project","tool_name":"Bash","tool_use_id":format!("{action}-{sample}"),
+                        "tool_input":{"command":"echo public"}});
+                    let wait = core
+                        .permission(&serde_json::to_vec(&body).unwrap(), 120)
+                        .unwrap();
+                    let view: Decision = core
+                        .snapshot(now_ms())
+                        .unwrap()
+                        .decisions
+                        .into_iter()
+                        .find(|d| d.status == "pending")
+                        .unwrap();
+                    assert!(view.can_allow && !view.risk);
+                    // Prepare the pending row outside timing, matching a resolved decision update.
+                    store.save_decision(&view).unwrap();
+                    let mut committed = view.clone();
+                    committed.status = if action == "allow" {
+                        "allowed"
+                    } else {
+                        "denied"
+                    }
+                    .into();
+                    committed.resolved_at = Some(now_ms());
+                    let measure_commit = || {
+                        let started = Instant::now();
+                        store.save_decision(&committed).unwrap();
+                        started.elapsed().as_micros()
+                    };
+                    let commit = if sample % 2 == 0 {
+                        Some(measure_commit())
+                    } else {
+                        None
+                    };
+                    let input: DecisionInput =
+                        serde_json::from_value(json!({"action":action})).unwrap();
+                    let started = Instant::now();
+                    core.resolve_decision(&view.id, input).unwrap();
+                    choices[index].push(started.elapsed().as_micros());
+                    let response = wait.receive().await;
+                    assert_eq!(
+                        response["hookSpecificOutput"]["decision"]["behavior"],
+                        action
+                    );
+                    commits[index].push(commit.unwrap_or_else(measure_commit));
+                }
+                if (sample + 1) % 32 == 0 {
+                    let (core, store) = &probes[2];
+                    let block = (sample + 1) / 32;
+                    checkpoint(
+                        store,
+                        &temp.path().join("commit-WAL.db-wal"),
+                        "save_decision",
+                        action,
+                        block,
+                    );
+                    checkpoint(
+                        &core.data.lock().unwrap().store,
+                        &temp.path().join("choice-WAL.db-wal"),
+                        "core_choice",
+                        action,
+                        block,
+                    );
+                }
+            }
+            for (index, mode) in MODES.iter().enumerate() {
+                summary(
+                    mode,
+                    &format!("save_decision/{action}"),
+                    std::mem::take(&mut commits[index]),
+                );
+                summary(
+                    mode,
+                    &format!("core_choice/{action}"),
+                    std::mem::take(&mut choices[index]),
+                );
+            }
+        }
+        for (index, mode) in MODES.iter().enumerate() {
+            let (core, store) = &probes[index];
+            assert!(core
+                .snapshot(now_ms())
+                .unwrap()
+                .decisions
+                .iter()
+                .all(|d| d.status != "pending"));
+            let integrity: String = store
+                .0
+                .pragma_query_value(None, "integrity_check", |r| r.get(0))
+                .unwrap();
+            assert_eq!(integrity, "ok", "{mode}");
+        }
+    }
+}
