@@ -787,9 +787,13 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
     let port = server.port();
     apply(&core, payload("SessionStart"), scribe_core::now_ms());
     let ui = format!("X-Scribe-UI: {}\r\n", server.ui_token());
+    let run_started = Instant::now();
+    let mut within_bound = true;
     for transport in ["private-http", "direct-core"] {
         for action in ["allow", "deny"] {
             let mut samples = Vec::new();
+            let mut choices = Vec::new();
+            let mut deliveries = Vec::new();
             for sample in 0..32 {
                 // Pacing is outside the measured interval and preserves the real quota.
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -868,11 +872,16 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                         .unwrap();
                     None
                 };
+                let choice_elapsed = started.elapsed();
                 let reply = tokio::time::timeout(Duration::from_secs(3), asking)
                     .await
                     .unwrap()
                     .unwrap();
-                samples.push(started.elapsed());
+                let total = started.elapsed();
+                let delivery = total.saturating_sub(choice_elapsed);
+                samples.push(total);
+                choices.push(choice_elapsed);
+                deliveries.push(delivery);
                 if let Some(chosen) = chosen {
                     assert_eq!(chosen.code, 204);
                 }
@@ -903,19 +912,29 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                     "PermissionRequest"
                 );
                 assert_eq!(output["hookSpecificOutput"]["decision"]["behavior"], action);
+                if total >= Duration::from_millis(100) {
+                    eprintln!(
+                        "NFR02 slow sample transport={transport} action={action} index={sample} ms run_at={} total={} choice={} remaining_hook_wait={}",
+                        run_started.elapsed().as_millis(), total.as_millis(), choice_elapsed.as_millis(), delivery.as_millis()
+                    );
+                }
             }
             samples.sort();
+            choices.sort();
+            deliveries.sort();
             eprintln!(
-            "NFR02 choice-to-signed-hook-HTTP ms transport={transport} action={action} samples=32 p95={} max={} samples_over_100ms={}",
-            samples[30].as_millis(), samples[31].as_millis(),
+            "NFR02 choice-to-signed-hook-HTTP ms transport={transport} action={action} samples=32 p95={} max={} choice_p95={} remaining_hook_wait_p95={} samples_over_100ms={}",
+            samples[30].as_millis(), samples[31].as_millis(), choices[30].as_millis(), deliveries[30].as_millis(),
             samples.iter().filter(|sample| **sample >= Duration::from_millis(100)).count()
         );
-            assert!(
-                samples[30] < Duration::from_millis(100),
-                "NFR02 {transport}/{action}: choice to signed hook HTTP p95 must be below 100 ms"
-            );
+            // Report all paths before failing; keep the same strict SLA for every group.
+            within_bound &= samples[30] < Duration::from_millis(100);
         }
     }
+    assert!(
+        within_bound,
+        "NFR02 every path/choice p95 must be below 100 ms"
+    );
 }
 
 #[tokio::test]

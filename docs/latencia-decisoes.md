@@ -25,6 +25,11 @@ o máximo e a quantidade de amostras que atingem ou excedem 100 ms. A pausa de
 100 ms entre amostras fica fora da medição e preserva a quota real do servidor.
 Não há exceção por plataforma ou aumento do limite para runners lentos.
 
+O log separa o tempo da resolução/roundtrip da escolha e a espera restante pela
+resposta do hook. Amostras de 100 ms ou mais mostram índice, caminho e escolha.
+Os quatro grupos são medidos antes do assert final, que falha se qualquer p95
+atingir 100 ms. Os percentis dos segmentos são independentes, não somáveis.
+
 O intervalo inclui transporte localhost, scheduling, persistência, serialização
 e assinatura. É um limite superior conservador do processamento interno desse
 caminho sintético, e não uma medição isolada do servidor. Uma falha pode incluir
