@@ -1408,6 +1408,25 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
             snapshot.as_millis(),
         );
     }
+    // Compare the same committed event without HTTP to distinguish storage/core
+    // delay from transport or blocking-pool scheduling on a slow runner.
+    let body = payload("SessionStart").to_string();
+    let mut direct = vec![];
+    for _ in 0..32 {
+        let started = Instant::now();
+        core.hook("SessionStart", body.as_bytes(), scribe_core::now_ms())
+            .unwrap();
+        direct.push(started.elapsed());
+    }
+    direct.sort();
+    eprintln!(
+        "phase2 direct committed core event ms samples=32 p95={} samples_over_200ms={}",
+        direct[30].as_millis(),
+        direct
+            .iter()
+            .filter(|sample| **sample >= Duration::from_millis(200))
+            .count(),
+    );
     assert!(p95 < Duration::from_millis(200));
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
     socket.write_all(format!("POST /v1/hooks/SessionStart HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {TOKEN}\r\nContent-Length: 100\r\n\r\nx").as_bytes()).await.unwrap();
