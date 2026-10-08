@@ -15,7 +15,7 @@ instalação separada do Node para o Scribe.
 
 ## Teste da versão beta no Windows
 
-Quando o prerelease for publicado, baixe estes arquivos na
+Baixe estes arquivos na
 [página da versão v0.1.0-beta.1](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1):
 
 - `Scribe_*_x64-setup.exe`
