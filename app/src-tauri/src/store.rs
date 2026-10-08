@@ -29,7 +29,8 @@ impl Store {
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY, last_event_at INTEGER NOT NULL, data TEXT NOT NULL
             ); CREATE INDEX IF NOT EXISTS sessions_age ON sessions(last_event_at);
-            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER NOT NULL);",
+            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, data TEXT NOT NULL);",
         )?;
         Ok(Self(db))
     }
@@ -75,7 +76,7 @@ impl Store {
 
     pub(crate) fn prune(&self, before: u64) -> Result<()> {
         let expired: bool = self.0.query_row(
-            "SELECT EXISTS (SELECT 1 FROM sessions WHERE last_event_at < ?1 OR EXISTS (
+            "SELECT EXISTS (SELECT 1 FROM decisions WHERE created_at < ?1) OR EXISTS (SELECT 1 FROM sessions WHERE last_event_at < ?1 OR EXISTS (
                 SELECT 1 FROM json_each(sessions.data, '$.steps')
                 WHERE json_extract(value, '$.at') < ?1
             ))",
@@ -93,6 +94,7 @@ impl Store {
 
     fn prune_records(db: &Connection, before: u64) -> Result<()> {
         let before = i64::try_from(before)?;
+        db.execute("DELETE FROM decisions WHERE created_at < ?1", [before])?;
         db.execute("DELETE FROM sessions WHERE last_event_at < ?1", [before])?;
         db.execute(
             "UPDATE sessions SET data = json_set(data, '$.steps', json((
@@ -132,8 +134,33 @@ impl Store {
     }
 
     pub(crate) fn clear(&self) -> Result<()> {
-        self.0.execute_batch("DELETE FROM sessions; VACUUM;")?;
+        self.0
+            .execute_batch("BEGIN; DELETE FROM sessions; DELETE FROM decisions; COMMIT; VACUUM;")?;
         Ok(())
+    }
+
+    pub(crate) fn save_decision(&self, decision: &crate::Decision) -> Result<()> {
+        self.0.execute("INSERT INTO decisions(id,created_at,data) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+            params![decision.id, i64::try_from(decision.created_at)?, serde_json::to_string(decision)?])?;
+        Ok(())
+    }
+
+    pub(crate) fn load_decisions(&self, at: u64) -> Result<Vec<crate::Decision>> {
+        let mut statement = self
+            .0
+            .prepare("SELECT data FROM decisions ORDER BY created_at DESC LIMIT 256")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        let mut decisions = vec![];
+        for row in rows {
+            let mut decision: crate::Decision = serde_json::from_str(&row?)?;
+            if decision.status == "pending" {
+                decision.status = "expired".into();
+                decision.resolved_at = Some(at);
+                self.save_decision(&decision)?;
+            }
+            decisions.push(decision);
+        }
+        Ok(decisions)
     }
 
     pub(crate) fn policy(&self, key: &str, default: u16) -> Result<u16> {

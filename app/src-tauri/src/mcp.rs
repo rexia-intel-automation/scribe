@@ -82,6 +82,7 @@ impl ScribeMcp {
     async fn scribe_ask(
         &self,
         Parameters(input): Parameters<Question>,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         if !crate::model::identifier(&input.session_id)
             || input.question.is_empty()
@@ -97,10 +98,17 @@ impl ScribeMcp {
                 None,
             ));
         }
-        // No interface can answer yet. Phase 4 supplies the bounded human wait.
-        Ok(output(
-            serde_json::json!({"answer":null,"reason":"scribe_unavailable"}),
-        ))
+        let options: Vec<_> = input.options.into_iter().map(|s| s.0).collect();
+        let wait = self
+            .core
+            .question(&input.session_id, &input.question, &options, 600);
+        Ok(output(match wait {
+            Ok(wait) => tokio::select! {
+                answer = wait.receive() => answer,
+                _ = context.ct.cancelled() => serde_json::json!({"answer":null,"reason":"scribe_unavailable"}),
+            },
+            Err(_) => serde_json::json!({"answer":null,"reason":"scribe_unavailable"}),
+        }))
     }
 }
 

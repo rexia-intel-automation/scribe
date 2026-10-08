@@ -11,6 +11,7 @@ use tokio::{
     net::TcpStream,
 };
 
+const HOOK_KEY: &str = "publicIndependentHookKey0123456789012345";
 const TOKEN: &str = "publicTestToken01234567890123456789";
 const EVENTS: &[&str] = &[
     "SessionStart",
@@ -257,7 +258,7 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
     core.report("public-session", "PUBLIC_IDLE_METADATA", old + 1)
         .unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -776,7 +777,208 @@ struct Reply {
     body: String,
 }
 
+#[tokio::test]
+async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decision() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    for (tool, original, choice, terminal) in [
+        (
+            "AskUserQuestion",
+            json!({"questions":[{"question":"Choose public option?", "header":"Choice", "options":[{"label":"A","description":"First"},{"label":"B","description":"Second"}]}]}),
+            json!({"action":"answer","answers":[{"options":[1]}]}),
+            false,
+        ),
+        (
+            "ExitPlanMode",
+            json!({"plan":"1. Inspect\n2. Test", "planFilePath":"/public/plan.md"}),
+            json!({"action":"allow"}),
+            false,
+        ),
+        (
+            "ExitPlanMode",
+            json!({"plan":"1. Inspect", "planFilePath":"/public/plan.md"}),
+            json!({"action":"terminal"}),
+            true,
+        ),
+    ] {
+        apply(&core, payload("SessionStart"), scribe_core::now_ms());
+        let body = json!({"hook_event_name":"PreToolUse", "session_id":"public-session", "cwd":"/public/project", "tool_name":tool,"tool_input":original}).to_string();
+        let nonce = format!("{:032x}", rand::random::<u128>());
+        assert_eq!(
+            raw_request(
+                port,
+                "invalid",
+                "GET",
+                &format!("/v1/hooks/challenge/{nonce}"),
+                "",
+                ""
+            )
+            .await
+            .code,
+            204
+        );
+        let proof = scribe_hook_protocol::sign(
+            HOOK_KEY,
+            &[b"request", nonce.as_bytes(), b"PreToolUse", body.as_bytes()],
+        );
+        let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+        let asking = tokio::spawn(async move {
+            raw_request(
+                port,
+                "invalid",
+                "POST",
+                "/v1/hooks/PreToolUse",
+                &headers,
+                &body,
+            )
+            .await
+        });
+        let pending = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(decision) = core
+                    .snapshot(scribe_core::now_ms())
+                    .unwrap()
+                    .decisions
+                    .into_iter()
+                    .find(|d| d.status == "pending")
+                {
+                    break decision;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!asking.is_finished(), "native hook must await human input");
+        let path = format!("/v1/decisions/{}", pending.id);
+        assert_eq!(
+            request(port, TOKEN, "POST", &path, "", &choice.to_string())
+                .await
+                .code,
+            403
+        );
+        if tool == "ExitPlanMode" && choice["action"] == "allow" {
+            let ui = format!("X-Scribe-UI: {}\r\n", server.ui_token());
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"allow\"}")
+                    .await
+                    .code,
+                409
+            );
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"arm\"}")
+                    .await
+                    .code,
+                204
+            );
+            assert_eq!(
+                request(port, TOKEN, "POST", &path, &ui, "{\"action\":\"allow\"}")
+                    .await
+                    .code,
+                409
+            );
+            tokio::time::sleep(Duration::from_millis(1050)).await;
+        }
+        assert_eq!(
+            request(
+                port,
+                TOKEN,
+                "POST",
+                &path,
+                &format!("X-Scribe-UI: {}\r\n", server.ui_token()),
+                &choice.to_string()
+            )
+            .await
+            .code,
+            204
+        );
+        let result = asking.await.unwrap();
+        if terminal {
+            assert_eq!(result.code, 204);
+            assert!(result.body.is_empty());
+        } else {
+            assert_eq!(result.code, 200);
+            let proof = result
+                .headers
+                .lines()
+                .find_map(|line| {
+                    let (key, value) = line.split_once(':')?;
+                    key.eq_ignore_ascii_case("x-scribe-proof")
+                        .then(|| value.trim())
+                })
+                .unwrap();
+            assert!(scribe_hook_protocol::verify(
+                HOOK_KEY,
+                &[
+                    b"response",
+                    nonce.as_bytes(),
+                    b"PreToolUse",
+                    b"200",
+                    result.body.as_bytes()
+                ],
+                proof
+            ));
+            let output: Value = serde_json::from_str(&result.body).unwrap();
+            assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "allow");
+            let updated = &output["hookSpecificOutput"]["updatedInput"];
+            if tool == "AskUserQuestion" {
+                assert_eq!(updated["questions"], original["questions"]);
+                assert_eq!(updated["answers"]["Choose public option?"], "B");
+            } else {
+                assert_eq!(*updated, original);
+            }
+        }
+    }
+    let reply = request(port, TOKEN, "POST", "/v1/hooks/PreToolUse", "", &json!({"hook_event_name":"PreToolUse", "session_id":"public-session", "cwd":"/public/project","tool_name":"Bash","tool_input":{"command":"echo public"}}).to_string()).await;
+    assert_eq!(reply.code, 204, "ordinary tools remain observational");
+}
+
 async fn request(
+    port: u16,
+    token: &str,
+    method: &str,
+    path: &str,
+    extra: &str,
+    body: &str,
+) -> Reply {
+    let mut extra = extra.to_owned();
+    if method == "POST"
+        && path.starts_with("/v1/hooks/")
+        && token == TOKEN
+        && !extra.to_ascii_lowercase().contains("x-scribe-nonce:")
+    {
+        let nonce = format!("{:032x}", rand::random::<u128>());
+        let challenge = raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            "",
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204, "test hook challenge must succeed");
+        let proof = scribe_hook_protocol::sign(
+            HOOK_KEY,
+            &[
+                b"request",
+                nonce.as_bytes(),
+                path.trim_start_matches("/v1/hooks/").as_bytes(),
+                body.as_bytes(),
+            ],
+        );
+        extra.push_str(&format!(
+            "x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n"
+        ));
+    }
+    raw_request(port, token, method, path, &extra, body).await
+}
+
+async fn raw_request(
     port: u16,
     token: &str,
     method: &str,
@@ -802,10 +1004,10 @@ async fn request(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
+async fn http_boundaries_auth_body_rate_mcp_and_protected_decision_route() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let port = server.port();
@@ -844,7 +1046,7 @@ async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
         )
         .await
         .code,
-        404
+        403
     );
     let oversized = "x".repeat(1024 * 1024 + 1);
     assert_eq!(
@@ -926,16 +1128,44 @@ async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
     );
     let ask = json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"scribe_ask",
         "arguments":{"session_id":"public-session","question":"PUBLIC QUESTION","options":["YES","NO"]}}}).to_string();
+    let asking = tokio::spawn(async move {
+        request(
+            port,
+            TOKEN,
+            "POST",
+            "/mcp",
+            "MCP-Protocol-Version: 2025-11-25\r\n",
+            &ask,
+        )
+        .await
+    });
+    let pending = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(decision) = core
+                .snapshot(scribe_core::now_ms())
+                .unwrap()
+                .decisions
+                .first()
+                .cloned()
+            {
+                break decision;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
     let result = request(
         port,
         TOKEN,
         "POST",
-        "/mcp",
-        "MCP-Protocol-Version: 2025-11-25\r\n",
-        &ask,
+        &format!("/v1/decisions/{}", pending.id),
+        &format!("{ui}Content-Type: application/json\r\n"),
+        "{\"option\":1}",
     )
     .await;
-    assert!(result.body.contains("scribe_unavailable"));
+    assert_eq!(result.code, 204);
+    assert!(asking.await.unwrap().body.contains("NO"));
     for (name, arguments) in [
         (
             "scribe_report",
@@ -1002,7 +1232,7 @@ async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
 async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let mut socket = TcpStream::connect(("127.0.0.1", server.port()))
@@ -1035,13 +1265,13 @@ async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
 async fn real_release_helper_reaches_the_production_server_with_silent_output() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let connection = temp.path().join("connection.json");
     fs::write(
         &connection,
-        json!({"port":server.port(),"token":TOKEN}).to_string(),
+        json!({"port":server.port(),"token":TOKEN,"hook_key":HOOK_KEY}).to_string(),
     )
     .unwrap();
     let executable = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1093,16 +1323,20 @@ async fn real_release_helper_reaches_the_production_server_with_silent_output() 
 async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
-    assert!(LocalServer::start(core.clone(), 0, "short".into())
-        .await
-        .is_err());
-    let server = LocalServer::start(core.clone(), 0, TOKEN.into())
+    assert!(
+        LocalServer::start(core.clone(), 0, "short".into(), HOOK_KEY.into())
+            .await
+            .is_err()
+    );
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     let port = server.port();
-    assert!(LocalServer::start(core.clone(), port, TOKEN.into())
-        .await
-        .is_err());
+    assert!(
+        LocalServer::start(core.clone(), port, TOKEN.into(), HOOK_KEY.into())
+            .await
+            .is_err()
+    );
     let mut samples = vec![];
     for _ in 0..32 {
         let started = Instant::now();
@@ -1139,17 +1373,248 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
     assert!(String::from_utf8_lossy(&buffer[..read]).starts_with("HTTP/1.1 408"));
     drop(socket);
     drop(server);
-    tokio::time::timeout(Duration::from_secs(1), async {
+    let restarted = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            if let Ok(listener) = tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
-                drop(listener);
-                break;
+            if let Ok(restarted) =
+                LocalServer::start(core.clone(), port, TOKEN.into(), HOOK_KEY.into()).await
+            {
+                break restarted;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
     .unwrap();
-    let restarted = LocalServer::start(core, port, TOKEN.into()).await.unwrap();
     restarted.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_hooks_authenticate_both_peers_and_reject_replay() {
+    use scribe_hook_protocol::{sign, verify};
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let path = format!("/v1/hooks/challenge/{nonce}");
+    let challenge = request(port, "invalid", "GET", &path, "", "").await;
+    assert_eq!(challenge.code, 204);
+    let proof = challenge
+        .headers
+        .lines()
+        .find_map(|h| h.strip_prefix("x-scribe-proof: "))
+        .unwrap();
+    assert!(verify(HOOK_KEY, &[b"challenge", nonce.as_bytes()], proof));
+    assert!(!verify(TOKEN, &[b"challenge", nonce.as_bytes()], proof));
+    let body =
+        r#"{"hook_event_name":"SessionStart","session_id":"native-auth","cwd":"/public/project"}"#;
+    let proof = sign(
+        HOOK_KEY,
+        &[
+            b"request",
+            nonce.as_bytes(),
+            b"SessionStart",
+            body.as_bytes(),
+        ],
+    );
+    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+    let reply = request(
+        port,
+        "invalid",
+        "POST",
+        "/v1/hooks/SessionStart",
+        &extra,
+        body,
+    )
+    .await;
+    assert_eq!(reply.code, 204);
+    let proof = reply
+        .headers
+        .lines()
+        .find_map(|h| h.strip_prefix("x-scribe-proof: "))
+        .unwrap();
+    assert!(verify(
+        HOOK_KEY,
+        &[
+            b"response",
+            nonce.as_bytes(),
+            b"SessionStart",
+            b"204",
+            reply.body.as_bytes()
+        ],
+        proof
+    ));
+    assert_eq!(
+        request(
+            port,
+            "invalid",
+            "POST",
+            "/v1/hooks/SessionStart",
+            &extra,
+            body
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        request(port, "invalid", "GET", &path, "", "").await.code,
+        204
+    );
+    let wrong = sign(
+        TOKEN,
+        &[
+            b"request",
+            nonce.as_bytes(),
+            b"SessionStart",
+            body.as_bytes(),
+        ],
+    );
+    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {wrong}\r\n");
+    assert_eq!(
+        request(
+            port,
+            "invalid",
+            "POST",
+            "/v1/hooks/SessionStart",
+            &extra,
+            body
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
+        1
+    );
+    assert!(LocalServer::start(core, 0, TOKEN.into(), TOKEN.into())
+        .await
+        .is_err());
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_quota() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+
+    let bare_hook = raw_request(
+        port,
+        TOKEN,
+        "POST",
+        "/v1/hooks/PermissionRequest",
+        "",
+        &json!({
+            "hook_event_name":"PermissionRequest",
+            "session_id":"bearer-only",
+            "cwd":"/public/project",
+            "tool_name":"Bash",
+            "tool_input":{"command":"echo must-not-create-card"}
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(bare_hook.code, 401);
+    let snapshot = core.snapshot(scribe_core::now_ms()).unwrap();
+    assert!(snapshot.sessions.is_empty());
+    assert!(snapshot.decisions.is_empty());
+
+    core.hook(
+        "SessionStart",
+        payload("SessionStart").to_string().as_bytes(),
+        scribe_core::now_ms(),
+    )
+    .unwrap();
+    let pending = core
+        .permission(
+            &serde_json::to_vec(&json!({
+                "hook_event_name":"PermissionRequest", "session_id":"public-session",
+                "cwd":"/public/project", "tool_name":"Bash", "tool_use_id":"public-call",
+                "tool_input":{"command":"echo public"}
+            }))
+            .unwrap(),
+            120,
+        )
+        .unwrap();
+    let decision_id = core.snapshot(scribe_core::now_ms()).unwrap().decisions[0]
+        .id
+        .clone();
+    assert_eq!(
+        raw_request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/hooks/PostToolUse",
+            "",
+            &json!({"hook_event_name":"PostToolUse", "session_id":"public-session",
+        "cwd":"/public/project", "tool_name":"Bash", "tool_use_id":"public-call",
+        "tool_input":{"command":"echo public"}})
+            .to_string()
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.id == decision_id)
+            .unwrap()
+            .status,
+        "pending"
+    );
+    drop(pending);
+
+    for index in 0..60 {
+        let nonce = format!("{index:032x}");
+        let challenge = request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            "",
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204);
+    }
+    for index in 100..160 {
+        let nonce = format!("{index:032x}");
+        assert_eq!(
+            request(
+                port,
+                TOKEN,
+                "POST",
+                "/v1/hooks/SessionStart",
+                &format!("x-scribe-nonce: {nonce}\r\n"),
+                &payload("SessionStart").to_string(),
+            )
+            .await
+            .code,
+            401
+        );
+    }
+
+    assert_eq!(
+        request(port, TOKEN, "GET", "/v1/health", "", "").await.code,
+        200
+    );
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"challenge-flood-test","version":"1"}}}).to_string();
+    assert_eq!(
+        request(port, TOKEN, "POST", "/mcp", "", &initialize)
+            .await
+            .code,
+        200
+    );
+    server.stop().await.unwrap();
 }

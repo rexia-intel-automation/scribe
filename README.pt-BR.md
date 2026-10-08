@@ -5,8 +5,9 @@ App local para acompanhar sessões do Claude Code e decisões humanas.
 [English](README.md)
 
 **Estado:** Fases 0, 1 e 2 aprovadas; a interface desktop da Fase 3 está em verificação.
-Ainda não há release do app desktop. O cliente nativo somente observa eventos;
-decisões de permissão ainda não foram implementadas.
+Ainda não há release do app desktop. Permitir, negar e responder perguntas
+pela janela já foram implementados e verificados com Claude Code real no Windows.
+Veja [o fluxo de decisões](docs/fase-4.md) para evidências e limites da versão local.
 
 O repositório é o marketplace `rexia-scribe`. O plugin de configuração e texto
 está em `plugins/scribe`. O instalador incluirá o cliente de hooks Rust, sem

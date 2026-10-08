@@ -17,6 +17,7 @@ use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use std::{
+    collections::HashMap,
     convert::Infallible,
     net::{Ipv4Addr, SocketAddrV4},
     sync::{Arc, Mutex},
@@ -37,8 +38,11 @@ struct HttpState {
     core: Core,
     port: u16,
     token: String,
+    hook_key: String,
+    challenges: Arc<Mutex<HashMap<String, Instant>>>,
     ui_token: String,
     rate: Arc<Mutex<Rate>>,
+    challenge_rate: Arc<Mutex<Rate>>,
     cancel: CancellationToken,
 }
 
@@ -54,15 +58,46 @@ pub struct LocalServer {
 impl LocalServer {
     /// Bind exclusively to IPv4 loopback. Port zero is for isolated tests;
     /// production passes 7717 or the user's explicitly selected port.
-    pub async fn start(core: Core, port: u16, token: String) -> Result<Self> {
+    pub async fn start(core: Core, port: u16, token: String, hook_key: String) -> Result<Self> {
         if !(32..=128).contains(&token.len())
             || !token
                 .bytes()
                 .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+            || !scribe_hook_protocol::valid_secret(&hook_key)
+            || hook_key == token
         {
             return Err("Invalid local token".into());
         }
-        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)).await?;
+        let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None)?;
+        // Match Tokio's Unix listener behavior so TIME_WAIT does not prevent restart.
+        // SO_REUSEPORT remains disabled; an active listener still owns the port.
+        #[cfg(unix)]
+        socket.set_reuse_address(true)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawSocket;
+            use windows_sys::Win32::Networking::WinSock::{
+                setsockopt, WSAGetLastError, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+            };
+            let enabled = 1_i32;
+            // SAFETY: a live socket and a four-byte BOOL, as required by Winsock.
+            if unsafe {
+                setsockopt(
+                    socket.as_raw_socket() as usize,
+                    SOL_SOCKET,
+                    SO_EXCLUSIVEADDRUSE,
+                    &enabled as *const i32 as *const u8,
+                    std::mem::size_of_val(&enabled) as i32,
+                )
+            } != 0
+            {
+                return Err(std::io::Error::from_raw_os_error(unsafe { WSAGetLastError() }).into());
+            }
+        }
+        socket.bind(&SocketAddrV4::new(Ipv4Addr::LOCALHOST, port).into())?;
+        socket.listen(128)?;
+        socket.set_nonblocking(true)?;
+        let listener = TcpListener::from_std(socket.into())?;
         let port = listener.local_addr()?.port();
         let ui_token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
         let cancel = CancellationToken::new();
@@ -70,8 +105,14 @@ impl LocalServer {
             core: core.clone(),
             port,
             token,
+            hook_key,
+            challenges: Arc::new(Mutex::new(HashMap::new())),
             ui_token: ui_token.clone(),
             rate: Arc::new(Mutex::new(Rate {
+                since: Instant::now(),
+                count: 0,
+            })),
+            challenge_rate: Arc::new(Mutex::new(Rate {
                 since: Instant::now(),
                 count: 0,
             })),
@@ -94,8 +135,10 @@ impl LocalServer {
         let router = Router::new()
             .route("/v1/health", get(health))
             .route("/v1/hooks/{event}", post(hook))
+            .route("/v1/hooks/challenge/{nonce}", get(challenge))
             .route("/v1/state", get(snapshot))
             .route("/v1/events", get(events))
+            .route("/v1/decisions/{id}", post(decision))
             .nest_service("/mcp", service)
             .with_state(state.clone())
             .layer(middleware::from_fn_with_state(state, defend));
@@ -167,6 +210,21 @@ fn matches_secret(actual: Option<&str>, expected: &str) -> bool {
     actual.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())))
 }
 
+fn within_rate(rate: &Mutex<Rate>, limit: u16) -> bool {
+    let Ok(mut rate) = rate.lock() else {
+        return false;
+    };
+    if rate.since.elapsed() >= Duration::from_secs(1) {
+        rate.since = Instant::now();
+        rate.count = 0;
+    }
+    if rate.count >= limit {
+        return false;
+    }
+    rate.count += 1;
+    true
+}
+
 async fn defend(State(state): State<HttpState>, request: Request, next: Next) -> Response {
     let headers = request.headers();
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
@@ -186,16 +244,28 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             return StatusCode::FORBIDDEN.into_response();
         }
     }
+    let challenge_request = request.method() == axum::http::Method::GET
+        && request.uri().path().starts_with("/v1/hooks/challenge/");
+    let hook_request = request.method() == axum::http::Method::POST
+        && request.uri().path().starts_with("/v1/hooks/")
+        && !request.uri().path().starts_with("/v1/hooks/challenge/");
+    let signed_hook = hook_request;
+    if challenge_request && !within_rate(&state.challenge_rate, 256) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
     let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "));
-    if headers.get_all(header::AUTHORIZATION).iter().count() != 1
-        || !matches_secret(authorization, &state.token)
+    if !challenge_request
+        && !signed_hook
+        && (headers.get_all(header::AUTHORIZATION).iter().count() != 1
+            || !matches_secret(authorization, &state.token))
     {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    if matches!(request.uri().path(), "/v1/state" | "/v1/events")
+    if (matches!(request.uri().path(), "/v1/state" | "/v1/events")
+        || request.uri().path().starts_with("/v1/decisions/"))
         && (headers.get_all("x-scribe-ui").iter().count() != 1
             || !matches_secret(
                 headers.get("x-scribe-ui").and_then(|h| h.to_str().ok()),
@@ -204,19 +274,6 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
     {
         return StatusCode::FORBIDDEN.into_response();
     }
-    {
-        let Ok(mut rate) = state.rate.lock() else {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        };
-        if rate.since.elapsed() >= Duration::from_secs(1) {
-            rate.since = Instant::now();
-            rate.count = 0;
-        }
-        if rate.count >= 50 {
-            return StatusCode::TOO_MANY_REQUESTS.into_response();
-        }
-        rate.count += 1;
-    }
     let (parts, body) = request.into_parts();
     let bytes =
         match tokio::time::timeout(Duration::from_millis(500), to_bytes(body, BODY_LIMIT)).await {
@@ -224,22 +281,146 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
             Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
         };
+    if signed_hook {
+        let nonce = parts
+            .headers
+            .get("x-scribe-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let proof = parts
+            .headers
+            .get("x-scribe-proof")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let event = parts.uri.path().strip_prefix("/v1/hooks/").unwrap_or("");
+        if parts.headers.get_all("x-scribe-nonce").iter().count() != 1
+            || parts.headers.get_all("x-scribe-proof").iter().count() != 1
+            || !scribe_hook_protocol::valid_nonce(nonce)
+            || !scribe_hook_protocol::verify(
+                &state.hook_key,
+                &[b"request", nonce.as_bytes(), event.as_bytes(), &bytes],
+                proof,
+            )
+        {
+            if !within_rate(&state.challenge_rate, 256) {
+                return StatusCode::TOO_MANY_REQUESTS.into_response();
+            }
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        let valid = state
+            .challenges
+            .lock()
+            .ok()
+            .and_then(|mut c| c.remove(nonce))
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
+        if !valid {
+            if !within_rate(&state.challenge_rate, 256) {
+                return StatusCode::TOO_MANY_REQUESTS.into_response();
+            }
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        if !within_rate(&state.rate, 50) {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        }
+        let nonce = nonce.to_owned();
+        let event = event.to_owned();
+        let response = next
+            .run(Request::from_parts(parts, Body::from(bytes)))
+            .await;
+        let (mut parts, body) = response.into_parts();
+        let Ok(bytes) = to_bytes(body, 8192).await else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        };
+        let status = parts.status.as_u16().to_string();
+        let proof = scribe_hook_protocol::sign(
+            &state.hook_key,
+            &[
+                b"response",
+                nonce.as_bytes(),
+                event.as_bytes(),
+                status.as_bytes(),
+                &bytes,
+            ],
+        );
+        parts
+            .headers
+            .insert("x-scribe-proof", proof.parse().expect("base64url header"));
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+    if !challenge_request && !within_rate(&state.rate, 50) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
     next.run(Request::from_parts(parts, Body::from(bytes)))
         .await
+}
+
+async fn challenge(State(state): State<HttpState>, Path(nonce): Path<String>) -> Response {
+    if !scribe_hook_protocol::valid_nonce(&nonce) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Ok(mut challenges) = state.challenges.lock() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    challenges.retain(|_, at| at.elapsed() < Duration::from_secs(2));
+    if challenges.len() >= 256 || challenges.contains_key(&nonce) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    challenges.insert(nonce.clone(), Instant::now());
+    let proof = scribe_hook_protocol::sign(&state.hook_key, &[b"challenge", nonce.as_bytes()]);
+    ([("x-scribe-proof", proof)], StatusCode::NO_CONTENT).into_response()
 }
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION")}))
 }
 
-async fn hook(
-    State(state): State<HttpState>,
-    Path(event): Path<String>,
-    body: Bytes,
-) -> StatusCode {
+async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: Bytes) -> Response {
+    let interactive = event == "PreToolUse"
+        && serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .is_some_and(|v| {
+                matches!(
+                    v["tool_name"].as_str(),
+                    Some("AskUserQuestion" | "ExitPlanMode")
+                )
+            });
+    if event == "PermissionRequest" || interactive {
+        let core = state.core.clone();
+        let wait = tokio::task::spawn_blocking(move || {
+            if interactive {
+                core.interactive(&body, 120)
+            } else {
+                core.permission(&body, core.permission_seconds())
+            }
+        })
+        .await;
+        return match wait {
+            Ok(Ok(wait)) => {
+                tokio::select! {
+                    result = wait.receive() => {
+                        if result.get("hookSpecificOutput").is_some() { Json(result).into_response() }
+                        else { StatusCode::NO_CONTENT.into_response() }
+                    },
+                    _ = state.cancel.cancelled() => StatusCode::NO_CONTENT.into_response(),
+                }
+            }
+            _ => StatusCode::NO_CONTENT.into_response(),
+        };
+    }
     match tokio::task::spawn_blocking(move || state.core.hook(&event, &body, now_ms())).await {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        _ => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+async fn decision(
+    State(state): State<HttpState>,
+    Path(id): Path<String>,
+    Json(input): Json<crate::DecisionInput>,
+) -> StatusCode {
+    match tokio::task::spawn_blocking(move || state.core.resolve_decision(&id, input)).await {
         Ok(Ok(())) => StatusCode::NO_CONTENT,
-        _ => StatusCode::BAD_REQUEST,
+        _ => StatusCode::CONFLICT,
     }
 }
 

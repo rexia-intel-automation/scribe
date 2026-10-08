@@ -29,11 +29,16 @@ pub struct Preferences {
     notifications: bool,
     retention_days: u16,
     completed_minutes: u16,
+    #[serde(default = "default_permission_seconds")]
+    permission_seconds: u16,
     port: u16,
     collapsed: bool,
     side: String,
     y: Option<f64>,
     monitor: Option<String>,
+}
+fn default_permission_seconds() -> u16 {
+    120
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -54,6 +59,7 @@ impl Default for Preferences {
             notifications: true,
             retention_days: 14,
             completed_minutes: 10,
+            permission_seconds: 120,
             port: 7717,
             collapsed: false,
             side: "right".into(),
@@ -68,6 +74,7 @@ impl Preferences {
             || !matches!(self.theme.as_str(), "light" | "dark" | "auto")
             || !(1..=365).contains(&self.retention_days)
             || !(1..=1440).contains(&self.completed_minutes)
+            || !(1..=120).contains(&self.permission_seconds)
             || self.port < 1024
             || !matches!(self.side.as_str(), "left" | "right")
             || self.y.is_some_and(|y| !y.is_finite())
@@ -84,6 +91,8 @@ impl Preferences {
 struct Connection {
     port: u16,
     token: String,
+    #[serde(default)]
+    hook_key: String,
     app_path: Option<PathBuf>,
 }
 #[derive(Clone, Serialize)]
@@ -92,6 +101,7 @@ pub struct View {
     at: u64,
     revision: u64,
     sessions: Vec<Session>,
+    decisions: Vec<crate::Decision>,
     preferences: Preferences,
     error: Option<String>,
 }
@@ -168,6 +178,12 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
         {
             c.app_path = Some(std::env::current_exe()?);
+            if c.hook_key.is_empty() {
+                c.hook_key = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+            }
+            if !scribe_hook_protocol::valid_secret(&c.hook_key) || c.hook_key == c.token {
+                return Err("Invalid hook key".into());
+            }
             c
         }
         _ if connection_path.exists() => {
@@ -175,12 +191,14 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
             Connection {
                 port: preferences.port,
                 token: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
+                hook_key: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
                 app_path: Some(std::env::current_exe()?),
             }
         }
         _ => Connection {
             port: preferences.port,
             token: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
+            hook_key: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>()),
             app_path: Some(std::env::current_exe()?),
         },
     };
@@ -207,6 +225,7 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
                 core.clone(),
                 connection.port,
                 connection.token.clone(),
+                connection.hook_key.clone(),
             )) {
                 Ok(server) => Some(server),
                 Err(_) => {
@@ -219,6 +238,8 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
         None
     };
     if let Some(core) = &core {
+        core.set_permission_seconds(u64::from(preferences.permission_seconds))
+            .map_err(|_| "Invalid permission timeout")?;
         let policy = core.data.lock().map_err(|_| "State lock unavailable")?;
         preferences.retention_days = policy.retention_days;
         preferences.completed_minutes = policy.completed_minutes;
@@ -272,13 +293,18 @@ fn view(data: &Desktop) -> Result<View, String> {
     let mut revision = data.view_revision.lock().map_err(|_| "bridgeUnavailable")?;
     *revision += 1;
     let at = now_ms();
+    let snapshot = match &data.core {
+        Some(c) => c.snapshot(at).map_err(|_| "bridgeUnavailable")?,
+        None => crate::Snapshot {
+            sessions: vec![],
+            decisions: vec![],
+        },
+    };
     Ok(View {
         at,
         revision: *revision,
-        sessions: match &data.core {
-            Some(c) => c.snapshot(at).map_err(|_| "bridgeUnavailable")?.sessions,
-            None => vec![],
-        },
+        sessions: snapshot.sessions,
+        decisions: snapshot.decisions,
         preferences: data
             .preferences
             .lock()
@@ -290,6 +316,24 @@ fn view(data: &Desktop) -> Result<View, String> {
 #[tauri::command]
 fn get_view(window: WebviewWindow, data: State<'_, Desktop>) -> Result<View, String> {
     trusted(&window)?;
+    view(&data)
+}
+#[tauri::command]
+fn resolve_decision(
+    window: WebviewWindow,
+    data: State<'_, Desktop>,
+    id: String,
+    input: crate::DecisionInput,
+) -> Result<View, String> {
+    trusted(&window)?;
+    if !window.is_focused().map_err(|_| "bridgeUnavailable")? {
+        return Err("decisionUnavailable".into());
+    }
+    data.core
+        .as_ref()
+        .ok_or("bridgeUnavailable")?
+        .resolve_decision(&id, input)
+        .map_err(|_| "decisionUnavailable")?;
     view(&data)
 }
 fn text(language: &str, key: &str) -> String {
@@ -526,9 +570,14 @@ async fn set_preferences(
             .is_none()
     {
         Some(
-            LocalServer::start(core.clone(), preferences.port, connection.token.clone())
-                .await
-                .map_err(|_| "portBusy")?,
+            LocalServer::start(
+                core.clone(),
+                preferences.port,
+                connection.token.clone(),
+                connection.hook_key.clone(),
+            )
+            .await
+            .map_err(|_| "portBusy")?,
         )
     } else {
         None
@@ -577,6 +626,8 @@ async fn set_preferences(
     if let Some(server) = next_server {
         *data.server.lock().map_err(|_| "bridgeUnavailable")? = Some(server);
     }
+    core.set_permission_seconds(u64::from(preferences.permission_seconds))
+        .map_err(|_| "invalidPreferences")?;
     *data.preferences.lock().map_err(|_| "bridgeUnavailable")? = preferences;
     *data.error.lock().map_err(|_| "bridgeUnavailable")? = None;
     update_tray(&app)?;
@@ -760,7 +811,8 @@ pub fn run() {
             move_panel,
             start_drag,
             clear_history,
-            open_help
+            open_help,
+            resolve_decision
         ])
         .setup(|app| {
             let data = init(app.handle())?;
@@ -847,6 +899,7 @@ pub fn run() {
                     if let Ok(Ok(current)) = current {
                         let encoded = serde_json::to_string(&(
                             &current.sessions,
+                            &current.decisions,
                             &current.preferences,
                             &current.error,
                         ))
@@ -950,6 +1003,22 @@ mod tests {
     fn preferences_are_bounded_and_reject_unknown_fields() {
         let valid = Preferences::default();
         assert!(valid.validate().is_ok());
+        for seconds in [0, 121] {
+            assert!(Preferences {
+                permission_seconds: seconds,
+                ..valid.clone()
+            }
+            .validate()
+            .is_err());
+        }
+        let mut legacy = serde_json::to_value(&valid).unwrap();
+        legacy.as_object_mut().unwrap().remove("permissionSeconds");
+        assert_eq!(
+            serde_json::from_value::<Preferences>(legacy)
+                .unwrap()
+                .permission_seconds,
+            120
+        );
         for (days, minutes, port) in [
             (0, 10, 7717),
             (366, 10, 7717),

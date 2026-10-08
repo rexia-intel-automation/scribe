@@ -34,6 +34,7 @@ function fixture(): View {
       {
         id: "public",
         project: "public-project",
+        title: null,
         cwd: "…/public/project",
         origin: "startup",
         state: "pena",
@@ -53,6 +54,13 @@ function fixture(): View {
 }
 beforeEach(() => vi.clearAllMocks());
 describe("session window", () => {
+  it("shows a custom title while keeping the project name visible", () => {
+    const data = fixture();
+    data.sessions[0].title = "Release prep";
+    render(<App initialView={data} />);
+    expect(screen.getByText("Release prep")).toBeVisible();
+    expect(screen.getByText("public-project")).toBeVisible();
+  });
   it("starts with an honest empty state and no future tabs or fabricated sessions", () => {
     render(
       <App

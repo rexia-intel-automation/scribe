@@ -61,6 +61,8 @@ pub struct Step {
 pub struct Session {
     pub id: String,
     pub project: String,
+    #[serde(default)]
+    pub title: Option<String>,
     pub cwd: String,
     pub origin: Option<String>,
     pub state: SessionState,
@@ -76,6 +78,7 @@ impl Session {
         let mut session = Self {
             id,
             project: String::new(),
+            title: None,
             cwd: String::new(),
             origin: None,
             state: SessionState::Gota,
@@ -148,9 +151,21 @@ pub(crate) struct Hook {
     pub agent_id: Option<String>,
     pub source: Option<String>,
     pub notification_type: Option<String>,
+    pub session_title: Option<String>,
+    pub tool_use_id: Option<String>,
 }
 
 impl Hook {
+    pub(crate) fn session_title(&self) -> Option<Option<String>> {
+        self.session_title.as_deref().and_then(|title| {
+            if crate::sanitize::ambiguous_text(title) {
+                return None;
+            }
+            let title = title.trim();
+            Some((!title.is_empty()).then(|| summary(title, 79)))
+        })
+    }
+
     pub(crate) fn valid(&self, route: &str) -> bool {
         EVENTS.contains(&route)
             && self.hook_event_name == route
@@ -188,6 +203,7 @@ pub(crate) fn identifier(id: &str) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub sessions: Vec<Session>,
+    pub decisions: Vec<crate::Decision>,
 }
 
 /// An update contains sanitized state only; credentials are never serialized.
@@ -196,4 +212,5 @@ pub struct Snapshot {
 pub enum StateEvent {
     Snapshot(Snapshot),
     Session(Session),
+    Decision(crate::Decision),
 }

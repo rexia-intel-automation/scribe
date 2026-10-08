@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "label": "native-allow",
+      "passed": true,
+      "clickToHookMs": 61.81479999999988
+    },
+    {
+      "label": "native-deny",
+      "passed": true,
+      "clickToHookMs": 47.46640000000025
+    },
+    {
+      "label": "native-risk",
+      "passed": true,
+      "clickToHookMs": 49.20109999999977
+    },
+    {
+      "label": "real-allow-1791391678491",
+      "passed": true,
+      "realClaude": true,
+      "fileExists": true,
+      "responseMatched": true
+    },
+    {
+      "label": "real-deny-1791391683983",
+      "passed": true,
+      "realClaude": true,
+      "fileExists": false,
+      "responseMatched": true
+    },
+    {
+      "label": "real-claude-question",
+      "passed": true,
+      "realClaude": true,
+      "responseMatched": true,
+      "delayMs": 0
+    }
+  ],
+  "automatedUiClicks": true,
+  "isolatedProfile": false,
+  "installedExecutables": true,
+  "executionEnvironment": "codex-msix-virtualized-windows",
+  "externalInstallationVerified": false,
+  "scopeCorrection": "The invoking process saw MSIX-virtualized AppData. These results do not verify the unpackaged Claude Code installation. External diagnosis recorded on 2026-10-07."
+}

@@ -2,12 +2,65 @@
 // No UI command, permission decision or simulated human click is issued here.
 import { chromium } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import path from "node:path";
 const configPath = process.env.SCRIBE_CONNECTION_FILE;
 const output = process.env.SCRIBE_EVIDENCE_DIR;
 if (!configPath?.includes(".artifacts") || !output?.includes(".artifacts"))
   throw new Error("Isolated fixture paths required");
 const connection = JSON.parse(await readFile(configPath, "utf8"));
+function proof(...fields) {
+  const hmac = createHmac("sha256", connection.hook_key).update(
+    "scribe-hook-v1",
+  );
+  for (const field of fields) {
+    const bytes = Buffer.from(field);
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hmac.update(length).update(bytes);
+  }
+  return hmac.digest("base64url");
+}
+function verify(expected, actual) {
+  if (!actual) return false;
+  const a = Buffer.from(expected, "base64url");
+  const b = Buffer.from(actual, "base64url");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+async function hook(event, input) {
+  const nonce = randomUUID().replaceAll("-", "");
+  const challenge = await fetch(
+    `http://127.0.0.1:${connection.port}/v1/hooks/challenge/${nonce}`,
+  );
+  if (
+    challenge.status !== 204 ||
+    !verify(proof("challenge", nonce), challenge.headers.get("x-scribe-proof"))
+  )
+    throw new Error("Native hook challenge failed");
+  const body = JSON.stringify(input);
+  const response = await fetch(
+    `http://127.0.0.1:${connection.port}/v1/hooks/${event}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-scribe-nonce": nonce,
+        "x-scribe-proof": proof("request", nonce, event, body),
+      },
+      body,
+    },
+  );
+  const responseBody = await response.text();
+  if (
+    !verify(
+      proof("response", nonce, event, String(response.status), responseBody),
+      response.headers.get("x-scribe-proof"),
+    )
+  )
+    throw new Error("Native hook response proof failed");
+  return response;
+}
 const browser = await chromium.connectOverCDP("http://127.0.0.1:9223", {
   noDefaults: true,
 });
@@ -43,23 +96,13 @@ try {
       marker,
     );
     const start = performance.now();
-    const response = await fetch(
-      `http://127.0.0.1:${connection.port}/v1/hooks/PreToolUse`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${connection.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          hook_event_name: "PreToolUse",
-          session_id: "public-native-phase3",
-          cwd: "D:/public/scribe-verification",
-          tool_name: "Edit",
-          tool_input: { file_path: `D:/public/${marker}` },
-        }),
-      },
-    );
+    const response = await hook("PreToolUse", {
+      hook_event_name: "PreToolUse",
+      session_id: "public-native-phase3",
+      cwd: "D:/public/scribe-verification",
+      tool_name: "Edit",
+      tool_input: { file_path: `D:/public/${marker}` },
+    });
     if (response.status !== 204)
       throw new Error(`Hook rejected: ${response.status}`);
     await observed;

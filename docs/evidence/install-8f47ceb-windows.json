@@ -1,0 +1,24 @@
+{
+  "sourceCommit": "8f47ceb6b06e0b94f78d61147d4b9458e6fd1462",
+  "testedAt": "2026-10-08",
+  "scope": "External Windows current-user NSIS upgrade; native interactive tool flow still pending",
+  "installerSha256": "32A96DA98493CDA6D2043B63D3B4AE2D42A4F643EA5650F5F6B0CF3FCC1A01B6",
+  "targetAppSha256": "9D5EEF32F91837850EA208D6EA7533133500752B1A98A7854C8D252D006C4A7C",
+  "installedAppSha256": "BC79577664E8A1C1820C310AD95056864091566E147FEB0B1FF9B9612B1B0541",
+  "installedHookSha256": "1FD335362A796193D6F48685A2FE8E4215BED587B45603F15D10AE41C39E2155",
+  "installerHashSource": "Codex build artifact and Claude external comparison",
+  "installedHashSource": "Claude external process, outside Codex MSIX redirection",
+  "setupExitCode": 0,
+  "launch": "Start menu shortcut",
+  "connectionPreserved": true,
+  "claudeCodeVersion": "2.1.293",
+  "headlessAskUserQuestionAvailable": false,
+  "headlessProbeBudgetUsd": 0.30,
+  "limitations": [
+    "Native AskUserQuestion and ExitPlanMode require an interactive session test.",
+    "Clean first app installation and uninstall were not covered.",
+    "This installer predates the two-step plan confirmation correction.",
+    "Bundling changes application binary metadata; target and installed hashes are recorded separately.",
+    "No certificate signature or human visual acceptance is claimed."
+  ]
+}

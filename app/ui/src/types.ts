@@ -21,6 +21,7 @@ export interface Step {
 export interface Session {
   id: string;
   project: string;
+  title?: string | null;
   cwd: string;
   origin: string | null;
   state: Exclude<Form, "ponto">;
@@ -37,6 +38,7 @@ export interface Preferences {
   notifications: boolean;
   retentionDays: number;
   completedMinutes: number;
+  permissionSeconds?: number;
   port: number;
   collapsed: boolean;
   side: "left" | "right";
@@ -49,6 +51,37 @@ export interface View {
   sessions: Session[];
   preferences: Preferences;
   error: string | null;
+  decisions?: Decision[];
+}
+export interface Decision {
+  id: string;
+  sessionId: string;
+  project: string;
+  kind: "permission" | "question" | "nativeQuestion" | "plan";
+  tool: string | null;
+  target: string;
+  question: string | null;
+  options: string[];
+  risk: boolean;
+  canAllow?: boolean;
+  nativeQuestions?: {
+    question: string;
+    header: string;
+    options: { label: string; description: string }[];
+    multiSelect: boolean;
+  }[];
+  planFilePath?: string | null;
+  armed: boolean;
+  status: "pending" | "allowed" | "denied" | "answered" | "expired";
+  createdAt: number;
+  expiresAt: number;
+  resolvedAt: number | null;
+}
+export interface DecisionInput {
+  action?: "allow" | "deny" | "arm" | "terminal" | "answer";
+  option?: number;
+  message?: string;
+  answers?: { options: number[]; text?: string }[];
 }
 const priorities: Record<Form, number> = {
   interrogacao: 5,

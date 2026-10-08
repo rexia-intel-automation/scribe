@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { Preferences, View } from "./types";
+import type { DecisionInput, Preferences, View } from "./types";
 export const desktop = isTauri();
 export const defaults: Preferences = {
   language: navigator.language.startsWith("pt") ? "pt-BR" : "en",
@@ -9,6 +9,7 @@ export const defaults: Preferences = {
   notifications: true,
   retentionDays: 14,
   completedMinutes: 10,
+  permissionSeconds: 120,
   port: 7717,
   collapsed: false,
   side: "right",
@@ -19,6 +20,7 @@ export const initial: View = {
   at: 0,
   revision: 0,
   sessions: [],
+  decisions: [],
   preferences: defaults,
   error: desktop ? null : "desktopOnly",
 };
@@ -84,4 +86,11 @@ export async function openHelp() {
       "_blank",
       "noopener,noreferrer",
     );
+}
+export async function resolveDecision(
+  id: string,
+  input: DecisionInput,
+): Promise<View> {
+  if (!desktop) throw "desktopOnly";
+  return invoke("resolve_decision", { id, input });
 }
