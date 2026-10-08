@@ -421,6 +421,10 @@ impl Core {
         if text.is_empty() || text.chars().count() > 140 {
             return Err("Invalid report length".into());
         }
+        let action = sanitize::summary(text, 140);
+        if sanitize::ambiguous_text(&action) {
+            return Err("Ambiguous report text".into());
+        }
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
         data.prune(at)?;
         let mut session = data
@@ -429,7 +433,7 @@ impl Core {
             .filter(|s| s.ended_at.is_none())
             .cloned()
             .ok_or("Unknown live session")?;
-        session.action = sanitize::summary(text, 140);
+        session.action = action;
         session.last_event_at = at;
         session.step(None, None, at);
         data.store.save(&session)?;
