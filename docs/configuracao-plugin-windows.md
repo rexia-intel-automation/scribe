@@ -41,21 +41,28 @@ valida o marcador `attested-stdio-v1`; stdout e stderr do helper ficam apenas em
 memória. Esse marcador comprova a capacidade declarada do binário, não que o app
 desktop esteja aberto nem que uma chamada MCP funcione. Ele lista marketplaces
 em JSON apenas em memória. Se já existir o marketplace chamado `rexia-scribe`,
-usa essa origem sem alterá-la; caso contrário, instala o plugin pela fonte
-pública `rexia-intel-automation/scribe`. O JSON enviado a
+atualiza o catálogo pela CLI oficial e usa essa origem; caso contrário, instala
+o plugin pela fonte pública `rexia-intel-automation/scribe`. Depois da instalação,
+executa `plugin update` no escopo do usuário e consulta `plugin list --json`.
+Só continua se existir exatamente um `scribe@rexia-scribe` habilitado no escopo
+do usuário, com versão `0.1.1`. Uma versão de pasta, quando informada pela CLI,
+também precisa corresponder. Lista inválida, plugin antigo ou ambíguo causa
+falha antes da configuração e não produz mensagem de sucesso. O JSON enviado a
 `claude plugin configure --values-stdin` contém apenas `client_path`. Saída e
 erros da CLI são capturados em memória e descartados (o JSON da listagem é usado
-apenas para detectar o marketplace existente). Em caso de falha, o script mostra
+apenas para conferir o marketplace e a versão instalada). Em caso de falha, o script mostra
 a etapa e o código de saída ou timeout, sem exibir a saída da CLI. Cada chamada
 tem limite de dois minutos; no timeout, somente o processo `claude.exe` iniciado
 pelo script é encerrado.
 
 O manifesto inicia o caminho configurado por stdio com `--mcp`. Um valor `token`
 salvo por versões anteriores do plugin não é lido nem usado. Atualize app, helper
-e plugin juntos. O script não lê nem limpa as configurações já salvas pelo Claude
-Code; não há aqui uma etapa documentada para remover a opção antiga.
+e plugin juntos. O script usa a CLI para consultar os metadados dos plugins,
+sem editar nem limpar diretamente os arquivos de configuração do Claude Code.
+Não há aqui uma etapa documentada para remover a opção antiga.
 
-O processo usa somente `claude plugin install` e `claude plugin configure`. Não
+O processo usa os comandos oficiais de marketplace, instalação, atualização,
+listagem e configuração de plugins. Não
 edita `settings.json`, apaga o perfil do Claude Code nem gera um token novo. Uma
 reexecução reutiliza a conexão já existente. O script não aceita comandos
 declarados pelo marketplace com `--yes` ou `--accept-command`; a CLI oficial

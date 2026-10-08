@@ -4,7 +4,7 @@
 
 <Badge type="warning" text="Windows beta · evaluation only" />
 
-The published `v0.1.0-beta.1` is a Windows prerelease for evaluation by the IT team. It is not a final release. A fresh interactive Claude Code session is still needed to validate native questions and plan approval. Work in open pull requests is not part of this beta.
+The published `v0.1.0-beta.1` is a Windows prerelease for IT evaluation, not an accepted final release. It uses plugin `0.1.0` over local HTTP. The current marketplace branch is plugin `0.1.1` over stdio and is incompatible with beta.1; a matching stdio app/helper package is not yet published. See [installation compatibility notes](/installation) before configuring either pairing.
 
 ## Follow sessions
 

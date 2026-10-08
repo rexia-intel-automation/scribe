@@ -43,8 +43,10 @@ plugin are incompatible with the stdio candidate; do not use that download for
 this test. Before testing, the marketplace source used by the configuration
 script must provide plugin `0.1.1`: the script reuses an existing
 `rexia-scribe` marketplace or, if none exists, installs from the public
-repository's default branch. The candidate remains pending CI and an external
-interactive test.
+repository's default branch. The candidate script refreshes an existing
+marketplace, updates the plugin and verifies that plugin `0.1.1` is enabled for
+the user before configuring it. An outdated or mismatched plugin causes setup
+to fail. The candidate remains pending CI and an external interactive test.
 
 Verify the downloaded installer and script against their entries in
 `SHA256SUMS.txt` before running them. In PowerShell:
@@ -94,7 +96,8 @@ CLI output.
 The MCP plugin no longer stores or sends the connection Bearer token through
 Claude Code `userConfig`. Any token saved by an older plugin configuration is
 unused by this candidate; the connection file remains private to Scribe. The
-script does not inspect or clean stored Claude Code settings. Update the
+script uses the official CLI and does not directly edit or clean Claude Code's
+configuration files. Update the
 app/helper and plugin together; use `source_sha` and the capability check to
 identify compatibility because app/helper package version `0.1.0` does not
 distinguish the candidate from beta.1.

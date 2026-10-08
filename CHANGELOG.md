@@ -48,6 +48,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Configuração do candidato atualiza marketplace/plugin pela CLI oficial e
+  confere a versão `0.1.1` habilitada no escopo do usuário antes de configurar.
+  JSON inválido, plugin antigo ou versão de pasta divergente falham sem
+  mensagem de sucesso e sem expor a saída da CLI.
 - Projetos/caminhos com texto invisível recebem rótulo neutro; relatórios com
   apresentação ambígua são recusados. Alertas de risco incluem refspec Git
   forçado, limpeza forçada, `find -delete`, upload de arquivo pelo curl e

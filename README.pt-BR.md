@@ -43,7 +43,10 @@ dessa beta são incompatíveis com o candidato stdio; não use esse download nes
 teste. Antes do ensaio, a origem de marketplace usada pelo script precisa
 fornecer o plugin `0.1.1`: o script reutiliza um marketplace `rexia-scribe`
 existente ou, se não houver um, instala do branch padrão do repositório público.
-O candidato ainda aguarda CI e um ensaio interativo externo.
+O script candidato atualiza o marketplace existente e o plugin, e verifica que
+o plugin `0.1.1` está habilitado para o usuário antes de configurá-lo. Uma versão
+antiga ou incompatível causa falha na configuração. O candidato ainda aguarda
+CI e um ensaio interativo externo.
 
 Antes de executar, confira os hashes do instalador e do script com as entradas
 correspondentes em `SHA256SUMS.txt`. No PowerShell:
@@ -93,8 +96,8 @@ não mostra a saída da CLI do Claude.
 O plugin MCP deixou de armazenar ou enviar o token Bearer da conexão pelo
 `userConfig` do Claude Code. Um token salvo por uma configuração antiga do
 plugin deixa de ser usado por este candidato; o arquivo de conexão continua
-privado ao Scribe. O script não inspeciona nem limpa as configurações salvas do
-Claude Code. Atualize app/helper e plugin juntos; use `source_sha` e a
+privado ao Scribe. O script usa a CLI oficial e não edita nem limpa diretamente
+os arquivos de configuração do Claude Code. Atualize app/helper e plugin juntos; use `source_sha` e a
 capacidade verificada para identificar compatibilidade, pois a versão de pacote
 `0.1.0` do app/helper não distingue o candidato da beta.1.
 

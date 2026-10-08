@@ -4,7 +4,7 @@
 
 <Badge type="warning" text="Beta Windows · somente avaliação" />
 
-A versão publicada `v0.1.0-beta.1` é um pré-lançamento para avaliação da equipe de TI no Windows. Ainda não é a versão final. Perguntas nativas e aprovação de planos ainda precisam de validação em uma sessão interativa nova do Claude Code. O trabalho em pull requests abertas não faz parte desta beta.
+A versão publicada `v0.1.0-beta.1` é um pré-lançamento para avaliação da TI no Windows, não uma versão final aceita. Ela usa o plugin `0.1.0` por HTTP local. O branch atual do marketplace usa o plugin `0.1.1` por stdio e é incompatível com a beta.1; o pacote correspondente de app/helper stdio ainda não foi publicado. Leia as [notas de compatibilidade de instalação](/pt-BR/installation) antes de configurar qualquer combinação.
 
 ## Acompanhe sessões
 

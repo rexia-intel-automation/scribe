@@ -41,6 +41,9 @@ AskUserQuestion não foi oferecida.
   é antigo (por exemplo, o do beta.1). Reinstale o app desta release e rode o
   script de novo.
 - [ ] Rodar o script uma segunda vez. O resultado é o mesmo, sem erro.
+- [ ] A configuração confirma o plugin `0.1.1` habilitado para o usuário. Se
+  falhar na etapa "plugin version check", anote a mensagem: a origem do
+  marketplace pode ainda fornecer o plugin antigo ou uma versão incompatível.
 - [ ] Fechar e reabrir o Claude Code.
 - Tempo total: ____ min. Algum passo confuso? ____
 
