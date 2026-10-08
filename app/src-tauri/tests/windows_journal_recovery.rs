@@ -55,6 +55,7 @@ fn windows_journal_recovery_recovers_hot_truncate_journal() {
     let journal = fs::read(&journal_path).expect("crash child must leave a journal");
     assert!(journal.len() > 512, "hot journal must exceed 512 bytes");
     assert_eq!(&journal[..8], &JOURNAL_MAGIC, "journal header magic");
+    assert_private_storage_acl(temp.path());
 
     let recovered = scribe_core::Core::open(&path, 0).unwrap();
     assert!(recovered.snapshot(0).unwrap().decisions.is_empty());
@@ -87,6 +88,46 @@ fn windows_journal_recovery_recovers_hot_truncate_journal() {
     assert_eq!(retention_days, 14);
     assert_eq!(decisions, 0);
     assert_eq!(integrity, "ok");
+}
+
+fn assert_private_storage_acl(directory: &std::path::Path) {
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$ErrorActionPreference='Stop'; try { \
+             $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; \
+             $paths=@($env:SCRIBE_TEST_JOURNAL_ACL_DIRECTORY, \
+             (Join-Path $env:SCRIBE_TEST_JOURNAL_ACL_DIRECTORY 'state.db'), \
+             (Join-Path $env:SCRIBE_TEST_JOURNAL_ACL_DIRECTORY 'state.db-journal')); \
+             for ($i=0; $i -lt $paths.Count; $i++) { \
+             $acl=Get-Acl -LiteralPath $paths[$i]; $rules=@($acl.Access); \
+             if ($rules.Count -ne 1) {'rule_count_'+$i; exit 1}; \
+             $rule=$rules[0]; \
+             if ($rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) \
+             {'identity_'+$i; exit 1}; \
+             if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) \
+             {'access_type_'+$i; exit 1}; \
+             if ($rule.FileSystemRights -ne [System.Security.AccessControl.FileSystemRights]::FullControl) \
+             {'rights_'+$i; exit 1}; \
+             if ($i -lt 2 -and !$acl.AreAccessRulesProtected) {'inheritance_'+$i; exit 1} \
+             }; '3'; exit 0 \
+             } catch {'acl_query_failed'; $_.Exception.GetType().Name; \
+             $_.InvocationInfo.OffsetInLine; exit 2}",
+        ])
+        .env_remove("PSModulePath")
+        .env("SCRIBE_TEST_JOURNAL_ACL_DIRECTORY", directory)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "temporary database, directory and hot journal ACL must grant only the current user: {}",
+        String::from_utf8_lossy(&output.stdout).trim()
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "3");
 }
 
 fn leave_hot_journal(path: &std::ffi::OsStr) {
