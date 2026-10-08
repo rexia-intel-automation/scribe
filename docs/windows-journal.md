@@ -27,6 +27,13 @@ de uma cópia fechada com o journal vazio. Os testes de falha SQL mantêm a
 exigência de nunca liberar uma permissão se a gravação falhar; suas conexões
 externas de injeção usam o mesmo modo, que é por conexão.
 
+O arquivo `state.db-journal` de zero byte permanece no perfil Windows. Não
+abra uma ferramenta externa para ESCREVER em `state.db` com o app aberto:
+uma conexão no modo DELETE pode falhar com `SQLITE_IOERR_DELETE` ao disputar
+esse journal. Feche o Scribe antes de manutenção ou cópia do banco; o app não
+oferece edição externa do histórico. Nos três sistemas, um teste confere o
+modo efetivo, FULL e secure_delete; Linux e macOS continuam em DELETE.
+
 A [documentação do SQLite](https://www.sqlite.org/pragma.html#pragma_journal_mode)
 descreve o mecanismo e a possibilidade de menor custo de truncamento. FULL
 em rollback não é garantia universal de durabilidade após queda de energia,

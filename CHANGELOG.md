@@ -4,7 +4,21 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ## [Não lançado]
 
+### Alterado
+
+- SQLite no Windows reutiliza o journal de rollback por truncamento, mantendo
+  FULL, secure_delete e commit antes da resposta ao Claude. Linux/macOS mantêm
+  DELETE. O benchmark indica redução de custo no Windows; o SLA continua
+  exigido pelo teste nativo e não é garantido em qualquer disco.
+
 ### Corrigido
+
+- Agendamento da animação da gota em repouso por timer, sem manter uma callback
+  de desenho contínua; padrões de risco reconhecem caminhos absolutos de
+  ferramentas e interpretadores, e metadados de planos são higienizados.
+- Pré-requisitos do AppImage no Ubuntu 22.04 incluem FUSE 2 e EGL, também
+  instalados no smoke de release. Falhas de inicialização registram categoria,
+  código de saída e sinal sem imprimir o stderr privado do app.
 
 - Listagem de ferramentas MCP por stdio e HTTP inclui `ttlMs: 0` e
   `cacheScope: "private"`, evitando a rejeição de `tools/list` observada no

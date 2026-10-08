@@ -188,10 +188,29 @@ impl Store {
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn platform_journal_mode_keeps_full_sync_and_secure_delete() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&directory.path().join("state.db")).unwrap();
+        let mode: String = store
+            .0
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, if cfg!(windows) { "truncate" } else { "delete" });
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            let actual: i32 = store
+                .0
+                .pragma_query_value(None, name, |r| r.get(0))
+                .unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[cfg(windows)]
     #[test]
     fn truncating_journal_is_empty_after_commit_and_rollback_and_reopens() {
         let directory = tempfile::TempDir::new().unwrap();

@@ -64,6 +64,17 @@ test -x "$SCRIBE_HELPER"
 
 ### Linux AppImage
 
+On Ubuntu 22.04, install the host FUSE and EGL libraries first:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libfuse2 libegl1
+```
+
+Other distributions require their corresponding FUSE 2 and EGL packages.
+AppImage relies on the host's graphics libraries; see the
+[AppImage dependency policy](https://docs.appimage.org/introduction/concepts.html#do-not-depend-on-system-provided-resources).
+
 Verify the checksum, mark the file executable, and extract it into a permanent
 new, empty directory owned by your account. Claude Code must be able to start the helper
 even when Scribe is closed, so configure the helper path inside this persistent

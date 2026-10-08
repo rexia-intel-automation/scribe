@@ -182,7 +182,18 @@ SCRIBE_HELPER='/absolute/path/to/scribe-hook'
 test -x "$SCRIBE_HELPER"
 ```
 
-For an AppImage, verify its checksum, make it executable, and extract it into a
+For an AppImage on Ubuntu 22.04, install the host FUSE and EGL libraries first:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libfuse2 libegl1
+```
+
+Other distributions require their corresponding FUSE 2 and EGL packages.
+AppImage relies on the host's graphics libraries; see the
+[AppImage dependency policy](https://docs.appimage.org/introduction/concepts.html#do-not-depend-on-system-provided-resources).
+
+Then verify its checksum, make it executable, and extract it into a
 new, empty permanent directory owned by your account. The helper must remain there so
 Claude Code can start it when Scribe is closed. Do not configure a helper path
 under a temporary AppImage mount:
