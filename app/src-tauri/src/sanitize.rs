@@ -4,7 +4,16 @@ use std::sync::LazyLock;
 
 pub(crate) fn ambiguous_text(text: &str) -> bool {
     static FORMAT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Cf}").unwrap());
-    text.chars().any(char::is_control) || FORMAT.is_match(text)
+    // Preserve ASCII spaces and visible Unicode; ambiguous spacing/fillers
+    // require the terminal, just like control and format characters.
+    text.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace() && c != ' '
+            || matches!(
+                c,
+                '\u{115f}' | '\u{1160}' | '\u{2800}' | '\u{3164}' | '\u{ffa0}'
+            )
+    }) || FORMAT.is_match(text)
 }
 
 static SECRETS: LazyLock<Regex> = LazyLock::new(|| {

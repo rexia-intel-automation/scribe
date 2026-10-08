@@ -41,6 +41,10 @@ truncadas ou ambíguas voltam ao terminal. Ações de risco e aprovação de pla
 exigem armar e confirmar em outro botão, após um segundo. Perguntas não têm
 resposta padrão. Falha, expiração ou cancelamento nunca representam consentimento.
 
+Espaços não ASCII e preenchimentos invisíveis Hangul/Braille também são tratados
+como ambíguos. Permissões com esses caracteres exigem o terminal; perguntas
+ambíguas são recusadas. Espaços ASCII e texto Unicode visível permanecem aceitos.
+
 SQLite guarda metadados higienizados e o conteúdo seguro apresentado dos cartões
 nativos, com retenção padrão de 14 dias. Não guarda raw envelopes, ambiente,
 resultado completo de ferramenta, resposta livre ou feedback. Input de eco
