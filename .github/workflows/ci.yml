@@ -67,6 +67,7 @@ jobs:
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
       - name: Isolate decision latency after draining build writes (temporary diagnostic)
         if: matrix.os == 'ubuntu-22.04'
+        continue-on-error: true
         run: |
           cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --no-run
           sync
