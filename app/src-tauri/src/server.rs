@@ -39,7 +39,7 @@ struct HttpState {
     port: u16,
     token: String,
     hook_key: String,
-    challenges: Arc<Mutex<HashMap<String, Instant>>>,
+    challenges: Arc<Mutex<HashMap<String, (String, Instant)>>>,
     mcp_challenges: Arc<Mutex<HashMap<String, (String, Instant)>>>,
     ui_token: String,
     rate: Arc<Mutex<Rate>>,
@@ -306,6 +306,32 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             return StatusCode::UNAUTHORIZED.into_response();
         }
     }
+    // Reject hook requests without a currently reserved server challenge before
+    // waiting for or collecting an attacker-controlled body.
+    if signed_hook {
+        let nonce = headers
+            .get("x-scribe-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let server_nonce = headers
+            .get("x-scribe-server-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let issued = state.challenges.lock().ok().is_some_and(|c| {
+            c.get(nonce).is_some_and(|(expected, at)| {
+                expected == server_nonce && at.elapsed() < Duration::from_secs(2)
+            })
+        });
+        if ["x-scribe-nonce", "x-scribe-server-nonce", "x-scribe-proof"]
+            .iter()
+            .any(|h| headers.get_all(*h).iter().count() != 1)
+            || !scribe_hook_protocol::valid_nonce(nonce)
+            || !scribe_hook_protocol::valid_nonce(server_nonce)
+            || !issued
+        {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
     let (parts, body) = request.into_parts();
     let bytes =
         match tokio::time::timeout(Duration::from_millis(500), to_bytes(body, BODY_LIMIT)).await {
@@ -389,29 +415,40 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             .get("x-scribe-nonce")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
+        let server_nonce = parts
+            .headers
+            .get("x-scribe-server-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
         let proof = parts
             .headers
             .get("x-scribe-proof")
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
-        let event = parts.uri.path().strip_prefix("/v1/hooks/").unwrap_or("");
-        if parts.headers.get_all("x-scribe-nonce").iter().count() != 1
-            || parts.headers.get_all("x-scribe-proof").iter().count() != 1
-            || !scribe_hook_protocol::valid_nonce(nonce)
-            || !scribe_hook_protocol::verify(
-                &state.hook_key,
-                &[b"request", nonce.as_bytes(), event.as_bytes(), &bytes],
-                proof,
-            )
-        {
+        let path = parts.uri.path();
+        if !scribe_hook_protocol::verify(
+            &state.hook_key,
+            &[
+                b"hook-request",
+                nonce.as_bytes(),
+                server_nonce.as_bytes(),
+                path.as_bytes(),
+                &bytes,
+            ],
+            proof,
+        ) {
             return StatusCode::UNAUTHORIZED.into_response();
         }
-        let valid = state
-            .challenges
-            .lock()
-            .ok()
-            .and_then(|mut c| c.remove(nonce))
-            .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
+        let valid = state.challenges.lock().ok().is_some_and(|mut c| {
+            if c.get(nonce).is_some_and(|(expected, at)| {
+                expected == server_nonce && at.elapsed() < Duration::from_secs(2)
+            }) {
+                c.remove(nonce);
+                true
+            } else {
+                false
+            }
+        });
         if !valid {
             return StatusCode::UNAUTHORIZED.into_response();
         }
@@ -419,7 +456,8 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             return StatusCode::TOO_MANY_REQUESTS.into_response();
         }
         let nonce = nonce.to_owned();
-        let event = event.to_owned();
+        let server_nonce = server_nonce.to_owned();
+        let path = path.to_owned();
         let response = next
             .run(Request::from_parts(parts, Body::from(bytes)))
             .await;
@@ -431,9 +469,10 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         let proof = scribe_hook_protocol::sign(
             &state.hook_key,
             &[
-                b"response",
+                b"hook-response",
                 nonce.as_bytes(),
-                event.as_bytes(),
+                server_nonce.as_bytes(),
+                path.as_bytes(),
                 status.as_bytes(),
                 &bytes,
             ],
@@ -460,11 +499,11 @@ async fn challenge(
     }
     // Authenticate before reserving a nonce or spending the legitimate hook quota.
     // This proof discloses no secret or payload and cannot be reflected as the
-    // server's proof, which uses the separate "challenge" domain.
+    // server's proof, which uses the separate "hook-challenge" domain.
     if headers.get_all("x-scribe-proof").iter().count() != 1
         || !scribe_hook_protocol::verify(
             &state.hook_key,
-            &[b"challenge-request", nonce.as_bytes()],
+            &[b"hook-challenge-request", nonce.as_bytes()],
             headers
                 .get("x-scribe-proof")
                 .and_then(|h| h.to_str().ok())
@@ -479,13 +518,24 @@ async fn challenge(
     let Ok(mut challenges) = state.challenges.lock() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    challenges.retain(|_, at| at.elapsed() < Duration::from_secs(2));
+    challenges.retain(|_, (_, at)| at.elapsed() < Duration::from_secs(2));
     if challenges.len() >= 256 || challenges.contains_key(&nonce) {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
-    challenges.insert(nonce.clone(), Instant::now());
-    let proof = scribe_hook_protocol::sign(&state.hook_key, &[b"challenge", nonce.as_bytes()]);
-    ([("x-scribe-proof", proof)], StatusCode::NO_CONTENT).into_response()
+    let server_nonce = format!("{:032x}", rand::random::<u128>());
+    challenges.insert(nonce.clone(), (server_nonce.clone(), Instant::now()));
+    let proof = scribe_hook_protocol::sign(
+        &state.hook_key,
+        &[b"hook-challenge", nonce.as_bytes(), server_nonce.as_bytes()],
+    );
+    (
+        [
+            ("x-scribe-server-nonce", server_nonce),
+            ("x-scribe-proof", proof),
+        ],
+        StatusCode::NO_CONTENT,
+    )
+        .into_response()
 }
 
 async fn mcp_challenge(

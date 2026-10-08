@@ -808,24 +808,18 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
         apply(&core, payload("SessionStart"), scribe_core::now_ms());
         let body = json!({"hook_event_name":"PreToolUse", "session_id":"public-session", "cwd":"/public/project", "tool_name":tool,"tool_input":original}).to_string();
         let nonce = format!("{:032x}", rand::random::<u128>());
-        assert_eq!(
-            raw_request(
-                port,
-                "invalid",
-                "GET",
-                &format!("/v1/hooks/challenge/{nonce}"),
-                &challenge_headers(&nonce),
-                ""
-            )
-            .await
-            .code,
-            204
-        );
-        let proof = scribe_hook_protocol::sign(
-            HOOK_KEY,
-            &[b"request", nonce.as_bytes(), b"PreToolUse", body.as_bytes()],
-        );
-        let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+        let challenge = raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            &challenge_headers(&nonce),
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204);
+        let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+        let headers = hook_request_headers(&nonce, &server_nonce, "/v1/hooks/PreToolUse", &body);
         let asking = tokio::spawn(async move {
             raw_request_with_timeout(
                 port,
@@ -928,9 +922,10 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
             assert!(scribe_hook_protocol::verify(
                 HOOK_KEY,
                 &[
-                    b"response",
+                    b"hook-response",
                     nonce.as_bytes(),
-                    b"PreToolUse",
+                    server_nonce.as_bytes(),
+                    b"/v1/hooks/PreToolUse",
                     b"200",
                     result.body.as_bytes()
                 ],
@@ -995,18 +990,13 @@ async fn request_timed(
         .await;
         challenge_elapsed = Some(challenge_started.elapsed());
         assert_eq!(challenge.code, 204, "test hook challenge must succeed");
-        let proof = scribe_hook_protocol::sign(
+        let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+        assert!(scribe_hook_protocol::verify(
             HOOK_KEY,
-            &[
-                b"request",
-                nonce.as_bytes(),
-                path.trim_start_matches("/v1/hooks/").as_bytes(),
-                body.as_bytes(),
-            ],
-        );
-        extra.push_str(&format!(
-            "x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n"
+            &[b"hook-challenge", nonce.as_bytes(), server_nonce.as_bytes()],
+            &reply_header(&challenge, "x-scribe-proof")
         ));
+        extra.push_str(&hook_request_headers(&nonce, &server_nonce, path, body));
     }
     if method == "POST"
         && path == "/mcp"
@@ -1038,8 +1028,25 @@ async fn request_timed(
 }
 
 fn challenge_headers(nonce: &str) -> String {
-    let proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"challenge-request", nonce.as_bytes()]);
+    let proof =
+        scribe_hook_protocol::sign(HOOK_KEY, &[b"hook-challenge-request", nonce.as_bytes()]);
     format!("x-scribe-proof: {proof}\r\n")
+}
+
+fn hook_request_headers(nonce: &str, server_nonce: &str, path: &str, body: &str) -> String {
+    let proof = scribe_hook_protocol::sign(
+        HOOK_KEY,
+        &[
+            b"hook-request",
+            nonce.as_bytes(),
+            server_nonce.as_bytes(),
+            path.as_bytes(),
+            body.as_bytes(),
+        ],
+    );
+    format!(
+        "x-scribe-nonce: {nonce}\r\nx-scribe-server-nonce: {server_nonce}\r\nx-scribe-proof: {proof}\r\n"
+    )
 }
 
 fn reply_header(reply: &Reply, name: &str) -> String {
@@ -1068,7 +1075,9 @@ fn mcp_request_headers(nonce: &str, server_nonce: &str, body: &str) -> String {
             body.as_bytes(),
         ],
     );
-    format!("x-scribe-nonce: {nonce}\r\nx-scribe-server-nonce: {server_nonce}\r\nx-scribe-proof: {proof}\r\n")
+    format!(
+        "x-scribe-nonce: {nonce}\r\nx-scribe-server-nonce: {server_nonce}\r\nx-scribe-proof: {proof}\r\n"
+    )
 }
 
 async fn raw_request(
@@ -1101,7 +1110,10 @@ async fn raw_request_with_timeout(
     read_timeout: Duration,
 ) -> Reply {
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-    let data = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}", body.len());
+    let data = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}",
+        body.len()
+    );
     socket.write_all(data.as_bytes()).await.unwrap();
     let mut bytes = vec![];
     tokio::time::timeout(read_timeout, socket.read_to_end(&mut bytes))
@@ -1626,10 +1638,22 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
         challenges[30].as_millis(),
         posts[30].as_millis(),
         snapshots[30].as_millis(),
-        totals.iter().filter(|sample| **sample >= Duration::from_millis(200)).count(),
-        challenges.iter().filter(|sample| **sample >= Duration::from_millis(200)).count(),
-        posts.iter().filter(|sample| **sample >= Duration::from_millis(200)).count(),
-        snapshots.iter().filter(|sample| **sample >= Duration::from_millis(200)).count(),
+        totals
+            .iter()
+            .filter(|sample| **sample >= Duration::from_millis(200))
+            .count(),
+        challenges
+            .iter()
+            .filter(|sample| **sample >= Duration::from_millis(200))
+            .count(),
+        posts
+            .iter()
+            .filter(|sample| **sample >= Duration::from_millis(200))
+            .count(),
+        snapshots
+            .iter()
+            .filter(|sample| **sample >= Duration::from_millis(200))
+            .count(),
     );
     let mut slowest = samples;
     slowest.sort_by_key(|sample| std::cmp::Reverse(sample.0));
@@ -1663,8 +1687,26 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
             .count(),
     );
     assert!(p95 < Duration::from_millis(200));
+    let incomplete_nonce = format!("{:032x}", rand::random::<u128>());
+    let incomplete_challenge = raw_request(
+        port,
+        "invalid",
+        "GET",
+        &format!("/v1/hooks/challenge/{incomplete_nonce}"),
+        &challenge_headers(&incomplete_nonce),
+        "",
+    )
+    .await;
+    assert_eq!(incomplete_challenge.code, 204);
+    let incomplete_server_nonce = reply_header(&incomplete_challenge, "x-scribe-server-nonce");
+    let incomplete_headers = hook_request_headers(
+        &incomplete_nonce,
+        &incomplete_server_nonce,
+        "/v1/hooks/SessionStart",
+        "x",
+    );
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-    socket.write_all(format!("POST /v1/hooks/SessionStart HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {TOKEN}\r\nContent-Length: 100\r\n\r\nx").as_bytes()).await.unwrap();
+    socket.write_all(format!("POST /v1/hooks/SessionStart HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer invalid\r\nContent-Length: 100\r\n{incomplete_headers}\r\nx").as_bytes()).await.unwrap();
     let mut buffer = [0u8; 1024];
     let read = tokio::time::timeout(Duration::from_secs(2), socket.read(&mut buffer))
         .await
@@ -1690,7 +1732,7 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_hooks_authenticate_both_peers_and_reject_replay() {
-    use scribe_hook_protocol::{sign, verify};
+    use scribe_hook_protocol::verify;
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
     let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
@@ -1698,37 +1740,76 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
         .unwrap();
     let port = server.port();
     let nonce = "0123456789abcdef0123456789abcdef";
-    let path = format!("/v1/hooks/challenge/{nonce}");
-    let challenge = request(port, "invalid", "GET", &path, "", "").await;
-    assert_eq!(challenge.code, 204);
-    let proof = challenge
-        .headers
-        .lines()
-        .find_map(|h| h.strip_prefix("x-scribe-proof: "))
-        .unwrap();
-    assert!(verify(HOOK_KEY, &[b"challenge", nonce.as_bytes()], proof));
-    assert!(!verify(TOKEN, &[b"challenge", nonce.as_bytes()], proof));
-    let body =
-        r#"{"hook_event_name":"SessionStart","session_id":"native-auth","cwd":"/public/project"}"#;
-    let proof = sign(
+    let challenge_path = format!("/v1/hooks/challenge/{nonce}");
+    let challenge1 = request(port, "invalid", "GET", &challenge_path, "", "").await;
+    assert_eq!(challenge1.code, 204);
+    let server_nonce1 = reply_header(&challenge1, "x-scribe-server-nonce");
+    assert!(scribe_hook_protocol::valid_nonce(&server_nonce1));
+    let proof1 = reply_header(&challenge1, "x-scribe-proof");
+    assert!(verify(
         HOOK_KEY,
         &[
-            b"request",
+            b"hook-challenge",
             nonce.as_bytes(),
-            b"SessionStart",
-            body.as_bytes(),
+            server_nonce1.as_bytes()
         ],
+        &proof1
+    ));
+    assert!(!verify(
+        TOKEN,
+        &[
+            b"hook-challenge",
+            nonce.as_bytes(),
+            server_nonce1.as_bytes()
+        ],
+        &proof1
+    ));
+    let body =
+        r#"{"hook_event_name":"SessionStart","session_id":"native-auth","cwd":"/public/project"}"#;
+    let path = "/v1/hooks/SessionStart";
+    assert_eq!(
+        request(port, "invalid", "GET", &challenge_path, "", "")
+            .await
+            .code,
+        429,
+        "a pending client nonce cannot replace a challenge used by an in-flight POST"
     );
-    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
-    let reply = request(
-        port,
-        "invalid",
-        "POST",
-        "/v1/hooks/SessionStart",
-        &extra,
-        body,
-    )
-    .await;
+    let first_headers = hook_request_headers(nonce, &server_nonce1, path, body);
+    let first_reply = request(port, "invalid", "POST", path, &first_headers, body).await;
+    assert_eq!(first_reply.code, 204);
+    assert!(verify(
+        HOOK_KEY,
+        &[
+            b"hook-response",
+            nonce.as_bytes(),
+            server_nonce1.as_bytes(),
+            path.as_bytes(),
+            b"204",
+            first_reply.body.as_bytes()
+        ],
+        &reply_header(&first_reply, "x-scribe-proof")
+    ));
+    let challenge2 = request(port, "invalid", "GET", &challenge_path, "", "").await;
+    assert_eq!(challenge2.code, 204);
+    let server_nonce2 = reply_header(&challenge2, "x-scribe-server-nonce");
+    assert_ne!(server_nonce1, server_nonce2);
+    let old_headers = first_headers;
+    assert_eq!(
+        request(port, "invalid", "POST", path, &old_headers, body)
+            .await
+            .code,
+        401,
+        "a superseded proof must fail without consuming the replacement challenge"
+    );
+    let headers = hook_request_headers(nonce, &server_nonce2, path, body);
+    let bad_headers = headers.replace("x-scribe-proof:", "x-scribe-proof: x");
+    assert_eq!(
+        request(port, "invalid", "POST", path, &bad_headers, body)
+            .await
+            .code,
+        401
+    );
+    let reply = request(port, "invalid", "POST", path, &headers, body).await;
     assert_eq!(reply.code, 204);
     let proof = reply
         .headers
@@ -1738,54 +1819,62 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
     assert!(verify(
         HOOK_KEY,
         &[
-            b"response",
+            b"hook-response",
             nonce.as_bytes(),
-            b"SessionStart",
+            server_nonce2.as_bytes(),
+            path.as_bytes(),
             b"204",
             reply.body.as_bytes()
         ],
         proof
     ));
     assert_eq!(
-        request(
-            port,
-            "invalid",
-            "POST",
-            "/v1/hooks/SessionStart",
-            &extra,
-            body
-        )
-        .await
-        .code,
+        request(port, "invalid", "POST", path, &headers, body)
+            .await
+            .code,
         401
     );
-    assert_eq!(
-        request(port, "invalid", "GET", &path, "", "").await.code,
-        204
-    );
-    let wrong = sign(
-        TOKEN,
-        &[
-            b"request",
-            nonce.as_bytes(),
-            b"SessionStart",
-            body.as_bytes(),
-        ],
-    );
-    let extra = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {wrong}\r\n");
-    assert_eq!(
-        request(
-            port,
-            "invalid",
-            "POST",
-            "/v1/hooks/SessionStart",
-            &extra,
-            body
+    // A separate pair accepts exactly one of two concurrent copies.
+    let concurrent_nonce = "1123456789abcdef0123456789abcdef";
+    let concurrent_challenge = request(
+        port,
+        "invalid",
+        "GET",
+        &format!("/v1/hooks/challenge/{concurrent_nonce}"),
+        "",
+        "",
+    )
+    .await;
+    let concurrent_server_nonce = reply_header(&concurrent_challenge, "x-scribe-server-nonce");
+    let concurrent_headers =
+        hook_request_headers(concurrent_nonce, &concurrent_server_nonce, path, body);
+    let first_headers = concurrent_headers.clone();
+    let second_headers = concurrent_headers.clone();
+    let first = tokio::spawn(async move {
+        raw_request(port, "invalid", "POST", path, &first_headers, body).await
+    });
+    let second = tokio::spawn(async move {
+        raw_request(port, "invalid", "POST", path, &second_headers, body).await
+    });
+    let statuses = [first.await.unwrap().code, second.await.unwrap().code];
+    assert_eq!(statuses.iter().filter(|&&code| code == 204).count(), 1);
+    assert_eq!(statuses.iter().filter(|&&code| code == 401).count(), 1);
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    socket
+        .write_all(
+            format!(
+                "POST /v1/hooks/SessionStart HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer invalid\r\nContent-Length: 100\r\nx-scribe-nonce: 2123456789abcdef0123456789abcdef\r\nx-scribe-server-nonce: 3123456789abcdef0123456789abcdef\r\nx-scribe-proof: invalid\r\n\r\n"
+            )
+            .as_bytes(),
         )
         .await
-        .code,
-        401
-    );
+        .unwrap();
+    let mut response = [0u8; 512];
+    let read = tokio::time::timeout(Duration::from_millis(250), socket.read(&mut response))
+        .await
+        .expect("unreserved hook pair must be rejected before waiting for its body")
+        .unwrap();
+    assert!(String::from_utf8_lossy(&response[..read]).starts_with("HTTP/1.1 401"));
     assert_eq!(
         core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
         1
@@ -1806,8 +1895,16 @@ async fn challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof() {
     let port = server.port();
     let nonce = "0123456789abcdef0123456789abcdef";
     let path = format!("/v1/hooks/challenge/{nonce}");
-    let server_proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"challenge", nonce.as_bytes()]);
-    let wrong_key = scribe_hook_protocol::sign(TOKEN, &[b"challenge-request", nonce.as_bytes()]);
+    let server_proof = scribe_hook_protocol::sign(
+        HOOK_KEY,
+        &[
+            b"hook-challenge",
+            nonce.as_bytes(),
+            b"0123456789abcdef0123456789abcdef",
+        ],
+    );
+    let wrong_key =
+        scribe_hook_protocol::sign(TOKEN, &[b"hook-challenge-request", nonce.as_bytes()]);
     let wrong_nonce = challenge_headers("1123456789abcdef0123456789abcdef");
     let valid = challenge_headers(nonce);
     for headers in [
@@ -1834,8 +1931,40 @@ async fn challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof() {
         raw_request(port, "invalid", "GET", &path, &valid, "")
             .await
             .code,
-        429
+        429,
+        "a challenge nonce cannot be replaced while its reservation is pending"
     );
+    for (method, target) in [
+        ("OPTIONS", "/mcp".to_owned()),
+        ("OPTIONS", path.clone()),
+        ("OPTIONS", "/v1/hooks/SessionStart".to_owned()),
+        (
+            "GET",
+            format!("http://foreign.invalid/v1/hooks/challenge/{nonce}"),
+        ),
+    ] {
+        assert_ne!(
+            raw_request(port, TOKEN, method, &target, "", "").await.code,
+            200,
+            "unexpected method/authority must not reach an authenticated route"
+        );
+    }
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    socket
+        .write_all(
+            format!(
+                "GET /v1/hooks/challenge/{nonce} HTTP/1.1\r\nHost: foreign.invalid\r\nAuthorization: Bearer {TOKEN}\r\nConnection: close\r\n\r\n"
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut response = [0u8; 512];
+    let read = tokio::time::timeout(Duration::from_secs(1), socket.read(&mut response))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&response[..read]).starts_with("HTTP/1.1 403"));
     server.stop().await.unwrap();
 }
 

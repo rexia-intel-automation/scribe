@@ -26,6 +26,7 @@ const EVENTS: &[&str] = &[
     "SessionEnd",
 ];
 const BODY_LIMIT: u64 = 1024 * 1024;
+mod attested;
 mod mcp;
 
 #[derive(Deserialize)]
@@ -328,10 +329,7 @@ fn supported_output(event: &str, input: &Value, value: &Value) -> Option<Value> 
 }
 
 fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
-    if !valid_event(event, &bytes)
-        || !scribe_hook_protocol::valid_secret(&config.hook_key)
-        || config.hook_key == config.token
-    {
+    if !valid_event(event, &bytes) {
         return;
     }
     let Ok(original) = serde_json::from_slice::<Value>(&bytes) else {
@@ -347,104 +345,32 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     } else {
         Duration::from_millis(250)
     };
-    let nonce = format!("{:032x}", rand::random::<u128>());
-    let preflight = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_millis(250)))
-        .max_redirects(0)
-        .proxy(None)
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
         .build()
-        .new_agent();
-    let Ok(response) = preflight
-        .get(format!(
-            "http://127.0.0.1:{}/v1/hooks/challenge/{nonce}",
-            config.port
-        ))
-        .header(
-            "x-scribe-proof",
-            scribe_hook_protocol::sign(&config.hook_key, &[b"challenge-request", nonce.as_bytes()]),
-        )
-        .call()
     else {
         return;
     };
-    let Some(proof) = response
-        .headers()
-        .get("x-scribe-proof")
-        .and_then(|h| h.to_str().ok())
-    else {
-        return;
-    };
-    if response.status() != 204
-        || !scribe_hook_protocol::verify(&config.hook_key, &[b"challenge", nonce.as_bytes()], proof)
-    {
-        return;
-    }
     let Some(remaining) = budget
         .checked_sub(started.elapsed())
         .filter(|d| !d.is_zero())
     else {
         return;
     };
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(remaining))
-        .max_redirects(0)
-        .proxy(None)
-        .build()
-        .new_agent();
-    let response = agent
-        .post(format!("http://127.0.0.1:{}/v1/hooks/{event}", config.port))
-        .header("x-scribe-nonce", &nonce)
-        .header(
-            "x-scribe-proof",
-            scribe_hook_protocol::sign(
-                &config.hook_key,
-                &[b"request", nonce.as_bytes(), event.as_bytes(), &bytes],
-            ),
+    let result = runtime.block_on(async {
+        tokio::time::timeout(
+            remaining,
+            attested::post(&config, attested::Channel::Hook(event), bytes),
         )
-        .header("Content-Type", "application/json")
-        .send(bytes);
+        .await
+    });
     if event != "PermissionRequest" && !interactive_pre_tool {
         return;
     }
-    let Ok(mut response) = response else {
+    let Ok(Ok((200, bytes))) = result else {
         return;
     };
-    if response.status() != 200 {
-        return;
-    }
-    let Some(proof) = response
-        .headers()
-        .get("x-scribe-proof")
-        .and_then(|h| h.to_str().ok())
-        .map(str::to_owned)
-    else {
-        return;
-    };
-    let Ok(text) = response
-        .body_mut()
-        .with_config()
-        .limit(8193)
-        .read_to_string()
-    else {
-        return;
-    };
-    if text.len() > 8192 {
-        return;
-    }
-    if !scribe_hook_protocol::verify(
-        &config.hook_key,
-        &[
-            b"response",
-            nonce.as_bytes(),
-            event.as_bytes(),
-            b"200",
-            text.as_bytes(),
-        ],
-        &proof,
-    ) {
-        return;
-    }
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
         return;
     };
     let Some(result) = supported_output(event, &original, &value) else {

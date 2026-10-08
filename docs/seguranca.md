@@ -14,8 +14,10 @@ Tauri restritos à janela e origem locais. CSP e navegação bloqueiam conteúdo
 Health exige Bearer. Rotas de estado, eventos e decisões exigem também uma
 credencial efêmera privada, mantida no bridge Rust. Um hook não resolve um cartão.
 Seu canal usa chave HMAC independente do Bearer: o helper comprova o servidor
-antes de enviar o input, e pedido e resposta são assinados com domínio, nonce,
-evento e, na resposta, status e corpo. Nenhuma dessas chaves vai em argv ou nos
+antes de enviar o input, e pedido e resposta são assinados com domínio, nonces
+do cliente e do servidor, caminho e corpo; a resposta inclui também status.
+O desafio e o POST usam o mesmo socket, sem pool, retry ou reconexão.
+Nenhuma dessas chaves vai em argv ou nos
 pedidos do helper. O connection.json é a raiz de confiança e tem permissão
 restrita ao usuário. O onboarding envia somente o caminho do helper à CLI;
 nem Bearer nem chave HMAC fazem parte da configuração nova do plugin.
@@ -33,18 +35,24 @@ incompatível. O modo `--mcp-check` identifica a capacidade do helper, sem
 comprovar que o app está aberto ou atualizado.
 
 O GET do desafio exige uma prova HMAC no header `x-scribe-proof`, sobre os campos
-`challenge-request` e nonce. Ela não contém chave, Bearer nem input. Só provas
+`hook-challenge-request` e nonce. Ela não contém chave, Bearer nem input. Só provas
 válidas ocupam o mapa e a quota dos desafios; provas inválidas de GET ou POST
 não consomem a quota legítima. A resposta do servidor usa o domínio separado
-`challenge`, impedindo refletir a prova do cliente como prova do servidor.
+`hook-challenge`, incluindo um nonce aleatório novo do servidor e impedindo
+refletir a prova do cliente como prova do servidor.
 
 Challenges têm prazo monotônico de dois segundos, capacidade e quota separadas,
-e são consumidos no pedido. A resposta fica ligada ao nonce escolhido pelo helper.
-Isso rejeita a troca ou reprodução de respostas entre pedidos; não constitui um
-cache eterno de nonces. Há limite de corpo de 1 MiB, quota autenticada e capacidade
+e são consumidos atomicamente somente depois de conferir a assinatura do pedido.
+Um GET pendente duplicado é recusado; depois do consumo, reemitir o GET gera
+outro nonce do servidor, que não autoriza o POST capturado. Um POST antigo ou
+inválido não consome o par novo. Pedidos sem par reservado são recusados antes
+de coletar o corpo. Essa guarda não é um limite global de conexões ou um timeout
+curto de cabeçalhos; disponibilidade sob sobrecarga permanece uma limitação.
+Há limite de corpo de 1 MiB, quota autenticada e capacidade
 de cartões. Windows usa bind exclusivo; Unix usa SO_REUSEADDR sem SO_REUSEPORT.
 
-App e helper devem ser atualizados juntos: um helper antigo sem a prova do GET
+App e helper devem ser atualizados juntos: um helper antigo sem os novos domínios
+e o nonce do servidor
 é recusado pelo app novo e devolve o controle ao terminal. A instalação beta.1
 existente não é alterada por este endurecimento do protocolo.
 
@@ -81,6 +89,10 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Servidor falso ou assinatura com o Bearer como chave | Não enviar input ao impostor | scripts/verification/native-client.test.mjs |
 | Resposta sem assinatura ou assinada com outra chave | Nenhum stdout de decisão | Mesmo teste de processo |
 | Reprodução de resposta com outro nonce | Nenhum stdout de decisão | Mesmo teste e native_hooks_authenticate_both_peers_and_reject_replay |
+| GET capturado reemitido depois do consumo, seguido do POST antigo | POST antigo recusado sem consumir o par novo | native_hooks_authenticate_both_peers_and_reject_replay |
+| Duas cópias concorrentes do mesmo pedido válido | Exatamente uma aceita | Mesmo teste de hooks |
+| Par ausente com corpo ainda não enviado | 401 antes da leitura do corpo | Mesmo teste de hooks |
+| Socket fechado depois de um desafio válido | Sem reconexão nem envio de conteúdo | scripts/verification/native-client.test.mjs |
 | Alteração de evento, status ou corpo da resposta | Nenhum stdout de decisão | Mesmo teste de processo |
 | Questions ou plan alterados, mesmo com HMAC válido | Nenhum stdout de decisão | Mesmo teste de processo |
 | Redirect ou proxy de ambiente | Não seguir nem enviar conteúdo ao destino | Mesmo teste de processo |
@@ -100,8 +112,9 @@ Vitest/axe e Playwright exercitam foco, ações explícitas e texto inerte.
 
 O mesmo usuário do sistema pode ler connection.json e operar o app. Malware
 com essa autoridade, administrador e harness comprometido ficam fora da
-proteção criptográfica deste canal. O compartilhamento de Bearer MCP permite
-ao chamador nomear outra sessão; identidade por sessão ainda não é isolada.
+proteção criptográfica deste canal. O cliente MCP autenticado pode nomear outra
+sessão; a chave local é compartilhada por usuário, e a identidade por sessão
+ainda não é isolada.
 
 O helper não atribui autoria humana à resposta só por ela ser assinada: o
 servidor confiável e o bridge privado fazem parte da base de confiança. Sair
