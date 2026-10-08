@@ -235,7 +235,7 @@ fn open(config: Option<Connection>) -> bool {
     }
     let mut command = Command::new(path);
     command
-        .arg("--show")
+        .arg("--open")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

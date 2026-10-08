@@ -161,6 +161,7 @@ test('native open detaches the app from captured command streams', async () => {
     for (let tries = 0; tries < 50; tries++) {
       try { await readFile(marker); break; } catch { await new Promise(ok => setTimeout(ok, 20)); }
     }
+    assert.equal(await readFile(join(root, 'started.args'), 'utf8'), '--open');
     const pid = Number(await readFile(marker, 'utf8'));
     assert.ok(Number.isSafeInteger(pid) && pid > 0);
     assert.doesNotThrow(() => process.kill(pid, 0), 'App must remain running after the command returns');
