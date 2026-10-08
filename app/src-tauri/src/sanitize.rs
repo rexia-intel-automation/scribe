@@ -2,6 +2,11 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::LazyLock;
 
+pub(crate) fn ambiguous_text(text: &str) -> bool {
+    static FORMAT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Cf}").unwrap());
+    text.chars().any(char::is_control) || FORMAT.is_match(text)
+}
+
 static SECRETS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9_]{8,}|github_pat_[a-z0-9_]{8,}|xox[a-z]-[a-z0-9-]{8,}|AKIA[A-Z0-9]{16}|eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+)\b").unwrap()
 });

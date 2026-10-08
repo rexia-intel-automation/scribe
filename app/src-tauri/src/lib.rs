@@ -233,6 +233,11 @@ impl Core {
             session = Session::new(hook.session_id.clone(), &hook.cwd, at);
         }
         session.update_cwd(&hook.cwd);
+        if matches!(route, "SessionStart" | "UserPromptSubmit") {
+            if let Some(title) = hook.session_title() {
+                session.title = title;
+            }
+        }
         session.last_event_at = at;
         let tool = hook.tool();
         let target = sanitize::target(&hook.tool_input);

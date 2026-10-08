@@ -53,6 +53,7 @@ function SessionRow({
           theme={theme}
         />
         <span className="session-copy">
+          {session.title && <span className="title">{session.title}</span>}
           <span className="project">{session.project}</span>
           <span className="action">{action(session.action, language)}</span>
           {session.origin && (

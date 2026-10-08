@@ -1,4 +1,5 @@
 //! Human decisions are bounded, single-use and tied to a live transport.
+use crate::sanitize::ambiguous_text;
 use crate::{model::Hook, now_ms, sanitize, Core, Result, StateEvent};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -9,11 +10,6 @@ use tokio::sync::oneshot;
 static RISK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse)").unwrap()
 });
-
-fn ambiguous_text(text: &str) -> bool {
-    static FORMAT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Cf}").unwrap());
-    text.chars().any(char::is_control) || FORMAT.is_match(text)
-}
 
 /// Sanitized display data. Original tool inputs and tool results are excluded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,7 +98,9 @@ impl Core {
         .iter()
         .find_map(|key| hook.tool_input.get(key).and_then(Value::as_str));
         let allowed_fields: &[&str] = match hook.tool_name.as_deref() {
-            Some("Bash") => &["command", "description", "timeout", "run_in_background"],
+            Some("Bash" | "PowerShell") => {
+                &["command", "description", "timeout", "run_in_background"]
+            }
             Some("Read") => &["file_path", "offset", "limit", "pages"],
             Some("Glob") => &["pattern", "path"],
             Some("Grep") => &[

@@ -21,6 +21,7 @@ export interface Step {
 export interface Session {
   id: string;
   project: string;
+  title?: string | null;
   cwd: string;
   origin: string | null;
   state: Exclude<Form, "ponto">;

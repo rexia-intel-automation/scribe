@@ -415,6 +415,10 @@ async fn approval_requires_complete_visible_known_metadata() {
             json!({"command":"echo public", "description":"public\u{200b}hidden"}),
         ),
         ("Bash", json!({"command":"x".repeat(8001)})),
+        (
+            "PowerShell",
+            json!({"command":"Write-Output public", "script":"Remove-Item public -Recurse"}),
+        ),
     ] {
         let body = serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest",
             "session_id":"one", "cwd":"/public/project", "tool_name":tool,
@@ -452,6 +456,29 @@ async fn approval_requires_complete_visible_known_metadata() {
         .unwrap();
     assert!(card.can_allow);
     assert_eq!(serde_json::from_str::<Value>(&card.target).unwrap(), fields);
+    core.resolve_decision(&card.id, input(json!({"action":"allow"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+
+    let body = serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest",
+        "session_id":"one", "cwd":"/public/project", "tool_name":"PowerShell",
+        "tool_input":{"command":"Write-Output public", "description":"Public operation"}}))
+    .unwrap();
+    let wait = core.permission(&body, 120).unwrap();
+    let card = core
+        .snapshot(now_ms())
+        .unwrap()
+        .decisions
+        .into_iter()
+        .find(|d| d.id == id(&core, "one"))
+        .unwrap();
+    assert!(card.can_allow);
+    assert!(!card.risk);
+    assert!(card.target.contains("Write-Output public"));
+    assert!(card.target.contains("Public operation"));
     core.resolve_decision(&card.id, input(json!({"action":"allow"})))
         .unwrap();
     assert_eq!(
