@@ -25,7 +25,7 @@ test('Scribe MCP uses the configured native helper over stdio without HTTP crede
 
 test('configuration script validates the independent helper key and configures only client_path', async () => {
   const source = await read('scripts/configure-claude-plugin.ps1');
-  const configBlock = source.match(/\$configureValues = \[ordered\]@\{([\s\S]*?)\n    \} \| ConvertTo-Json/);
+  const configBlock = source.match(/\$configureValues = \[ordered\]@\{([\s\S]*?)\n    \} \| (?:Microsoft\.PowerShell\.Utility\\)?ConvertTo-Json/);
   assert.ok(configBlock, 'configuration JSON block is present');
   assert.match(source, /\[IO\.Path\]::Combine\(\$env:LOCALAPPDATA, 'Scribe\\scribe-hook\.exe'\)/);
   assert.match(source, /\$hookKeyProperty\.Value -notmatch '\^\[A-Za-z0-9_-\]\{32,128\}\$'/);
