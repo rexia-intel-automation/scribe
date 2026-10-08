@@ -69,3 +69,23 @@ passar isoladamente não prova desempenho sob carga concorrente nem resolve a
 falha anterior. A comparação serve para investigar influência das gravações
 anteriores. Remover o controle e a instrumentação de debug antes da integração
 final; nenhuma configuração de durabilidade do produto foi alterada.
+
+Há também um controle temporário pareado, executado duas vezes antes da suíte
+completa e sem `sync`: cada rodada primeiro executa `core` com apenas o teste
+NFR pulado, registra explicitamente o exit code desse predecessor e então inicia
+uma segunda invocação Cargo contendo somente o NFR exato. Imediatamente antes e
+depois dessa invocação isolada, o job registra apenas os campos `Dirty` e
+`Writeback` de `/proc/meminfo`. O identificador da rodada e os exit codes dos
+dois comandos permitem distinguir falha do predecessor de falha de latência.
+Se qualquer comando falhar, o bloco termina com erro; somente esse passo
+diagnóstico usa `continue-on-error`, e a suíte completa continua sendo executada
+como gate obrigatório sem essa opção.
+
+Esse pareamento é apenas uma correlação. O comando `--skip` executa os demais
+testes `core`, inclusive os que vêm depois do NFR em ordem alfabética; não
+isola exclusivamente os predecessores. Cada teste cria seu próprio `Core` e
+`TempDir`, então não há evidência de mutex ou banco compartilhado entre eles.
+`Dirty`/`Writeback` são contadores globais do runner Linux, não atribuem I/O ao
+Scribe e podem variar entre rodadas. A execução sequencial, cache do Cargo e
+layout dos passos de CI também podem influenciar o resultado. Não se deve
+concluir que atividade de I/O causou uma amostra lenta sem evidência adicional.

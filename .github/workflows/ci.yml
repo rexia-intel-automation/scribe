@@ -74,6 +74,41 @@ jobs:
           cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --nocapture --test-threads=1
         env:
           SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
+      - name: Compare core workload and decision latency (temporary diagnostic)
+        if: matrix.os == 'ubuntu-22.04'
+        continue-on-error: true
+        run: |
+          failures=0
+          for round in 1 2; do
+            echo "decision latency diagnostic round=$round predecessor"
+            if cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core -- --skip permission_choices_deliver_signed_hook_responses_under_100ms_p95 --nocapture --test-threads=1; then
+              predecessor_status=0
+            else
+              predecessor_status=$?
+            fi
+            echo "round=$round predecessor_exit_code=$predecessor_status"
+
+            echo "round=$round NFR Dirty/Writeback before"
+            awk '$1 == "Dirty:" || $1 == "Writeback:" { printf "%s=%s%s ", $1, $2, $3 } END { print "" }' /proc/meminfo
+            if cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --nocapture --test-threads=1; then
+              nfr_status=0
+            else
+              nfr_status=$?
+            fi
+            echo "round=$round NFR Dirty/Writeback after"
+            awk '$1 == "Dirty:" || $1 == "Writeback:" { printf "%s=%s%s ", $1, $2, $3 } END { print "" }' /proc/meminfo
+            echo "round=$round nfr_exit_code=$nfr_status"
+
+            if [ "$predecessor_status" -ne 0 ] || [ "$nfr_status" -ne 0 ]; then
+              failures=1
+            fi
+          done
+          if [ "$failures" -ne 0 ]; then
+            echo "One or more diagnostic runs failed; see explicit predecessor/NFR exit codes above."
+            exit 1
+          fi
+        env:
+          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
         env:
           SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
