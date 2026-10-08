@@ -99,6 +99,22 @@ permanece em memória enquanto o cartão está pendente e é descartado ao resol
 ou expirar. Arquivos privados usam 0600/0700 no Unix e DACL do usuário no Windows.
 Planos são texto inerte na UI; o app não executa HTML nem lê planFilePath.
 
+No Windows, o histórico fica no Known Folder Local da conta, em
+`com.rexia.scribe/history`; conexão e preferências permanecem em Roaming.
+Antes de abrir SQLite, o upgrade copia o histórico antigo de Roaming a uma área
+privada no volume do destino, incluindo banco, journal, WAL, SHM e demais
+arquivos regulares. Compara manifestos SHA-256 da origem e da cópia, sincroniza
+os arquivos e publica a pasta sem substituir um destino existente. Um marcador
+privado permite retomar interrupções antes da limpeza da origem. Conflitos ou
+mudanças na origem interrompem o armazenamento, preservando os dados e deixando
+as decisões no terminal. A migração não mescla dois históricos.
+
+Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
+corporativo, backups ou bytes remanescentes em SSD. A sincronização dos arquivos
+e a publicação com write-through no Windows não são prova de recuperação diante
+de toda falha de energia ou implementação de servidor de arquivos. O ensaio em
+perfil de domínio permanece necessário.
+
 ## Tentativas de ataque cobertas
 
 As linhas abaixo são cenários distintos, exercitados nos testes indicados. Uma

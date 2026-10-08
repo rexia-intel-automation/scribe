@@ -32,6 +32,13 @@ Users with custom `XDG_CONFIG_HOME` or `XDG_DATA_HOME` will see a new profile at
 these fixed paths. Existing data is neither imported nor deleted; preserve it
 before upgrading.
 
+On Windows, history uses `%LOCALAPPDATA%\com.rexia.scribe\history`; connection
+and preferences stay in `%APPDATA%\com.rexia.scribe`. The upgrade migrates old
+history before opening SQLite. If both histories exist or the source changes
+during copying, Scribe preserves data and reports storage failure; answer in the
+terminal until IT resolves the conflict. Old backups and corporate Roaming
+server copies are not deleted by Scribe.
+
 ## Windows candidate test
 
 There is no published download for the MCP stdio candidate yet. When IT provides

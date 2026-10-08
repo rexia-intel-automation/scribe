@@ -238,7 +238,19 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
     if !data_path.is_absolute() {
         return Err("Data path must be absolute".into());
     }
-    let core = match Core::open(&data_path.join("state.db"), now_ms()) {
+    let core = match (|| -> crate::Result<Core> {
+        #[cfg(windows)]
+        {
+            #[cfg(not(feature = "test-fixture"))]
+            let migrate = true;
+            #[cfg(feature = "test-fixture")]
+            let migrate = std::env::var_os("SCRIBE_DATA_DIR").is_none();
+            if migrate {
+                crate::history_migration::migrate(&profile.config.join("history"), &data_path)?;
+            }
+        }
+        Core::open(&data_path.join("state.db"), now_ms())
+    })() {
         Ok(core) => Some(core),
         Err(_) => {
             error = Some("storageUnavailable".into());

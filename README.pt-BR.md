@@ -32,6 +32,13 @@ com o home obtido pelo cadastro da conta. Quem usava `XDG_CONFIG_HOME` ou
 `XDG_DATA_HOME` personalizados verá um perfil novo nesses caminhos; os dados
 antigos não são importados nem apagados. Preserve-os antes de atualizar.
 
+No Windows, o histórico usa `%LOCALAPPDATA%\com.rexia.scribe\history`; conexão
+e preferências continuam em `%APPDATA%\com.rexia.scribe`. O upgrade migra o
+histórico antigo antes de abrir o banco. Se houver dois históricos ou a origem
+mudar durante a cópia, o Scribe preserva os dados e indica falha de armazenamento;
+responda no terminal até a TI resolver o conflito. Cópias antigas em backups ou
+no servidor de Roaming da empresa não são apagadas pelo Scribe.
+
 ## Teste do candidato no Windows
 
 O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
