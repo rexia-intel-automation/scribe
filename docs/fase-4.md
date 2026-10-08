@@ -217,3 +217,11 @@ rejeitar confirmação prematura e aprovar após o prazo. O instalador 8f não
 contém essa correção e deve ser substituído por um build do novo SHA antes da
 entrega. Um job Windows do CI 8f falhou na latência, enquanto outro passou;
 o limite de 200 ms permanece exigido, sem bypass.
+
+Em seguida, o NSIS `ef829f8` passou no upgrade externo pelo Claude, com exit 0,
+abertura pelo menu Iniciar e preservação de connection.json. Os hashes estão em
+[install-ef829f8-windows.json](evidence/install-ef829f8-windows.json). Os dois
+runs do CI desse SHA passaram nas três plataformas e na auditoria de dependências;
+a repetição do job Windows 8f também passou sem alterar o limite de latência.
+O Claude aprovou a PR 6 inteira nesse SHA, e ela entrou no main em `f7fd5c7`.
+Esse merge não é o aceite da Fase 4: as interações humanas continuam pendentes.
