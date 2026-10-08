@@ -172,11 +172,11 @@ try {
         throw 'Windows user application directories are unavailable.'
     }
 
-    $hookPath = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Scribe\scribe-hook.exe'))
-    $connectionPath = Join-Path $env:APPDATA 'com.rexia.scribe\connection.json'
-    if (-not (Test-Path -LiteralPath $hookPath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $connectionPath -PathType Leaf) -or
-        (Get-Item -LiteralPath $connectionPath).Length -gt 8192) {
+    $hookPath = [IO.Path]::GetFullPath([IO.Path]::Combine($env:LOCALAPPDATA, 'Scribe\scribe-hook.exe'))
+    $connectionPath = [IO.Path]::Combine($env:APPDATA, 'com.rexia.scribe\connection.json')
+    if (-not [IO.File]::Exists($hookPath) -or
+        -not [IO.File]::Exists($connectionPath) -or
+        [IO.FileInfo]::new($connectionPath).Length -gt 8192) {
         throw 'Scribe helper or connection data is missing. Install or update Scribe first.'
     }
 

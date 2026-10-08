@@ -27,7 +27,7 @@ test('configuration script validates the independent helper key and configures o
   const source = await read('scripts/configure-claude-plugin.ps1');
   const configBlock = source.match(/\$configureValues = \[ordered\]@\{([\s\S]*?)\n    \} \| ConvertTo-Json/);
   assert.ok(configBlock, 'configuration JSON block is present');
-  assert.match(source, /Join-Path \$env:LOCALAPPDATA 'Scribe\\scribe-hook\.exe'/);
+  assert.match(source, /\[IO\.Path\]::Combine\(\$env:LOCALAPPDATA, 'Scribe\\scribe-hook\.exe'\)/);
   assert.match(source, /\$hookKeyProperty\.Value -notmatch '\^\[A-Za-z0-9_-\]\{32,128\}\$'/);
   assert.match(source, /\$tokenProperty\.Value -notmatch '\^\[A-Za-z0-9_-\]\{32,128\}\$'/);
   assert.match(source, /\$hookKeyProperty\.Value -ceq \$tokenProperty\.Value/);
