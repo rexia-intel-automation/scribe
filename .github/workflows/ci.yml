@@ -65,6 +65,14 @@ jobs:
       - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
+      - name: Isolate decision latency after draining build writes (temporary diagnostic)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --no-run
+          sync
+          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --nocapture --test-threads=1
+        env:
+          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
         env:
           SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'

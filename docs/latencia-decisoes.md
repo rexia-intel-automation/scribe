@@ -54,3 +54,18 @@ A execução local Windows dos dois caminhos em 2026-10-08 mediu:
 Nenhuma amostra atingiu 100 ms. Isso não mede clique físico, stdout do helper
 nativo, retomada do modelo no harness, perguntas ou aprovação de planos.
 Não substitui ensaio humano, aceite de fase nem aceite da release.
+
+## Investigação temporária do CI
+
+No Linux, a instrumentação de debug do commit 19d040e localizou as amostras
+lentas em save_decision (312–507 ms); mutex, preparação e publicação ficaram
+abaixo de 1 ms. Isso identifica a etapa, mas não demonstra a causa do custo de
+I/O. No mesmo teste, as amostras posteriores do Core tiveram p95 de 1–2 ms.
+
+Um controle temporário no CI Linux pré-compila os testes, executa sync e roda
+somente este teste antes da suíte completa. A suíte completa e seu SLA original
+continuam obrigatórios. O controle altera o estado de I/O anterior ao teste:
+passar isoladamente não prova desempenho sob carga concorrente nem resolve a
+falha anterior. A comparação serve para investigar influência das gravações
+anteriores. Remover o controle e a instrumentação de debug antes da integração
+final; nenhuma configuração de durabilidade do produto foi alterada.
