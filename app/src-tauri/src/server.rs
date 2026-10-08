@@ -250,9 +250,6 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         && request.uri().path().starts_with("/v1/hooks/")
         && !request.uri().path().starts_with("/v1/hooks/challenge/");
     let signed_hook = hook_request;
-    if challenge_request && !within_rate(&state.challenge_rate, 256) {
-        return StatusCode::TOO_MANY_REQUESTS.into_response();
-    }
     let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
@@ -302,9 +299,6 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
                 proof,
             )
         {
-            if !within_rate(&state.challenge_rate, 256) {
-                return StatusCode::TOO_MANY_REQUESTS.into_response();
-            }
             return StatusCode::UNAUTHORIZED.into_response();
         }
         let valid = state
@@ -314,9 +308,6 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             .and_then(|mut c| c.remove(nonce))
             .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
         if !valid {
-            if !within_rate(&state.challenge_rate, 256) {
-                return StatusCode::TOO_MANY_REQUESTS.into_response();
-            }
             return StatusCode::UNAUTHORIZED.into_response();
         }
         if !within_rate(&state.rate, 50) {
@@ -354,9 +345,31 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         .await
 }
 
-async fn challenge(State(state): State<HttpState>, Path(nonce): Path<String>) -> Response {
+async fn challenge(
+    State(state): State<HttpState>,
+    Path(nonce): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     if !scribe_hook_protocol::valid_nonce(&nonce) {
         return StatusCode::BAD_REQUEST.into_response();
+    }
+    // Authenticate before reserving a nonce or spending the legitimate hook quota.
+    // This proof discloses no secret or payload and cannot be reflected as the
+    // server's proof, which uses the separate "challenge" domain.
+    if headers.get_all("x-scribe-proof").iter().count() != 1
+        || !scribe_hook_protocol::verify(
+            &state.hook_key,
+            &[b"challenge-request", nonce.as_bytes()],
+            headers
+                .get("x-scribe-proof")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or(""),
+        )
+    {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if !within_rate(&state.challenge_rate, 256) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
     let Ok(mut challenges) = state.challenges.lock() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();

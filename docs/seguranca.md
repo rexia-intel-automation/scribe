@@ -19,11 +19,21 @@ evento e, na resposta, status e corpo. Nenhuma dessas chaves vai em argv ou nos
 pedidos do helper. O connection.json é a raiz de confiança e tem permissão
 restrita ao usuário. O onboarding envia o Bearer ao CLI oficial apenas por stdin.
 
+O GET do desafio exige uma prova HMAC no header `x-scribe-proof`, sobre os campos
+`challenge-request` e nonce. Ela não contém chave, Bearer nem input. Só provas
+válidas ocupam o mapa e a quota dos desafios; provas inválidas de GET ou POST
+não consomem a quota legítima. A resposta do servidor usa o domínio separado
+`challenge`, impedindo refletir a prova do cliente como prova do servidor.
+
 Challenges têm prazo monotônico de dois segundos, capacidade e quota separadas,
 e são consumidos no pedido. A resposta fica ligada ao nonce escolhido pelo helper.
 Isso rejeita a troca ou reprodução de respostas entre pedidos; não constitui um
 cache eterno de nonces. Há limite de corpo de 1 MiB, quota autenticada e capacidade
 de cartões. Windows usa bind exclusivo; Unix usa SO_REUSEADDR sem SO_REUSEPORT.
+
+App e helper devem ser atualizados juntos: um helper antigo sem a prova do GET
+é recusado pelo app novo e devolve o controle ao terminal. A instalação beta.1
+existente não é alterada por este endurecimento do protocolo.
 
 Decisões têm transporte vivo, sessão, prazo monotônico e uso único. Aprovação
 depende de campos completos e visíveis. Entradas redigidas, desconhecidas,
@@ -58,7 +68,8 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Questions ou plan alterados, mesmo com HMAC válido | Nenhum stdout de decisão | Mesmo teste de processo |
 | Redirect ou proxy de ambiente | Não seguir nem enviar conteúdo ao destino | Mesmo teste de processo |
 | Payload grande, JSON malformado ou stdin sem fim | Encerrar helper sem decisão | Mesmo teste de processo |
-| Flood de challenges/provas falsas | Não consumir quota MCP/health | Teste bearer_only_hooks mencionado acima |
+| Flood de challenges/provas falsas | Não ocupar desafios nem consumir quota legítima de hooks/MCP/health | unauthenticated_challenge_flood_cannot_block_a_native_hook e teste bearer_only_hooks |
+| Prova do desafio com chave/nonce errado, duplicada ou refletida | Nenhum desafio reservado; nenhum payload enviado ao servidor falso | challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof e native-client.test.mjs |
 | Alvo oculto, campo ignorado, segredo ou Unicode ambíguo | Não permitir aprovação | tests/decisions.rs e tests/interactive.rs |
 | Clique tardio, repetido, sem armar ou antes de um segundo | Não permitir novamente | tests/decisions.rs e tests/interactive.rs |
 | Desconexão, SessionEnd, reinício ou timeout | Cancelar sem inventar resposta | Mesmos testes de decisões |

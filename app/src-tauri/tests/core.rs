@@ -814,7 +814,7 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
                 "invalid",
                 "GET",
                 &format!("/v1/hooks/challenge/{nonce}"),
-                "",
+                &challenge_headers(&nonce),
                 ""
             )
             .await
@@ -973,6 +973,9 @@ async fn request_timed(
     body: &str,
 ) -> (Reply, Option<Duration>, Duration) {
     let mut extra = extra.to_owned();
+    if method == "GET" && path.starts_with("/v1/hooks/challenge/") && extra.is_empty() {
+        extra = challenge_headers(path.trim_start_matches("/v1/hooks/challenge/"));
+    }
     let mut challenge_elapsed = None;
     if method == "POST"
         && path.starts_with("/v1/hooks/")
@@ -986,7 +989,7 @@ async fn request_timed(
             "invalid",
             "GET",
             &format!("/v1/hooks/challenge/{nonce}"),
-            "",
+            &challenge_headers(&nonce),
             "",
         )
         .await;
@@ -1008,6 +1011,11 @@ async fn request_timed(
     let post_started = Instant::now();
     let reply = raw_request(port, token, method, path, &extra, body).await;
     (reply, challenge_elapsed, post_started.elapsed())
+}
+
+fn challenge_headers(nonce: &str) -> String {
+    let proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"challenge-request", nonce.as_bytes()]);
+    format!("x-scribe-proof: {proof}\r\n")
 }
 
 async fn raw_request(
@@ -1597,6 +1605,103 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let path = format!("/v1/hooks/challenge/{nonce}");
+    let server_proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"challenge", nonce.as_bytes()]);
+    let wrong_key = scribe_hook_protocol::sign(TOKEN, &[b"challenge-request", nonce.as_bytes()]);
+    let wrong_nonce = challenge_headers("1123456789abcdef0123456789abcdef");
+    let valid = challenge_headers(nonce);
+    for headers in [
+        String::new(),
+        format!("x-scribe-proof: {server_proof}\r\n"),
+        format!("x-scribe-proof: {wrong_key}\r\n"),
+        wrong_nonce,
+        format!("{valid}{valid}"),
+    ] {
+        assert_eq!(
+            raw_request(port, TOKEN, "GET", &path, &headers, "")
+                .await
+                .code,
+            401
+        );
+    }
+    assert_eq!(
+        raw_request(port, "invalid", "GET", &path, &valid, "")
+            .await
+            .code,
+        204
+    );
+    assert_eq!(
+        raw_request(port, "invalid", "GET", &path, &valid, "")
+            .await
+            .code,
+        429
+    );
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unauthenticated_challenge_flood_cannot_block_a_native_hook() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    for index in 0..270 {
+        let nonce = format!("{index:032x}");
+        let response = raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            "",
+            "",
+        )
+        .await;
+        assert_eq!(
+            response.code, 401,
+            "unproved challenges must not reserve a slot or spend the authenticated quota"
+        );
+        let response = raw_request(
+            port,
+            "invalid",
+            "POST",
+            "/v1/hooks/SessionStart",
+            &format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: invalid\r\n"),
+            &payload("SessionStart").to_string(),
+        )
+        .await;
+        assert_eq!(response.code, 401);
+    }
+    assert_eq!(
+        request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/hooks/SessionStart",
+            "",
+            &payload("SessionStart").to_string()
+        )
+        .await
+        .code,
+        204
+    );
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms()).unwrap().sessions.len(),
+        1
+    );
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_quota() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
@@ -1676,7 +1781,7 @@ async fn bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_
 
     for index in 0..60 {
         let nonce = format!("{index:032x}");
-        let challenge = request(
+        let challenge = raw_request(
             port,
             "invalid",
             "GET",
@@ -1685,7 +1790,7 @@ async fn bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_
             "",
         )
         .await;
-        assert_eq!(challenge.code, 204);
+        assert_eq!(challenge.code, 401);
     }
     for index in 100..160 {
         let nonce = format!("{index:032x}");
