@@ -126,31 +126,91 @@ async function makeFixture(shell) {
   return { root, appData, fakeBin, helperPath, logPath, powershell, scriptPath, env };
 }
 
-function runSetup(fixture, extraEnv = {}) {
-  return spawnSync(fixture.powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', fixture.scriptPath], {
+function runPowerShell(fixture, args, extraEnv = {}, timeout = 15000) {
+  const started = Date.now();
+  const result = spawnSync(fixture.powershell, args, {
     cwd: process.cwd(),
     env: { ...fixture.env, ...extraEnv },
     encoding: 'utf8',
-    timeout: 15000,
+    timeout,
     windowsHide: true,
   });
+  return { ...result, elapsedMs: Date.now() - started };
 }
 
-function diagnostic(result, fixture) {
-  const scrub = value => String(value ?? '')
-    .replaceAll(fixture.root, '[synthetic-temp]')
-    .replaceAll(process.cwd(), '[workspace]')
+function runSetup(fixture, extraEnv = {}) {
+  return runPowerShell(fixture, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', fixture.scriptPath], extraEnv, 15000);
+}
+
+function diagnostic(result, fixture, { maxOutput = 1200, tail = false } = {}) {
+  const redactPath = (value, path, replacement) => path
+    ? value.replace(new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), replacement)
+    : value;
+  const scrub = value => {
+    let cleaned = String(value ?? '');
+    cleaned = redactPath(cleaned, fixture.root, '[synthetic-temp]');
+    cleaned = redactPath(cleaned, process.cwd(), '[workspace]');
+    return cleaned
     .replaceAll('SYNTHETIC_BEARER_TOKEN_012345678901234567890123', '[synthetic-secret]')
     .replaceAll('SYNTHETIC_INDEPENDENT_HOOK_KEY_012345678901234567890123', '[synthetic-secret]')
-    .replaceAll('SYNTHETIC_CLI_SECRET', '[synthetic-cli-output]')
-    .slice(0, 1200);
+    .replaceAll('SYNTHETIC_CLI_SECRET', '[synthetic-cli-output]');
+  };
+  const limit = value => {
+    const cleaned = scrub(value);
+    return cleaned.length > maxOutput
+      ? (tail ? `[truncated; showing tail]\n${cleaned.slice(-maxOutput)}` : `${cleaned.slice(0, maxOutput)}\n[truncated]`)
+      : cleaned;
+  };
   return JSON.stringify({
     status: result.status,
     signal: result.signal,
+    elapsedMs: result.elapsedMs,
     error: result.error ? { code: result.error.code, syscall: result.error.syscall, message: scrub(result.error.message) } : null,
-    stdout: scrub(result.stdout),
-    stderr: scrub(result.stderr),
+    stdout: limit(result.stdout),
+    stderr: limit(result.stderr),
   });
+}
+
+async function runPowerShellDiagnostic() {
+  if (process.platform !== 'win32') {
+    console.error('PowerShell diagnostic mode requires Windows.');
+    process.exitCode = 1;
+    return;
+  }
+
+  let baselineOk = false;
+  let scriptOk = false;
+  const baseline = await makeFixture('5.1');
+  try {
+    const result = runPowerShell(baseline, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-Command', "[Console]::WriteLine('DIAG_BOOT'); exit 0",
+    ], {}, 90000);
+    baselineOk = result.status === 0 && String(result.stdout ?? '').includes('DIAG_BOOT');
+    console.log(JSON.stringify({ mode: 'powershell-5.1-baseline', passed: baselineOk, result: JSON.parse(diagnostic(result, baseline, { maxOutput: 12000 })) }));
+  } catch (error) {
+    console.log(JSON.stringify({ mode: 'powershell-5.1-baseline', passed: false, result: JSON.parse(diagnostic({ status: null, signal: null, error }, baseline)) }));
+  } finally {
+    await rm(baseline.root, { recursive: true, force: true });
+  }
+
+  const trace = await makeFixture('5.1');
+  try {
+    const scriptLiteral = trace.scriptPath.replaceAll("'", "''");
+    const result = runPowerShell(trace, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-Command', `Set-PSDebug -Trace 1; & '${scriptLiteral}'`,
+    ], { SCRIBE_TEST_HELPER_MODE: 'old' }, 90000);
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    scriptOk = result.status === 1 && /Update the Scribe app and helper together/.test(output);
+    console.log(JSON.stringify({ mode: 'powershell-5.1-old-helper-trace', passed: scriptOk, result: JSON.parse(diagnostic(result, trace, { maxOutput: 12000, tail: true })) }));
+  } catch (error) {
+    console.log(JSON.stringify({ mode: 'powershell-5.1-old-helper-trace', passed: false, result: JSON.parse(diagnostic({ status: null, signal: null, error }, trace, { maxOutput: 12000, tail: true })) }));
+  } finally {
+    await rm(trace.root, { recursive: true, force: true });
+  }
+
+  if (!baselineOk || !scriptOk) process.exitCode = 1;
 }
 
 async function recordedCalls(path) {
@@ -163,6 +223,9 @@ async function recordedCalls(path) {
   });
 }
 
+if (process.env.SCRIBE_TEST_POWERSHELL_DIAGNOSTIC === '1') {
+  await runPowerShellDiagnostic();
+} else {
 windowsTest('PowerShell 5.1 and 7 reject a helper without attested-stdio-v1 before invoking Claude CLI', async t => {
   for (const shell of ['5.1', '7']) {
     await t.test(`PowerShell ${shell}`, async t2 => {
@@ -243,3 +306,4 @@ windowsTest('PowerShell 5.1 and 7 stop a hung helper check before CLI use', asyn
     });
   }
 });
+}
