@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import * as bridge from "./bridge";
 import { t, action } from "./i18n";
-import { priority, type View } from "./types";
+import { priority, type Decision, type View } from "./types";
 vi.mock("./bridge", async () => {
   const actual = await vi.importActual<typeof import("./bridge")>("./bridge");
   return {
@@ -19,6 +19,7 @@ vi.mock("./bridge", async () => {
     observe: vi.fn(async () => () => {}),
     savePreferences: vi.fn(),
     toggle: vi.fn(),
+    resolveDecision: vi.fn(),
     move: vi.fn(),
     drag: vi.fn(),
     clearHistory: vi.fn(),
@@ -50,6 +51,25 @@ function fixture(): View {
         })),
       },
     ],
+  };
+}
+function pendingDecision(id: string): Decision {
+  const createdAt = Date.now();
+  return {
+    id,
+    sessionId: "public",
+    project: "public-project",
+    kind: "permission",
+    tool: "Bash",
+    target: "echo public",
+    question: null,
+    options: [],
+    risk: false,
+    armed: false,
+    status: "pending",
+    createdAt,
+    expiresAt: createdAt + 120000,
+    resolvedAt: null,
   };
 }
 beforeEach(() => vi.clearAllMocks());
@@ -396,6 +416,93 @@ describe("session window", () => {
     expect(
       screen.getByRole("button", { name: "Recolher janela" }),
     ).toHaveFocus();
+  });
+  it("focuses pending notification decisions without activating them", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.decisions = [pendingDecision("pending-notification")];
+    const { container } = render(<App initialView={data} />);
+    await waitFor(() => expect(receive).toBeDefined());
+    const focusTarget = container.querySelector<HTMLDivElement>(
+      ".decision-focus-target",
+    )!;
+    const scrollIntoView = vi.fn();
+    focusTarget.scrollIntoView = scrollIntoView;
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const firstLanguage = screen.getByLabelText(t("pt-BR", "language"));
+    firstLanguage.focus();
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        notificationDecisionId: "pending-notification",
+      }),
+    );
+    await waitFor(() => expect(focusTarget).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const language = screen.getByLabelText(t("pt-BR", "language"));
+    language.focus();
+    act(() =>
+      receive!({
+        ...data,
+        revision: 3,
+        decisions: data.decisions,
+      }),
+    );
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(language).toHaveFocus();
+
+    act(() =>
+      receive!({
+        ...data,
+        revision: 4,
+        notificationDecisionId: "pending-notification",
+      }),
+    );
+    await waitFor(() => expect(focusTarget).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+  });
+  it("ignores a stale notification decision ID without moving focus or closing settings", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.decisions = [pendingDecision("different-pending-decision")];
+    const { container } = render(<App initialView={data} />);
+    await waitFor(() => expect(receive).toBeDefined());
+    const focusTarget = container.querySelector<HTMLDivElement>(
+      ".decision-focus-target",
+    )!;
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const language = screen.getByLabelText(t("pt-BR", "language"));
+    language.focus();
+
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        notificationDecisionId: "stale-decision",
+      }),
+    );
+
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(language).toHaveFocus();
+    expect(focusTarget).not.toHaveFocus();
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
   });
   it("restores settings focus after the original opener was removed by a mode change", async () => {
     const user = userEvent.setup();

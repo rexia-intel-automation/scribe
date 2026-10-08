@@ -357,6 +357,13 @@ export default function App({
   const [error, setError] = useState<Message | null>(null);
   const opened = useRef(Date.now());
   const revision = useRef(initialView.revision);
+  const notificationSnapshot = useRef<{ revision: number; id: string } | null>(
+    null,
+  );
+  const notificationFocus = useRef<{ revision: number; id: string } | null>(
+    null,
+  );
+  const decisionFocusTargets = useRef(new Map<string, HTMLDivElement>());
   const [heardHook, setHeardHook] = useState(
     initialView.sessions.some(
       (session) => session.lastEventAt >= opened.current,
@@ -371,6 +378,29 @@ export default function App({
   const receive = (next: View) => {
     if (next.revision <= revision.current) return;
     revision.current = next.revision;
+    const notificationId = next.notificationDecisionId ?? null;
+    const isNewNotification =
+      notificationId !== null &&
+      (notificationSnapshot.current?.revision !== next.revision ||
+        notificationSnapshot.current?.id !== notificationId);
+    notificationSnapshot.current = notificationId
+      ? { revision: next.revision, id: notificationId }
+      : null;
+    if (isNewNotification) {
+      const notificationDecision = (next.decisions ?? []).find(
+        (decision) => decision.id === notificationId,
+      );
+      if (
+        notificationDecision?.status === "pending" &&
+        notificationDecision.expiresAt > Date.now()
+      ) {
+        notificationFocus.current = {
+          revision: next.revision,
+          id: notificationId,
+        };
+        setSettings(false);
+      }
+    }
     setView(next);
     if (!next.error) setError(null);
     if (next.sessions.some((session) => session.lastEventAt >= opened.current))
@@ -385,6 +415,32 @@ export default function App({
     previousMode.current = view.preferences.collapsed;
     if (view.preferences.collapsed || !settings) panelToggle.current?.focus();
   }, [view.preferences.collapsed, settings]);
+  useEffect(() => {
+    const request = notificationFocus.current;
+    if (
+      !request ||
+      request.revision !== view.revision ||
+      request.id !== view.notificationDecisionId
+    )
+      return;
+    notificationFocus.current = null;
+    const decision = (view.decisions ?? []).find(
+      (item) => item.id === request.id,
+    );
+    const target = decisionFocusTargets.current.get(request.id);
+    if (
+      decision?.status !== "pending" ||
+      decision.expiresAt <= Date.now() ||
+      !target
+    )
+      return;
+    const timer = window.setTimeout(() => {
+      if (!target.isConnected) return;
+      target.scrollIntoView({ block: "nearest" });
+      target.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [view]);
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -549,14 +605,26 @@ export default function App({
               {t(language, "decisionsWaiting", { count: pendingCount })}
             </h2>
             {decisions.map((decision) => (
-              <DecisionCard
+              <div
                 key={decision.id}
-                decision={decision}
-                language={language}
-                now={now}
-                receive={receive}
-                fail={fail}
-              />
+                ref={(element) => {
+                  if (element)
+                    decisionFocusTargets.current.set(decision.id, element);
+                  else decisionFocusTargets.current.delete(decision.id);
+                }}
+                className="decision-focus-target"
+                tabIndex={-1}
+                role="group"
+                aria-label={decision.project}
+              >
+                <DecisionCard
+                  decision={decision}
+                  language={language}
+                  now={now}
+                  receive={receive}
+                  fail={fail}
+                />
+              </div>
             ))}
           </section>
         )}

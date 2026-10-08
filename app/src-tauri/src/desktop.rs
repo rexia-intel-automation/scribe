@@ -104,6 +104,7 @@ pub struct View {
     decisions: Vec<crate::Decision>,
     preferences: Preferences,
     error: Option<String>,
+    notification_decision_id: Option<String>,
 }
 struct Desktop {
     core: Option<Core>,
@@ -311,6 +312,7 @@ fn view(data: &Desktop) -> Result<View, String> {
             .map_err(|_| "bridgeUnavailable")?
             .clone(),
         error: data.error.lock().map_err(|_| "bridgeUnavailable")?.clone(),
+        notification_decision_id: None,
     })
 }
 #[tauri::command]
@@ -418,6 +420,13 @@ fn apply_layout(
     Ok(())
 }
 fn set_panel(app: &AppHandle, collapsed: bool) -> Result<View, String> {
+    set_panel_for_decision(app, collapsed, None)
+}
+fn set_panel_for_decision(
+    app: &AppHandle,
+    collapsed: bool,
+    decision_id: Option<&str>,
+) -> Result<View, String> {
     let data = app.state::<Desktop>();
     let _saving = data.saving.try_lock().map_err(|_| "bridgeUnavailable")?;
     let window = app.get_webview_window("main").ok_or("bridgeUnavailable")?;
@@ -433,9 +442,81 @@ fn set_panel(app: &AppHandle, collapsed: bool) -> Result<View, String> {
     if !collapsed {
         window.set_focus().map_err(|_| "bridgeUnavailable")?;
     }
-    let current = view(&data)?;
+    let mut current = view(&data)?;
+    current.notification_decision_id = decision_id
+        .filter(|id| {
+            current
+                .decisions
+                .iter()
+                .any(|d| d.id == *id && d.status == "pending" && d.expires_at > current.at)
+        })
+        .map(str::to_owned);
     let _ = app.emit_to("main", "scribe:view", &current);
     Ok(current)
+}
+
+fn notify_requests(
+    app: &AppHandle,
+    current: &View,
+    notifications: &mut crate::notifications::Notifications,
+) {
+    let foreground = app.get_webview_window("main").is_some_and(|w| {
+        !current.preferences.collapsed
+            && w.is_visible().unwrap_or(false)
+            && w.is_focused().unwrap_or(false)
+    });
+    for decision in notifications.new_requests(
+        &current.decisions,
+        current.preferences.notifications,
+        foreground,
+        current.at,
+    ) {
+        let Some(listener) = notifications.listener() else {
+            continue;
+        };
+        let app = app.clone();
+        let id = decision.id.clone();
+        let body =
+            crate::notifications::body(&decision.project, current.preferences.language == "pt-BR");
+        let _ = std::thread::Builder::new()
+            .name("scribe-notification".into())
+            .spawn(move || {
+                let _listener = listener;
+                let mut notification = notify_rust::Notification::new();
+                notification
+                    .summary("Scribe")
+                    .body(&body)
+                    .appname("Scribe")
+                    .timeout(8000);
+                #[cfg(windows)]
+                notification.app_id("com.rexia.scribe");
+                #[cfg(all(unix, not(target_os = "macos")))]
+                notification.action("default", "Scribe");
+                if let Ok(handle) = notification.show() {
+                    let _ =
+                        handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
+                            if !response.is_default_action() {
+                                return;
+                            }
+                            let handle = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                let data = handle.state::<Desktop>();
+                                if let Ok(current) = view(&data) {
+                                    if current.preferences.notifications
+                                        && current.decisions.iter().any(|d| {
+                                            d.id == id
+                                                && d.status == "pending"
+                                                && d.expires_at > current.at
+                                        })
+                                    {
+                                        let _ = set_panel_for_decision(&handle, false, Some(&id));
+                                    }
+                                }
+                            });
+                        });
+                }
+            });
+    }
 }
 #[tauri::command]
 fn move_panel(
@@ -815,6 +896,8 @@ pub fn run() {
             resolve_decision
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            let _ = notify_rust::set_application("com.rexia.scribe");
             let data = init(app.handle())?;
             let p = data
                 .preferences
@@ -882,6 +965,7 @@ pub fn run() {
                 let mut receiver = handle.state::<Desktop>().core.as_ref().map(Core::subscribe);
                 let mut tick = tokio::time::interval(Duration::from_secs(1));
                 let mut last = String::new();
+                let mut notifications = crate::notifications::Notifications::default();
                 loop {
                     tokio::select! {
                         _ = tick.tick() => {},
@@ -897,6 +981,7 @@ pub fn run() {
                         tokio::task::spawn_blocking(move || view(&handle.state::<Desktop>())).await
                     };
                     if let Ok(Ok(current)) = current {
+                        notify_requests(&handle, &current, &mut notifications);
                         let encoded = serde_json::to_string(&(
                             &current.sessions,
                             &current.decisions,

@@ -5,6 +5,8 @@ mod interactive;
 mod mcp;
 pub use decisions::{Decision, DecisionInput, DecisionWait};
 mod model;
+#[cfg(feature = "desktop")]
+mod notifications;
 mod private_fs;
 mod sanitize;
 mod server;

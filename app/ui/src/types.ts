@@ -52,6 +52,7 @@ export interface View {
   preferences: Preferences;
   error: string | null;
   decisions?: Decision[];
+  notificationDecisionId?: string | null;
 }
 export interface Decision {
   id: string;
