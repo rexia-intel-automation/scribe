@@ -18,6 +18,13 @@ function sign(key, fields) {
   for (const value of fields) { const bytes = Buffer.from(value); const size = Buffer.alloc(8); size.writeBigUInt64BE(BigInt(bytes.length)); mac.update(size).update(bytes); }
   return mac.digest('base64url');
 }
+function assertChallengeRequest(req, body, nonce) {
+  assert.equal(Buffer.byteLength(body), 0, 'Challenge GET must not carry a body');
+  assert.equal(req.headers.authorization, undefined, 'Challenge request must not send the Bearer token');
+  assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['challenge-request', nonce]));
+  const values = Object.values(req.headers).flat().map(String);
+  assert.ok(!values.includes(token) && !values.includes(hookKey), 'Challenge request must not send either secret');
+}
 
 test('PreToolUse plugin matchers give interactive tools 130s and all others 1s', async () => {
   const manifest = JSON.parse(await readFile(resolve('plugins/scribe/hooks/hooks.json'), 'utf8'));
@@ -82,9 +89,13 @@ test('native client forwards eleven events, returns only supported human decisio
     let body = ''; for await (const chunk of req) body += chunk;
     assert.equal(req.headers.authorization, undefined, 'Neither MCP Bearer nor hook key may be sent');
     if (req.url.startsWith('/v1/hooks/challenge/')) {
-      assert.equal(body, '');
       const nonce = req.url.split('/').at(-1);
+      assertChallengeRequest(req, body, nonce);
       if (scenario === 'impostor') { res.writeHead(200).end('{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'); return; }
+      if (scenario === 'challenge-reflection') {
+        res.writeHead(204, { 'x-scribe-proof': req.headers['x-scribe-proof'] }).end();
+        return;
+      }
       const key = scenario === 'bearer-forgery' ? token : hookKey;
       res.writeHead(204, { 'x-scribe-proof': sign(key, ['challenge', nonce]) }).end();
       return;
@@ -164,7 +175,7 @@ test('native client forwards eleven events, returns only supported human decisio
     }
     assert.deepEqual(events, [...EVENTS, 'PreToolUse', 'PreToolUse']);
     for (scenario of [
-      'unsigned', 'wrong-event', 'changed-body', 'replay', 'response-bearer-forgery',
+      'unsigned', 'wrong-event', 'changed-body', 'replay', 'response-bearer-forgery', 'challenge-reflection',
       'impostor', 'altered-questions', 'altered-plan',
     ]) {
       const countBefore = events.length;
@@ -181,13 +192,13 @@ test('native client forwards eleven events, returns only supported human decisio
       assert.equal(result.code, 0, scenario);
       assert.equal(result.stdout, '', `${scenario} must not return a decision`);
       assert.equal(result.stderr, '', scenario);
-      if (['impostor', 'bearer-forgery'].includes(scenario)) {
+      if (['impostor', 'bearer-forgery', 'challenge-reflection'].includes(scenario)) {
         assert.equal(events.length, countBefore, `${scenario} must be rejected before forwarding`);
       } else {
         assert.equal(events.length, countBefore + 1, `${scenario} request should reach the server`);
       }
     }
-    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
+    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'challenge-reflection', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
       const countBefore = events.length;
       const event = scenario === 'stalled' ? 'Stop' : 'PermissionRequest';
       const result = await launch(executable, config, event, JSON.stringify({
@@ -197,7 +208,7 @@ test('native client forwards eleven events, returns only supported human decisio
       if (scenario === 'healthy') assert.equal(JSON.parse(result.stdout).hookSpecificOutput.decision.behavior, 'allow');
       else assert.equal(result.stdout, '');
       assert.equal(result.stderr, '');
-      if (['impostor', 'bearer-forgery'].includes(scenario)) assert.equal(events.length, countBefore, 'Reject impersonator before sending the payload');
+      if (['impostor', 'bearer-forgery', 'challenge-reflection'].includes(scenario)) assert.equal(events.length, countBefore, 'Reject impersonator before sending the payload');
       assert.ok(result.elapsedMs < 1000);
     }
     assert.equal(forbiddenRequests, 0);
@@ -239,6 +250,7 @@ test('native PermissionRequest echoes only one exact original permission suggest
     assert.equal(req.headers.authorization, undefined);
     if (req.url.startsWith('/v1/hooks/challenge/')) {
       const nonce = req.url.split('/').at(-1);
+      assertChallengeRequest(req, body, nonce);
       res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
       return;
     }
@@ -299,8 +311,8 @@ test('native client rejects oversized/malformed input and terminates with unfini
     assert.equal(req.headers.authorization, undefined);
     if (req.url.startsWith('/v1/hooks/challenge/')) {
       challengeRequests++;
-      assert.equal(body.length, 0);
       const nonce = req.url.split('/').at(-1);
+      assertChallengeRequest(req, body, nonce);
       res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
       return;
     }
@@ -367,8 +379,8 @@ test('native client accepts an exactly 8192-byte signed response and suppresses 
     const body = Buffer.concat(chunks);
     assert.equal(req.headers.authorization, undefined);
     if (req.url.startsWith('/v1/hooks/challenge/')) {
-      assert.equal(body.length, 0);
       const nonce = req.url.split('/').at(-1);
+      assertChallengeRequest(req, body, nonce);
       challengeNonces.push(nonce);
       res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
       return;

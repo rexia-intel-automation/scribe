@@ -358,6 +358,10 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
             "http://127.0.0.1:{}/v1/hooks/challenge/{nonce}",
             config.port
         ))
+        .header(
+            "x-scribe-proof",
+            scribe_hook_protocol::sign(&config.hook_key, &[b"challenge-request", nonce.as_bytes()]),
+        )
         .call()
     else {
         return;
