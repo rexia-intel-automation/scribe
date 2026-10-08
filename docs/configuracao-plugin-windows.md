@@ -9,9 +9,21 @@ pacote MSIX do Codex, com o executável nativo `claude.exe` disponível no
 ## Pré-requisitos
 
 - Instale o app Scribe pelo instalador Windows NSIS em modo `currentUser`.
-- Abra o app pelo menu Iniciar e deixe-o aberto para gerar/atualizar
-  `%APPDATA%\com.rexia.scribe\connection.json`.
+- Abra o app pelo menu Iniciar pelo menos uma vez para criar
+  `%APPDATA%\com.rexia.scribe\connection.json`. A janela não precisa ficar
+  aberta durante a configuração do plugin.
+- Use o plugin candidato `0.1.1` com um helper que responda a
+  `scribe-hook.exe --mcp-check` com `mcp_transport: attested-stdio-v1` e tenha
+  `hook_key` independente no arquivo de conexão. A beta `0.1.0-beta.1` usa
+  HTTP/Bearer e é incompatível com este plugin candidato. Atualize app/helper e
+  plugin juntos. Se atualizar o app primeiro, a configuração MCP antiga pode
+  retornar HTTP 401 e aparecer como “MCP server failed”; atualize o plugin para
+  0.1.1 e execute novamente este script.
 - Confirme que `claude.exe` está no `PATH`.
+
+O número de pacote `0.1.0` sozinho não comprova compatibilidade: a beta.1 usa o
+mesmo número. Confira o commit `source_sha` dos artefatos e a capacidade exigida
+pelo script. A tag mínima compatível será registrada ao publicar a release.
 
 Na raiz do checkout, execute:
 
@@ -20,21 +32,37 @@ powershell -File .\scripts\configure-claude-plugin.ps1
 ```
 
 Se usar PowerShell 7, substitua `powershell` por `pwsh` no comando. O script lê
-o `port` e o `token` da conexão do app em memória. Ele lista marketplaces em
-JSON apenas em memória. Se já existir o marketplace chamado `rexia-scribe`, usa
-essa origem sem alterá-la; caso contrário, instala o plugin pela fonte pública
-`rexia-intel-automation/scribe`. Ele envia o
-`client_path` e o `port` ao comando oficial de instalação do plugin, depois envia
-`client_path`, `port` e `token` como strings JSON de uma linha para
-`claude plugin configure --values-stdin`. O token não é passado como argumento
-de linha de comando nem gravado em arquivo adicional. Saída e erros da CLI são
-capturados em memória e descartados (o JSON da listagem é usado apenas para
-detectar o marketplace existente). Em caso de falha, o script mostra a etapa e
-o código de saída ou timeout, sem exibir a saída da CLI. Cada chamada tem limite
-de dois minutos; no timeout, somente o processo `claude.exe` iniciado pelo script
-é encerrado.
+a conexão em memória e confirma que `hook_key` existe, tem formato válido e é
+diferente do token interno. Ele não consulta HTTP nem precisa do token para
+configurar o plugin. A única opção enviada à CLI é `client_path`; porta e token
+não fazem parte do `userConfig` atual. Antes de consultar marketplaces ou alterar
+a instalação, o script executa `--mcp-check` com limite de três segundos e
+valida o marcador `attested-stdio-v1`; stdout e stderr do helper ficam apenas em
+memória. Esse marcador comprova a capacidade declarada do binário, não que o app
+desktop esteja aberto nem que uma chamada MCP funcione. Ele lista marketplaces
+em JSON apenas em memória. Se já existir o marketplace chamado `rexia-scribe`,
+atualiza o catálogo pela CLI oficial e usa essa origem; caso contrário, instala
+o plugin pela fonte pública `rexia-intel-automation/scribe`. Depois da instalação,
+executa `plugin update` no escopo do usuário e consulta `plugin list --json`.
+Só continua se existir exatamente um `scribe@rexia-scribe` habilitado no escopo
+do usuário, com versão `0.1.1`. Uma versão de pasta, quando informada pela CLI,
+também precisa corresponder. Lista inválida, plugin antigo ou ambíguo causa
+falha antes da configuração e não produz mensagem de sucesso. O JSON enviado a
+`claude plugin configure --values-stdin` contém apenas `client_path`. Saída e
+erros da CLI são capturados em memória e descartados (o JSON da listagem é usado
+apenas para conferir o marketplace e a versão instalada). Em caso de falha, o script mostra
+a etapa e o código de saída ou timeout, sem exibir a saída da CLI. Cada chamada
+tem limite de dois minutos; no timeout, somente o processo `claude.exe` iniciado
+pelo script é encerrado.
 
-O processo usa somente `claude plugin install` e `claude plugin configure`. Não
+O manifesto inicia o caminho configurado por stdio com `--mcp`. Um valor `token`
+salvo por versões anteriores do plugin não é lido nem usado. Atualize app, helper
+e plugin juntos. O script usa a CLI para consultar os metadados dos plugins,
+sem editar nem limpar diretamente os arquivos de configuração do Claude Code.
+Não há aqui uma etapa documentada para remover a opção antiga.
+
+O processo usa os comandos oficiais de marketplace, instalação, atualização,
+listagem e configuração de plugins. Não
 edita `settings.json`, apaga o perfil do Claude Code nem gera um token novo. Uma
 reexecução reutiliza a conexão já existente. O script não aceita comandos
 declarados pelo marketplace com `--yes` ou `--accept-command`; a CLI oficial
@@ -44,6 +72,8 @@ Após a configuração, encerre e reinicie o Claude Code para carregar o plugin.
 
 ## Verificação local e limite de caminho
 
+Os ensaios abaixo são históricos, anteriores ao contrato stdio do candidato
+0.1.1; não validam o marcador `attested-stdio-v1` nem o transporte novo.
 Em 2026-10-08, Claude Code ensaiou o script fora do MSIX: PowerShell 5.1 e 7
 preservaram o marketplace Directory existente e retornaram exit 0. Um perfil
 Claude novo e isolado também instalou o marketplace do GitHub com PowerShell 5.1;
@@ -55,8 +85,6 @@ com `Filename too long`. Nesse caso, a TI deve conferir o comprimento do caminho
 e o suporte a caminhos longos do Git; o script não altera a configuração global
 do Git. A limitação permanece registrada para reduzir nomes de fixtures em uma
 correção posterior.
-O marketplace público instala o conteúdo atualmente publicado na branch `main`,
-que ainda pode refletir a fase 1 do plugin. O manifesto publicado mantém o mesmo
-contrato `userConfig` usado aqui (`client_path`, `port` e `token`); isso não
-significa que a versão pública do plugin já contenha os fluxos mais recentes do
-app Scribe.
+O marketplace público instala o conteúdo atualmente publicado na branch `main`.
+Confira que app, helper e plugin vêm do mesmo pacote/revisão, pois versões
+anteriores esperavam `port` e `token` no `userConfig`.

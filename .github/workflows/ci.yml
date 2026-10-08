@@ -8,6 +8,16 @@ permissions:
   contents: read
 
 jobs:
+  windows-onboarding:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Check PowerShell onboarding with isolated executable fixtures
+        run: node --test scripts/verification/configure-claude-plugin.ps.test.mjs
   dependency-audit:
     runs-on: ubuntu-22.04
     steps:
@@ -24,6 +34,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
+      - run: cargo audit --file app/hook-protocol/Cargo.lock --deny warnings
       # GTK3 upstream exceptions with reachability rationale in docs/dependencias-desktop.md.
       - run: cargo audit --file app/src-tauri/Cargo.lock --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429
   native-and-plugin:
@@ -62,57 +73,20 @@ jobs:
       - run: cargo fmt --manifest-path app/hook-client/Cargo.toml --check
       - run: cargo clippy --manifest-path app/hook-client/Cargo.toml --locked -- -D warnings
       - run: cargo test --manifest-path app/hook-client/Cargo.toml --locked
-      - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
+      - name: Check release trust root against project environment
+        run: cargo test --manifest-path app/hook-client/Cargo.toml --release --no-default-features --locked
+      - name: Test hook protocol account resolver
+        run: |
+          cargo fmt --manifest-path app/hook-protocol/Cargo.toml --check
+          cargo clippy --manifest-path app/hook-protocol/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path app/hook-protocol/Cargo.toml --locked
+      - name: Build release fixture with explicit configuration overrides
+        run: cargo build --manifest-path app/hook-client/Cargo.toml --release --features test-fixture --target-dir app/hook-client/target/fixture --locked
+      - run: cargo build --release --no-default-features --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
-      - name: Isolate decision latency after draining build writes (temporary diagnostic)
-        if: matrix.os == 'ubuntu-22.04'
-        continue-on-error: true
-        run: |
-          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --no-run
-          sync
-          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --nocapture --test-threads=1
-        env:
-          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
-      - name: Compare core workload and decision latency (temporary diagnostic)
-        if: matrix.os == 'ubuntu-22.04'
-        continue-on-error: true
-        run: |
-          failures=0
-          for round in 1 2; do
-            echo "decision latency diagnostic round=$round predecessor"
-            if cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core -- --skip permission_choices_deliver_signed_hook_responses_under_100ms_p95 --nocapture --test-threads=1; then
-              predecessor_status=0
-            else
-              predecessor_status=$?
-            fi
-            echo "round=$round predecessor_exit_code=$predecessor_status"
-
-            echo "round=$round NFR Dirty/Writeback before"
-            awk '$1 == "Dirty:" || $1 == "Writeback:" { printf "%s=%s%s ", $1, $2, $3 } END { print "" }' /proc/meminfo
-            if cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --nocapture --test-threads=1; then
-              nfr_status=0
-            else
-              nfr_status=$?
-            fi
-            echo "round=$round NFR Dirty/Writeback after"
-            awk '$1 == "Dirty:" || $1 == "Writeback:" { printf "%s=%s%s ", $1, $2, $3 } END { print "" }' /proc/meminfo
-            echo "round=$round nfr_exit_code=$nfr_status"
-
-            if [ "$predecessor_status" -ne 0 ] || [ "$nfr_status" -ne 0 ]; then
-              failures=1
-            fi
-          done
-          if [ "$failures" -ne 0 ]; then
-            echo "One or more diagnostic runs failed; see explicit predecessor/NFR exit codes above."
-            exit 1
-          fi
-        env:
-          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
-        env:
-          SCRIBE_DIAGNOSTIC_DECISION_LATENCY: '1'
-      - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --features desktop,tauri/custom-protocol --locked --bin scribe
+      - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --no-default-features --features desktop,tauri/custom-protocol --locked --bin scribe
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -123,6 +97,9 @@ jobs:
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs
       - name: Install authoritative manifest validator
-        run: npm install --global @anthropic-ai/claude-code@2.1.289
+        run: npm install --global @anthropic-ai/claude-code@2.1.294
+      - name: Smoke-test isolated Claude MCP discovery
+        if: matrix.os == 'windows-latest'
+        run: node scripts/verification/claude-mcp-discovery-smoke.mjs
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/scribe

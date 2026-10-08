@@ -36,11 +36,12 @@ export function validateReleaseTag(tag, versions) {
   const version = tag.slice(1);
   if (!validSemVer(version)) throw new Error('tag must contain a supported SemVer version (without build metadata)');
   if (!versions || typeof versions !== 'object') throw new Error('versions are required');
-  const values = ['app', 'desktop', 'plugin'].map((name) => versions[name]);
+  const values = ['app', 'desktop'].map((name) => versions[name]);
   if (values.some((value) => value !== version)) {
-    throw new Error(`all package versions must exactly match ${version}`);
+    throw new Error(`app and desktop package versions must exactly match ${version}`);
   }
-  return { tag, version, prerelease: version.includes('-') };
+  if (!validSemVer(versions.plugin)) throw new Error('plugin must contain a supported SemVer version');
+  return { tag, version, pluginVersion: versions.plugin, prerelease: version.includes('-') };
 }
 
 function currentVersions(root = repoRoot) {
@@ -163,7 +164,7 @@ function checkPlatform({ inputRoot, platform, tag, version, sourceSha }) {
   return bundles.map((filename) => ({ platform, filename, path: join(directory, filename) }));
 }
 
-function releaseNotes({ tag, version, prerelease, sourceSha, artifactNames }) {
+function releaseNotes({ tag, version, pluginVersion, prerelease, sourceSha, artifactNames }) {
   const status = prerelease ? 'Prerelease' : 'Release';
   const download = (filename) => `https://github.com/rexia-intel-automation/scribe/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(filename)}`;
   const links = [
@@ -171,7 +172,7 @@ function releaseNotes({ tag, version, prerelease, sourceSha, artifactNames }) {
     ...['README.md', 'README.pt-BR.md', 'LICENSE', 'configure-claude-plugin.ps1', 'teste-equipe-ti.md', 'SHA256SUMS.txt']
       .map((filename) => `[${filename}](${download(filename)})`),
   ];
-  return `# Scribe ${tag}\n\n${status} build from source commit \`${sourceSha}\`. These artifacts are unsigned and have not been notarized. This preparation step does not claim human acceptance or certify installation.\n\nDownload the platform packages and documentation below. Verify each downloaded file against [SHA256SUMS.txt](${download('SHA256SUMS.txt')}) before use. Windows setup guidance is in [README.md](${download('README.md')}) and [README.pt-BR.md](${download('README.pt-BR.md')}).\n\nPackage version: \`${version}\`.\n\n${links.join('\n')}.\n`;
+  return `# Scribe ${tag}\n\n${status} build from source commit \`${sourceSha}\`. These artifacts are unsigned and have not been notarized. This preparation step does not claim human acceptance or certify installation.\n\nDownload the platform packages and documentation below. Verify each downloaded file against [SHA256SUMS.txt](${download('SHA256SUMS.txt')}) before use. Windows setup guidance is in [README.md](${download('README.md')}) and [README.pt-BR.md](${download('README.pt-BR.md')}).\n\nPackage version: \`${version}\`. Claude Code plugin version: \`${pluginVersion}\`.\n\n${links.join('\n')}.\n`;
 }
 
 export function collectReleaseArtifacts({ inputRoot, outputDir, tag, sourceSha }) {
@@ -221,6 +222,7 @@ export function collectReleaseArtifacts({ inputRoot, outputDir, tag, sourceSha }
     writeFileSync(join(staging, 'BUILD-METADATA.txt'), [
       `tag=${release.tag}`,
       `version=${release.version}`,
+      `plugin_version=${release.pluginVersion}`,
       `source_sha=${sourceHash}`,
       'status=unsigned',
       '',

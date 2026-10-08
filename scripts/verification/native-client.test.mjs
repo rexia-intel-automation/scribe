@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm, copyFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -10,7 +10,16 @@ import { performance } from 'node:perf_hooks';
 import { EVENTS } from './lib.mjs';
 
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror');
-const binary = resolve('app/hook-client/target/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+const binary = resolve('app/hook-client/target/fixture/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+test('Windows production and fixture helpers both use the GUI subsystem', { skip: process.platform !== 'win32' }, async () => {
+  for (const executable of [binary, resolve('app/hook-client/target/release/scribe-hook.exe')]) {
+    const bytes = await readFile(executable);
+    assert.equal(bytes.readUInt16LE(0), 0x5a4d);
+    const pe = bytes.readUInt32LE(0x3c);
+    assert.equal(bytes.readUInt32LE(pe), 0x4550);
+    assert.equal(bytes.readUInt16LE(pe + 24 + 68), 2, 'release helper must use IMAGE_SUBSYSTEM_WINDOWS_GUI');
+  }
+});
 const token = 'PUBLIC_SYNTHETIC_TOKEN_WITH_32_CHARACTERS';
 const hookKey = 'PUBLIC_INDEPENDENT_HOOK_KEY_32_CHARACTERS';
 function sign(key, fields) {
@@ -21,9 +30,54 @@ function sign(key, fields) {
 function assertChallengeRequest(req, body, nonce) {
   assert.equal(Buffer.byteLength(body), 0, 'Challenge GET must not carry a body');
   assert.equal(req.headers.authorization, undefined, 'Challenge request must not send the Bearer token');
-  assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['challenge-request', nonce]));
+  assert.equal(req.headers['x-scribe-server-nonce'], undefined, 'Challenge request cannot choose the server nonce');
+  assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['hook-challenge-request', nonce]));
   const values = Object.values(req.headers).flat().map(String);
   assert.ok(!values.includes(token) && !values.includes(hookKey), 'Challenge request must not send either secret');
+}
+
+function answerChallenge(req, res, nonce, scenario = 'valid') {
+  const serverNonce = randomBytes(16).toString('hex');
+  if (scenario === 'server-nonce-missing') {
+    res.writeHead(204, {
+      'x-scribe-proof': sign(hookKey, ['hook-challenge', nonce, serverNonce]),
+    }).end();
+    return serverNonce;
+  }
+  const signingNonce = scenario === 'server-proof-wrong-nonce' ? 'f'.repeat(32) : nonce;
+  const key = scenario === 'bearer-forgery' ? token : hookKey;
+  const proof = scenario === 'challenge-reflection'
+    ? req.headers['x-scribe-proof']
+    : sign(key, ['hook-challenge', signingNonce, serverNonce]);
+  const headers = { 'x-scribe-server-nonce': serverNonce, 'x-scribe-proof': proof };
+  if (scenario === 'server-nonce-malformed') headers['x-scribe-server-nonce'] = 'bad';
+  if (scenario === 'connection-close') headers.Connection = 'close';
+  res.writeHead(204, headers).end();
+  return serverNonce;
+}
+
+function assertSignedRequest(req, body, event) {
+  const nonce = req.headers['x-scribe-nonce'];
+  const serverNonce = req.headers['x-scribe-server-nonce'];
+  const path = `/v1/hooks/${event}`;
+  assert.match(nonce, /^[0-9a-f]{32}$/);
+  assert.match(serverNonce, /^[0-9a-f]{32}$/);
+  assert.equal(req.headers.authorization, undefined, 'Signed hook POST must not send a Bearer token');
+  const values = Object.values(req.headers).flat().map(String);
+  assert.ok(!values.includes(token) && !values.includes(hookKey), 'Signed hook POST must not send either secret');
+  assert.equal(req.headers['x-scribe-proof'], sign(hookKey,
+    ['hook-request', nonce, serverNonce, path, body]));
+  return { nonce, serverNonce, path };
+}
+
+function signedResponseProof(nonce, serverNonce, path, status, body, scenario = 'valid') {
+  const key = scenario === 'response-bearer-forgery' ? token : hookKey;
+  const signedNonce = scenario === 'replay' ? '0'.repeat(32) : nonce;
+  const signedServerNonce = scenario === 'wrong-response-server-nonce' ? 'f'.repeat(32) : serverNonce;
+  const signedPath = scenario === 'wrong-event' ? '/v1/hooks/Stop' : path;
+  const signedStatus = scenario === 'wrong-status' ? '204' : String(status);
+  const signedBody = scenario === 'changed-body' ? body.replace('allow', 'deny') : body;
+  return sign(key, ['hook-response', signedNonce, signedServerNonce, signedPath, signedStatus, signedBody]);
 }
 
 test('PreToolUse plugin matchers give interactive tools 130s and all others 1s', async () => {
@@ -80,8 +134,11 @@ test('native client forwards eleven events, returns only supported human decisio
   const executable = join(root, process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
   await copyFile(binary, executable);
   const config = join(root, 'connection.json');
-  const events = [];
+  const events = [], challengeSockets = new Map(), challengeServerNonces = new Map();
+  const challengeResponsesSent = new WeakSet();
   let scenario = 'healthy', forbiddenRequests = 0;
+  let tcpConnections = 0, connectionCloseSocket = null;
+  const rawTraffic = new WeakMap();
   const trap = createServer((_req, res) => { forbiddenRequests++; res.end(); });
   await new Promise(ok => trap.listen(0, '127.0.0.1', ok));
   const trapUrl = `http://127.0.0.1:${trap.address().port}`;
@@ -91,20 +148,29 @@ test('native client forwards eleven events, returns only supported human decisio
     if (req.url.startsWith('/v1/hooks/challenge/')) {
       const nonce = req.url.split('/').at(-1);
       assertChallengeRequest(req, body, nonce);
+      assert.equal(challengeSockets.has(nonce), false, 'Client challenge nonce must be fresh');
+      challengeSockets.set(nonce, req.socket);
+      res.once('finish', () => challengeResponsesSent.add(req.socket));
+      if (scenario === 'connection-close') connectionCloseSocket = req.socket;
       if (scenario === 'impostor') { res.writeHead(200).end('{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'); return; }
-      if (scenario === 'challenge-reflection') {
-        res.writeHead(204, { 'x-scribe-proof': req.headers['x-scribe-proof'] }).end();
-        return;
+      const challengeScenario = ['bearer-forgery', 'challenge-reflection', 'server-nonce-missing',
+        'server-nonce-malformed', 'server-proof-wrong-nonce', 'connection-close'].includes(scenario)
+        ? scenario : 'valid';
+      const serverNonce = answerChallenge(req, res, nonce, challengeScenario);
+      if (serverNonce) {
+        assert.equal([...challengeServerNonces.values()].includes(serverNonce), false,
+          'Server challenge nonce must be fresh');
+        challengeServerNonces.set(nonce, serverNonce);
       }
-      const key = scenario === 'bearer-forgery' ? token : hookKey;
-      res.writeHead(204, { 'x-scribe-proof': sign(key, ['challenge', nonce]) }).end();
       return;
     }
     const payload = JSON.parse(body);
     const event = payload.hook_event_name;
     assert.equal(req.url, '/v1/hooks/' + event);
-    const nonce = req.headers['x-scribe-nonce'];
-    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, event, body]));
+    const { nonce, serverNonce, path } = assertSignedRequest(req, body, event);
+    assert.strictEqual(req.socket, challengeSockets.get(nonce), 'Challenge and signed POST must use the same TCP socket');
+    assert.equal(challengeResponsesSent.has(req.socket), true, 'Server proof must finish before the hook POST arrives');
+    assert.equal(serverNonce, challengeServerNonces.get(nonce), 'POST must bind the challenge server nonce');
     events.push(event);
     if (scenario === 'stalled') return;
     if (scenario === 'redirect') { res.writeHead(307, { Location: trapUrl }).end(); return; }
@@ -132,15 +198,16 @@ test('native client forwards eleven events, returns only supported human decisio
     }
     const reply = scenario === 'invalid-json' ? 'invalid JSON' : JSON.stringify(output);
     if (scenario !== 'unsigned') {
-      const key = scenario === 'response-bearer-forgery' ? token : hookKey;
-      const boundNonce = scenario === 'replay' ? '0'.repeat(32) : nonce;
-      const boundEvent = scenario === 'wrong-event' ? 'Stop' : event;
-      const boundReply = scenario === 'changed-body' ? reply.replace('allow', 'deny') : reply;
-      const boundStatus = scenario === 'wrong-status' ? '204' : '200';
-      res.setHeader('x-scribe-proof', sign(key, ['response', boundNonce, boundEvent, boundStatus, boundReply]));
+      res.setHeader('x-scribe-proof', signedResponseProof(nonce, serverNonce, path, 200, reply, scenario));
     }
     res.setHeader('Content-Type', 'application/json');
     res.end(reply);
+  });
+  server.on('connection', socket => {
+    tcpConnections++;
+    const chunks = [];
+    rawTraffic.set(socket, chunks);
+    socket.on('data', chunk => chunks.push(Buffer.from(chunk)));
   });
   await new Promise(ok => server.listen(0, '127.0.0.1', ok));
   await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
@@ -176,9 +243,11 @@ test('native client forwards eleven events, returns only supported human decisio
     assert.deepEqual(events, [...EVENTS, 'PreToolUse', 'PreToolUse']);
     for (scenario of [
       'unsigned', 'wrong-event', 'changed-body', 'replay', 'response-bearer-forgery', 'challenge-reflection',
-      'impostor', 'altered-questions', 'altered-plan',
+      'impostor', 'server-nonce-missing', 'server-nonce-malformed', 'server-proof-wrong-nonce',
+      'connection-close', 'wrong-response-server-nonce', 'altered-questions', 'altered-plan',
     ]) {
       const countBefore = events.length;
+      const connectionsBefore = tcpConnections;
       const tool = scenario === 'altered-plan' ? 'ExitPlanMode' : 'AskUserQuestion';
       const toolInput = tool === 'ExitPlanMode'
         ? { plan: 'PUBLIC PLAN', planFilePath: '/public/plan.md', allowedPrompts: [] }
@@ -192,13 +261,23 @@ test('native client forwards eleven events, returns only supported human decisio
       assert.equal(result.code, 0, scenario);
       assert.equal(result.stdout, '', `${scenario} must not return a decision`);
       assert.equal(result.stderr, '', scenario);
-      if (['impostor', 'bearer-forgery', 'challenge-reflection'].includes(scenario)) {
+      if (['impostor', 'bearer-forgery', 'challenge-reflection', 'server-nonce-missing',
+        'server-nonce-malformed', 'server-proof-wrong-nonce', 'connection-close'].includes(scenario)) {
         assert.equal(events.length, countBefore, `${scenario} must be rejected before forwarding`);
       } else {
         assert.equal(events.length, countBefore + 1, `${scenario} request should reach the server`);
       }
+      if (scenario === 'connection-close') {
+        assert.equal(tcpConnections - connectionsBefore, 1,
+          'A valid challenge on a closing connection must not trigger a reconnect');
+        const received = Buffer.concat(rawTraffic.get(connectionCloseSocket) ?? []).toString('latin1');
+        assert.equal(received.includes('POST /v1/hooks/'), false,
+          'A challenge response with Connection: close must stop before sending the POST');
+        assert.equal(received.includes('PUBLIC Q?'), false,
+          'No tool input may be sent after the challenge connection closes');
+      }
     }
-    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'challenge-reflection', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
+    for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'unsigned', 'response-bearer-forgery', 'wrong-response-server-nonce', 'challenge-reflection', 'replay', 'wrong-event', 'changed-body', 'wrong-status', 'impostor', 'bearer-forgery', 'healthy']) {
       const countBefore = events.length;
       const event = scenario === 'stalled' ? 'Stop' : 'PermissionRequest';
       const result = await launch(executable, config, event, JSON.stringify({
@@ -251,13 +330,12 @@ test('native PermissionRequest echoes only one exact original permission suggest
     if (req.url.startsWith('/v1/hooks/challenge/')) {
       const nonce = req.url.split('/').at(-1);
       assertChallengeRequest(req, body, nonce);
-      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      answerChallenge(req, res, nonce);
       return;
     }
     assert.equal(req.url, '/v1/hooks/PermissionRequest');
     const payload = JSON.parse(body);
-    const nonce = req.headers['x-scribe-nonce'];
-    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'PermissionRequest', body]));
+    const { nonce, serverNonce, path } = assertSignedRequest(req, body, 'PermissionRequest');
     assert.deepEqual(payload.permission_suggestions, [update]);
     const echoed = structuredClone(update);
     const decision = { behavior: 'allow', updatedPermissions: [echoed] };
@@ -268,7 +346,7 @@ test('native PermissionRequest echoes only one exact original permission suggest
     } });
     res.writeHead(200, {
       'Content-Type': 'application/json',
-      'x-scribe-proof': sign(hookKey, ['response', nonce, 'PermissionRequest', '200', reply]),
+      'x-scribe-proof': signedResponseProof(nonce, serverNonce, path, 200, reply),
     }).end(reply);
   });
   await new Promise(ok => server.listen(0, '127.0.0.1', ok));
@@ -304,6 +382,7 @@ test('native client rejects oversized/malformed input and terminates with unfini
   const root = await mkdtemp(join(tmpdir(), 'scribe-client-input-'));
   const config = join(root, 'connection.json');
   let challengeRequests = 0, hookRequests = 0, receivedBodies = [];
+  const challengeSockets = new Map(), challengeServerNonces = new Map();
   const server = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -313,16 +392,18 @@ test('native client rejects oversized/malformed input and terminates with unfini
       challengeRequests++;
       const nonce = req.url.split('/').at(-1);
       assertChallengeRequest(req, body, nonce);
-      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      challengeSockets.set(nonce, req.socket);
+      challengeServerNonces.set(nonce, answerChallenge(req, res, nonce));
       return;
     }
     hookRequests++;
     const text = body.toString('utf8');
     const payload = JSON.parse(text);
-    const nonce = req.headers['x-scribe-nonce'];
     assert.equal(req.url, '/v1/hooks/Stop');
     assert.equal(payload.hook_event_name, 'Stop');
-    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'Stop', text]));
+    const { nonce, serverNonce } = assertSignedRequest(req, text, 'Stop');
+    assert.strictEqual(req.socket, challengeSockets.get(nonce), 'Challenge and signed POST must share the socket');
+    assert.equal(serverNonce, challengeServerNonces.get(nonce));
     receivedBodies.push(body.length);
     res.writeHead(200).end();
   });
@@ -372,6 +453,7 @@ test('native client accepts an exactly 8192-byte signed response and suppresses 
   const config = join(root, 'connection.json');
   const responseSizes = [8192, 8193];
   const challengeNonces = [];
+  const challengeSockets = new Map(), challengeServerNonces = new Map();
   const hookBodyLengths = [];
   const server = createServer(async (req, res) => {
     const chunks = [];
@@ -382,15 +464,17 @@ test('native client accepts an exactly 8192-byte signed response and suppresses 
       const nonce = req.url.split('/').at(-1);
       assertChallengeRequest(req, body, nonce);
       challengeNonces.push(nonce);
-      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      challengeSockets.set(nonce, req.socket);
+      challengeServerNonces.set(nonce, answerChallenge(req, res, nonce));
       return;
     }
     assert.equal(req.url, '/v1/hooks/PermissionRequest');
-    const nonce = req.headers['x-scribe-nonce'];
     const text = body.toString('utf8');
     const payload = JSON.parse(text);
     assert.equal(payload.hook_event_name, 'PermissionRequest');
-    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'PermissionRequest', text]));
+    const { nonce, serverNonce, path } = assertSignedRequest(req, text, 'PermissionRequest');
+    assert.strictEqual(req.socket, challengeSockets.get(nonce), 'Challenge and signed POST must share the socket');
+    assert.equal(serverNonce, challengeServerNonces.get(nonce));
     hookBodyLengths.push(body.length);
     const size = responseSizes.shift();
     assert.ok(size);
@@ -402,7 +486,7 @@ test('native client accepts an exactly 8192-byte signed response and suppresses 
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Content-Length': String(size),
-      'x-scribe-proof': sign(hookKey, ['response', nonce, 'PermissionRequest', '200', responseBody]),
+      'x-scribe-proof': signedResponseProof(nonce, serverNonce, path, 200, responseBody),
     }).end(responseBody);
   });
   await new Promise(ok => server.listen(0, '127.0.0.1', ok));

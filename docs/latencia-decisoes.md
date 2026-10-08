@@ -55,37 +55,22 @@ Nenhuma amostra atingiu 100 ms. Isso não mede clique físico, stdout do helper
 nativo, retomada do modelo no harness, perguntas ou aprovação de planos.
 Não substitui ensaio humano, aceite de fase nem aceite da release.
 
-## Investigação temporária do CI
+## Evidência histórica da investigação do CI
 
 No Linux, a instrumentação de debug do commit 19d040e localizou as amostras
 lentas em save_decision (312–507 ms); mutex, preparação e publicação ficaram
 abaixo de 1 ms. Isso identifica a etapa, mas não demonstra a causa do custo de
 I/O. No mesmo teste, as amostras posteriores do Core tiveram p95 de 1–2 ms.
 
-Um controle temporário no CI Linux pré-compila os testes, executa sync e roda
-somente este teste antes da suíte completa. A suíte completa e seu SLA original
-continuam obrigatórios. O controle altera o estado de I/O anterior ao teste:
-passar isoladamente não prova desempenho sob carga concorrente nem resolve a
-falha anterior. A comparação serve para investigar influência das gravações
-anteriores. Remover o controle e a instrumentação de debug antes da integração
-final; nenhuma configuração de durabilidade do produto foi alterada.
+As rodadas diagnósticas usaram execuções isoladas, `sync` e controles pareados
+com os demais testes `core`, registrando `Dirty` e `Writeback` do runner Linux.
+Esses contadores globais não atribuem I/O ao Scribe. Cada teste criou seu próprio
+`Core` e `TempDir`; não houve evidência de mutex ou banco compartilhado entre
+eles. Cache do Cargo, execução sequencial e layout do CI também podem influenciar
+o resultado. Passar isoladamente não resolveu as falhas observadas na suíte.
 
-Há também um controle temporário pareado, executado duas vezes antes da suíte
-completa e sem `sync`: cada rodada primeiro executa `core` com apenas o teste
-NFR pulado, registra explicitamente o exit code desse predecessor e então inicia
-uma segunda invocação Cargo contendo somente o NFR exato. Imediatamente antes e
-depois dessa invocação isolada, o job registra apenas os campos `Dirty` e
-`Writeback` de `/proc/meminfo`. O identificador da rodada e os exit codes dos
-dois comandos permitem distinguir falha do predecessor de falha de latência.
-Se qualquer comando falhar, o bloco termina com erro; somente esse passo
-diagnóstico usa `continue-on-error`, e a suíte completa continua sendo executada
-como gate obrigatório sem essa opção.
-
-Esse pareamento é apenas uma correlação. O comando `--skip` executa os demais
-testes `core`, inclusive os que vêm depois do NFR em ordem alfabética; não
-isola exclusivamente os predecessores. Cada teste cria seu próprio `Core` e
-`TempDir`, então não há evidência de mutex ou banco compartilhado entre eles.
-`Dirty`/`Writeback` são contadores globais do runner Linux, não atribuem I/O ao
-Scribe e podem variar entre rodadas. A execução sequencial, cache do Cargo e
-layout dos passos de CI também podem influenciar o resultado. Não se deve
-concluir que atividade de I/O causou uma amostra lenta sem evidência adicional.
+Os controles temporários e os timers de diagnóstico foram removidos. A suíte
+normal continua obrigatória nas três plataformas, com os quatro grupos, 128
+amostras e o mesmo p95 estritamente abaixo de 100 ms. Nenhuma configuração de
+durabilidade foi alterada. Os registros históricos identificam o custo de
+`save_decision`, mas não demonstram sua causa nem garantem o SLA no CI atual.

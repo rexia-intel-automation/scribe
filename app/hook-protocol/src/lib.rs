@@ -1,10 +1,15 @@
-//! Domain-separated authentication for the two local hook endpoints.
-//! The hook key is independent of the MCP Bearer and is never sent over HTTP.
+//! Domain-separated authentication for local hooks and MCP.
+//! The signing key is independent of the local Bearer and never sent over HTTP.
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 mod permission_update;
 pub use permission_update::valid_permission_update;
+mod profile;
+pub use profile::{trusted_profile_dirs, ProfileDirs};
+
+/// Offline tool discovery; the app tests this against its generated schemas.
+pub const MCP_TOOLS: &str = include_str!("../mcp-tools.json");
 
 fn mac(key: &str, fields: &[&[u8]]) -> Hmac<Sha256> {
     let mut mac =

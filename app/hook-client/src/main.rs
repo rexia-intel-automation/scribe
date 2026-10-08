@@ -1,6 +1,5 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use directories::BaseDirs;
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
@@ -26,6 +25,8 @@ const EVENTS: &[&str] = &[
     "SessionEnd",
 ];
 const BODY_LIMIT: u64 = 1024 * 1024;
+mod attested;
+mod mcp;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,15 +40,16 @@ struct Connection {
 }
 
 fn config_path() -> Option<PathBuf> {
-    // This non-secret path override isolates integration tests and portable installs.
+    // Overrides require an explicit fixture build, never the distributed helper.
+    #[cfg(feature = "test-fixture")]
     if let Some(path) = std::env::var_os("SCRIBE_CONNECTION_FILE") {
         let path = PathBuf::from(path);
         return path.is_absolute().then_some(path);
     }
     Some(
-        BaseDirs::new()?
-            .config_dir()
-            .join("com.rexia.scribe/connection.json"),
+        scribe_hook_protocol::trusted_profile_dirs()?
+            .config
+            .join("connection.json"),
     )
 }
 
@@ -327,10 +329,7 @@ fn supported_output(event: &str, input: &Value, value: &Value) -> Option<Value> 
 }
 
 fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
-    if !valid_event(event, &bytes)
-        || !scribe_hook_protocol::valid_secret(&config.hook_key)
-        || config.hook_key == config.token
-    {
+    if !valid_event(event, &bytes) {
         return;
     }
     let Ok(original) = serde_json::from_slice::<Value>(&bytes) else {
@@ -346,104 +345,32 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     } else {
         Duration::from_millis(250)
     };
-    let nonce = format!("{:032x}", rand::random::<u128>());
-    let preflight = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_millis(250)))
-        .max_redirects(0)
-        .proxy(None)
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
         .build()
-        .new_agent();
-    let Ok(response) = preflight
-        .get(format!(
-            "http://127.0.0.1:{}/v1/hooks/challenge/{nonce}",
-            config.port
-        ))
-        .header(
-            "x-scribe-proof",
-            scribe_hook_protocol::sign(&config.hook_key, &[b"challenge-request", nonce.as_bytes()]),
-        )
-        .call()
     else {
         return;
     };
-    let Some(proof) = response
-        .headers()
-        .get("x-scribe-proof")
-        .and_then(|h| h.to_str().ok())
-    else {
-        return;
-    };
-    if response.status() != 204
-        || !scribe_hook_protocol::verify(&config.hook_key, &[b"challenge", nonce.as_bytes()], proof)
-    {
-        return;
-    }
     let Some(remaining) = budget
         .checked_sub(started.elapsed())
         .filter(|d| !d.is_zero())
     else {
         return;
     };
-    let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(remaining))
-        .max_redirects(0)
-        .proxy(None)
-        .build()
-        .new_agent();
-    let response = agent
-        .post(format!("http://127.0.0.1:{}/v1/hooks/{event}", config.port))
-        .header("x-scribe-nonce", &nonce)
-        .header(
-            "x-scribe-proof",
-            scribe_hook_protocol::sign(
-                &config.hook_key,
-                &[b"request", nonce.as_bytes(), event.as_bytes(), &bytes],
-            ),
+    let result = runtime.block_on(async {
+        tokio::time::timeout(
+            remaining,
+            attested::post(&config, attested::Channel::Hook(event), bytes),
         )
-        .header("Content-Type", "application/json")
-        .send(bytes);
+        .await
+    });
     if event != "PermissionRequest" && !interactive_pre_tool {
         return;
     }
-    let Ok(mut response) = response else {
+    let Ok(Ok((200, bytes))) = result else {
         return;
     };
-    if response.status() != 200 {
-        return;
-    }
-    let Some(proof) = response
-        .headers()
-        .get("x-scribe-proof")
-        .and_then(|h| h.to_str().ok())
-        .map(str::to_owned)
-    else {
-        return;
-    };
-    let Ok(text) = response
-        .body_mut()
-        .with_config()
-        .limit(8193)
-        .read_to_string()
-    else {
-        return;
-    };
-    if text.len() > 8192 {
-        return;
-    }
-    if !scribe_hook_protocol::verify(
-        &config.hook_key,
-        &[
-            b"response",
-            nonce.as_bytes(),
-            event.as_bytes(),
-            b"200",
-            text.as_bytes(),
-        ],
-        &proof,
-    ) {
-        return;
-    }
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
         return;
     };
     let Some(result) = supported_output(event, &original, &value) else {
@@ -496,6 +423,27 @@ fn open(config: Option<Connection>) -> bool {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--mcp-check"] {
+        println!(
+            "{}",
+            serde_json::json!({"name":"scribe-hook", "version":env!("CARGO_PKG_VERSION"), "mcp_transport":"attested-stdio-v1"})
+        );
+        return;
+    }
+    if args == ["--mcp"] {
+        let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+        else {
+            std::process::exit(1);
+        };
+        if runtime.block_on(mcp::run()).is_err() {
+            // Claude records stderr: never include request bodies, paths or credentials.
+            eprintln!("Scribe MCP transport unavailable");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args == ["--open"] {
         if !open(connection()) {
             std::process::exit(1);
@@ -517,6 +465,45 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(feature = "test-fixture"))]
+    #[test]
+    fn release_configuration_ignores_project_environment() {
+        const EXPECTED: &str = "SCRIBE_PUBLIC_EXPECTED_CONFIG_PATH";
+        if let Some(expected) = std::env::var_os(EXPECTED) {
+            assert_eq!(config_path(), Some(PathBuf::from(expected)));
+            return;
+        }
+        let expected = config_path().expect("The OS account must have a profile");
+        let temp = tempfile::TempDir::new().unwrap();
+        let untrusted = temp.path();
+        fs::create_dir_all(untrusted.join("AppData/Roaming")).unwrap();
+        fs::create_dir_all(untrusted.join("AppData/Local")).unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap());
+        child.args([
+            "--exact",
+            "tests::release_configuration_ignores_project_environment",
+            "--nocapture",
+        ]);
+        child.env(EXPECTED, expected);
+        child.env("SCRIBE_CONNECTION_FILE", untrusted.join("connection.json"));
+        for name in [
+            "HOME",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+        ] {
+            child.env(name, untrusted);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            child.creation_flags(0x08000000);
+        }
+        assert!(child.status().unwrap().success());
+    }
 
     fn ask_input() -> Value {
         serde_json::json!({

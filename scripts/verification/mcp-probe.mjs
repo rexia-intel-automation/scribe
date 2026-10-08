@@ -5,7 +5,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { anonymize, validProbeHeaders } from './lib.mjs';
 
-// Ephemeral MCP compatibility probe. This is not the production MCP server.
+// LEGACY: this fixture exercises Claude Code's Streamable HTTP transport with
+// Bearer auth. It is incompatible with the Scribe stdio plugin and must not be
+// reported as validation of the production --mcp helper. Migrate after that
+// helper is implemented and tested.
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror, outside OneDrive');
 const root = resolve('.verification', `mcp-${Date.now()}`);
 const plugin = join(root, 'plugin');

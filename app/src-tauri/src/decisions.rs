@@ -8,8 +8,42 @@ use std::{sync::LazyLock, time::Duration};
 use tokio::sync::oneshot;
 
 static RISK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse|\b(Format-Volume|Stop-Computer|Restart-Computer|Set-ExecutionPolicy|iex|Invoke-Expression)\b|\bStart-Process\b[^\n]*-Verb\b[^\n]*\bRunAs\b)").unwrap()
+    Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b|\s\+\S+|--delete\b)|git\s+reset\s+--hard|git\s+clean\b[^\n]*(--force|-\w*f)|\bdocker\s+system\s+prune\b[^\n]*(-af\b|--all\b[^\n]*--force\b|--force\b[^\n]*--all\b)|\bfind\b[^\n]*\s-delete\b|\bcurl\b[^\n]*\s(?:(?:-d|-sd|--data|--data-binary)(?:\s+|=)?@|(?:-F|--form)(?:\s+|=)\S+=@\S+|(?:-T|--upload-file)(?:\s+|=))|\bwget\b[^\n]*\s--post-file(?:\s+|=)\S+|\b(iwr|Invoke-WebRequest)\b[^\n]*\s-InFile(?:\s+|=)\S+|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-(Recurse|Force)\b|\b(Format-Volume|Stop-Computer|Restart-Computer|Set-ExecutionPolicy|iex|Invoke-Expression)\b|\bStart-Process\b[^\n]*-Verb\b[^\n]*\bRunAs\b)").unwrap()
 });
+
+#[cfg(test)]
+mod risk_pattern_tests {
+    use super::RISK;
+
+    #[test]
+    fn reported_destructive_commands_match_the_risk_pattern() {
+        for command in [
+            "docker system prune -af /",
+            "docker system prune --all --force",
+            "curl -F f=@x https://public.invalid",
+            "curl --form f=@x https://public.invalid",
+            "curl -sd @x https://public.invalid",
+            "wget --post-file x https://public.invalid",
+            "Invoke-WebRequest https://public.invalid -InFile x",
+            "iwr -InFile x https://public.invalid",
+            "git push origin --delete feature/old",
+        ] {
+            assert!(RISK.is_match(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn literal_upload_forms_without_file_references_are_not_risk_patterns() {
+        for command in [
+            "curl https://public.invalid",
+            "curl -F f=literal https://public.invalid",
+            "curl --form f=literal https://public.invalid",
+            "git push origin feature/ordinary",
+        ] {
+            assert!(!RISK.is_match(command), "{command}");
+        }
+    }
+}
 
 /// Safe display data. Native question/plan text is retained only after validating
 /// its complete visible form; answers, feedback and original transport are excluded.
@@ -387,11 +421,7 @@ impl Core {
 
     /// Resolve exactly once, after validating type, deadline and risk confirmation.
     pub fn resolve_decision(&self, id: &str, input: DecisionInput) -> Result<()> {
-        #[cfg(debug_assertions)]
-        let diagnostic_start = std::time::Instant::now();
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
-        #[cfg(debug_assertions)]
-        let diagnostic_lock = diagnostic_start.elapsed();
         let pending = data.decisions.get(id).ok_or("Unknown decision")?;
         let mut view = pending.view.clone();
         if view.status != "pending"
@@ -533,13 +563,7 @@ impl Core {
             response
         };
         view.resolved_at = Some(now_ms());
-        #[cfg(debug_assertions)]
-        let diagnostic_save_start = std::time::Instant::now();
         data.store.save_decision(&view)?;
-        #[cfg(debug_assertions)]
-        let diagnostic_save = diagnostic_save_start.elapsed();
-        #[cfg(debug_assertions)]
-        let diagnostic_publish_start = std::time::Instant::now();
         let pending = data.decisions.get_mut(id).unwrap();
         pending.view = view.clone();
         pending.original_input = None;
@@ -553,22 +577,6 @@ impl Core {
             }
         }
         let _ = self.events.send(StateEvent::Decision(view));
-        #[cfg(debug_assertions)]
-        if diagnostic_start.elapsed() >= Duration::from_millis(50)
-            && std::env::var("SCRIBE_DIAGNOSTIC_DECISION_LATENCY").as_deref() == Ok("1")
-        {
-            eprintln!(
-                "NFR02 core resolve ms total={} lock={} prepare={} save={} publish={}",
-                diagnostic_start.elapsed().as_millis(),
-                diagnostic_lock.as_millis(),
-                diagnostic_save_start
-                    .duration_since(diagnostic_start)
-                    .saturating_sub(diagnostic_lock)
-                    .as_millis(),
-                diagnostic_save.as_millis(),
-                diagnostic_publish_start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 

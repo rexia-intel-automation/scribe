@@ -85,50 +85,124 @@ function Invoke-ClaudeCli {
     }
 }
 
+function Test-ScribeMcpHelper {
+    param([Parameter(Mandatory = $true)][string]$HelperPath)
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $HelperPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        [void]$startInfo.ArgumentList.Add('--mcp-check')
+    }
+    else {
+        $startInfo.Arguments = '"--mcp-check"'
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $capturedStdout = $null
+    $capturedStderr = $null
+    try {
+        if (-not $process.Start()) {
+            return $false
+        }
+
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.Close()
+        if (-not $process.WaitForExit(3000)) {
+            try { $process.Kill() } catch { }
+            $process.WaitForExit()
+            $script:TimedOut = $true
+            $null = $stdoutTask.GetAwaiter().GetResult()
+            $null = $stderrTask.GetAwaiter().GetResult()
+            return $false
+        }
+
+        $capturedStdout = $stdoutTask.GetAwaiter().GetResult()
+        $capturedStderr = $stderrTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($capturedStdout)) {
+            return $false
+        }
+
+        $capability = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $capturedStdout -ErrorAction Stop
+        $nameProperty = $capability.PSObject.Properties['name']
+        $versionProperty = $capability.PSObject.Properties['version']
+        $transportProperty = $capability.PSObject.Properties['mcp_transport']
+        return ($null -ne $nameProperty -and $nameProperty.Value -ceq 'scribe-hook' -and
+            $null -ne $versionProperty -and $versionProperty.Value -ceq '0.1.0' -and
+            $null -ne $transportProperty -and $transportProperty.Value -ceq 'attested-stdio-v1')
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $process.Dispose()
+        $startInfo = $null
+        $capturedStdout = $null
+        $capturedStderr = $null
+    }
+}
+
 $script:Stage = 'preflight'
 $script:TimedOut = $false
 $script:FailureExitCode = $null
+$script:FailureReason = $null
 $script:ClaudeExecutable = $null
+$script:ExpectedPluginVersion = '0.1.1'
 $connectionText = $null
 $connection = $null
-$token = $null
 $configureValues = $null
 $marketplaceOutput = $null
 try {
-    $claudeCommand = Get-Command claude -ErrorAction Stop
+    $script:Stage = 'locate Claude CLI'
+    $claudeCommand = Get-Command claude -CommandType Application -ErrorAction Stop
     if ($claudeCommand.CommandType -ne 'Application' -or
         [IO.Path]::GetExtension($claudeCommand.Source) -ne '.exe') {
         throw 'Claude Code native executable is unavailable.'
     }
     $script:ClaudeExecutable = $claudeCommand.Source
 
+    $script:Stage = 'validate Scribe installation'
     if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -or
         [string]::IsNullOrWhiteSpace($env:APPDATA)) {
         throw 'Windows user application directories are unavailable.'
     }
 
-    $hookPath = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Scribe\scribe-hook.exe'))
-    $connectionPath = Join-Path $env:APPDATA 'com.rexia.scribe\connection.json'
-    if (-not (Test-Path -LiteralPath $hookPath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $connectionPath -PathType Leaf) -or
-        (Get-Item -LiteralPath $connectionPath).Length -gt 8192) {
-        throw 'Scribe is not ready for plugin configuration.'
+    $hookPath = [IO.Path]::GetFullPath([IO.Path]::Combine($env:LOCALAPPDATA, 'Scribe\scribe-hook.exe'))
+    $connectionPath = [IO.Path]::Combine($env:APPDATA, 'com.rexia.scribe\connection.json')
+    if (-not [IO.File]::Exists($hookPath) -or
+        -not [IO.File]::Exists($connectionPath) -or
+        [IO.FileInfo]::new($connectionPath).Length -gt 8192) {
+        throw 'Scribe helper or connection data is missing. Install or update Scribe first.'
     }
 
     $connectionText = [IO.File]::ReadAllText($connectionPath)
-    $connection = ConvertFrom-Json -InputObject $connectionText -ErrorAction Stop
+    $connection = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $connectionText -ErrorAction Stop
     $portProperty = $connection.PSObject.Properties['port']
+    $hookKeyProperty = $connection.PSObject.Properties['hook_key']
     $tokenProperty = $connection.PSObject.Properties['token']
-    if ($null -eq $portProperty -or $null -eq $tokenProperty -or
+    if ($null -eq $portProperty -or
         (($portProperty.Value -isnot [int]) -and ($portProperty.Value -isnot [long])) -or
         $portProperty.Value -lt 1024 -or $portProperty.Value -gt 65535 -or
-        $tokenProperty.Value -isnot [string] -or
-        $tokenProperty.Value -notmatch '^[A-Za-z0-9_-]{32,128}$') {
-        throw 'Scribe connection data is invalid.'
+        $null -eq $hookKeyProperty -or $hookKeyProperty.Value -isnot [string] -or
+        $hookKeyProperty.Value -notmatch '^[A-Za-z0-9_-]{32,128}$' -or
+        $null -eq $tokenProperty -or $tokenProperty.Value -isnot [string] -or
+        $tokenProperty.Value -notmatch '^[A-Za-z0-9_-]{32,128}$' -or
+        $hookKeyProperty.Value -ceq $tokenProperty.Value) {
+        throw 'Scribe connection data is outdated or invalid. Update Scribe to a build with the MCP helper key.'
     }
 
-    $token = $tokenProperty.Value
-    $port = [string]$portProperty.Value
+    $helperPath = $hookPath
+    $script:Stage = 'MCP helper capability check'
+    if (-not (Test-ScribeMcpHelper -HelperPath $helperPath)) {
+        $script:FailureReason = 'Update the Scribe app and helper together to a build that supports MCP stdio.'
+        throw 'Required MCP helper capability is unavailable.'
+    }
 
     $script:Stage = 'marketplace list'
     $marketplaceResult = Invoke-ClaudeCli -Arguments @(
@@ -139,7 +213,7 @@ try {
         throw 'Marketplace list failed.'
     }
 
-    $marketplaceOutput = ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    $marketplaceOutput = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
     if ($marketplaceOutput -is [array]) {
         $marketplaceEntries = $marketplaceOutput
     }
@@ -154,6 +228,17 @@ try {
     $marketplaceOutput = $null
     $marketplaceEntries = $null
 
+    if ($existingMarketplace) {
+        $script:Stage = 'marketplace update'
+        $marketplaceUpdateExitCode = Invoke-ClaudeCli -Arguments @(
+            'plugin', 'marketplace', 'update', 'rexia-scribe'
+        ) -InputText $null
+        if ($marketplaceUpdateExitCode -ne 0) {
+            $script:FailureExitCode = $marketplaceUpdateExitCode
+            throw 'Marketplace update failed.'
+        }
+    }
+
     $installArguments = @('plugin', 'install')
     if ($existingMarketplace) {
         $installArguments += 'scribe@rexia-scribe'
@@ -163,8 +248,7 @@ try {
     }
     $installArguments += @(
         '--scope', 'user',
-        '--config', "client_path=$hookPath",
-        '--config', "port=$port"
+        '--config', "client_path=$helperPath"
     )
 
     $script:Stage = 'plugin install'
@@ -174,11 +258,93 @@ try {
         throw 'Plugin install failed.'
     }
 
+    $script:Stage = 'plugin update'
+    $pluginUpdateExitCode = Invoke-ClaudeCli -Arguments @(
+        'plugin', 'update', 'scribe@rexia-scribe', '--scope', 'user'
+    ) -InputText $null
+    if ($pluginUpdateExitCode -ne 0) {
+        $script:FailureExitCode = $pluginUpdateExitCode
+        throw 'Plugin update failed.'
+    }
+
+    $script:Stage = 'plugin version check'
+    $pluginListResult = Invoke-ClaudeCli -Arguments @(
+        'plugin', 'list', '--json'
+    ) -InputText $null -CaptureOutput
+    if ($pluginListResult.ExitCode -ne 0) {
+        $script:FailureExitCode = $pluginListResult.ExitCode
+        throw 'Plugin list failed.'
+    }
+
+    try {
+        # Wrapping preserves the JSON array shape for zero- and one-row results
+        # in both Windows PowerShell 5.1 and PowerShell 7.
+        $null = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $pluginListResult.Output -ErrorAction Stop
+        $pluginListEnvelope = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject ('{"plugins":' + $pluginListResult.Output + '}') -ErrorAction Stop
+        $pluginListProperty = $pluginListEnvelope.PSObject.Properties['plugins']
+        if ($null -eq $pluginListProperty -or $pluginListProperty.Value -isnot [array]) {
+            throw 'Invalid plugin list shape.'
+        }
+
+        $matchingPlugins = @()
+        foreach ($pluginEntry in $pluginListProperty.Value) {
+            if ($null -eq $pluginEntry -or $pluginEntry -isnot [pscustomobject]) {
+                throw 'Invalid plugin list entry.'
+            }
+            $idProperty = $pluginEntry.PSObject.Properties['id']
+            $versionProperty = $pluginEntry.PSObject.Properties['version']
+            $scopeProperty = $pluginEntry.PSObject.Properties['scope']
+            $enabledProperty = $pluginEntry.PSObject.Properties['enabled']
+            if ($null -eq $idProperty -or $idProperty.Value -isnot [string] -or
+                $null -eq $versionProperty -or $versionProperty.Value -isnot [string] -or
+                $null -eq $scopeProperty -or $scopeProperty.Value -isnot [string] -or
+                $null -eq $enabledProperty -or $enabledProperty.Value -isnot [bool]) {
+                throw 'Invalid plugin list entry fields.'
+            }
+            if ($idProperty.Value -ceq 'scribe@rexia-scribe' -and $scopeProperty.Value -ceq 'user') {
+                $matchingPlugins += $pluginEntry
+            }
+        }
+
+        if ($matchingPlugins.Count -gt 1) {
+            $script:FailureReason = 'Claude Code reports multiple user-scope Scribe plugins. Resolve the duplicate plugin entries and retry.'
+            throw 'Plugin list is ambiguous.'
+        }
+        if ($matchingPlugins.Count -ne 1) {
+            $script:FailureReason = "The configured marketplace did not provide plugin version $script:ExpectedPluginVersion. Update the marketplace and retry."
+            throw 'Required Scribe plugin version is unavailable.'
+        }
+
+        $installedPlugin = $matchingPlugins[0]
+        $installedVersionProperty = $installedPlugin.PSObject.Properties['version']
+        $installedEnabledProperty = $installedPlugin.PSObject.Properties['enabled']
+        $folderVersionProperty = $installedPlugin.PSObject.Properties['folderVersion']
+        if ($installedVersionProperty.Value -cne $script:ExpectedPluginVersion -or
+            $installedEnabledProperty.Value -ne $true -or
+            ($null -ne $folderVersionProperty -and
+                ($folderVersionProperty.Value -isnot [string] -or
+                    $folderVersionProperty.Value -cne $script:ExpectedPluginVersion))) {
+            $script:FailureReason = "The configured marketplace did not provide an enabled Scribe plugin at version $script:ExpectedPluginVersion. Update the marketplace and retry."
+            throw 'Required Scribe plugin version is unavailable.'
+        }
+    }
+    catch {
+        if ($null -eq $script:FailureReason) {
+            $script:FailureReason = 'Claude Code did not provide a valid plugin list. Update the marketplace and retry.'
+        }
+        throw 'Plugin version verification failed.'
+    }
+    finally {
+        $pluginListEnvelope = $null
+        $pluginListProperty = $null
+        $matchingPlugins = $null
+        $installedPlugin = $null
+        $pluginListResult = $null
+    }
+
     $configureValues = [ordered]@{
-        client_path = $hookPath
-        port = $port
-        token = $token
-    } | ConvertTo-Json -Compress
+        client_path = $helperPath
+    } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
 
     $script:Stage = 'plugin configure'
     $configureExitCode = Invoke-ClaudeCli -Arguments @(
@@ -196,15 +362,22 @@ catch {
     $status = if ($script:TimedOut) { 'timeout' }
         elseif ($null -ne $script:FailureExitCode) { "exit code $script:FailureExitCode" }
         else { 'failed' }
-    [Console]::Error.WriteLine("Scribe plugin setup failed during $script:Stage ($status). CLI output was withheld.")
+    $message = "Scribe plugin setup failed during $script:Stage ($status)."
+    if ($null -ne $script:FailureReason) {
+        $message += " $script:FailureReason"
+    }
+    else {
+        $message += ' CLI output was withheld.'
+    }
+    [Console]::Error.WriteLine($message)
     exit 1
 }
 finally {
     $script:ClaudeExecutable = $null
     $script:FailureExitCode = $null
+    $script:FailureReason = $null
     $connectionText = $null
     $connection = $null
-    $token = $null
     $configureValues = $null
     $marketplaceOutput = $null
     $marketplaceResult = $null

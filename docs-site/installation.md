@@ -1,31 +1,27 @@
 # Installation
 
-## Published beta: Windows only
+## Published beta.1: Windows evaluation only
 
-The published `v0.1.0-beta.1` is a prerelease for IT evaluation, not the final release. Do not treat features being developed in open pull requests as part of this package. Native question and plan flows still need a fresh interactive-session test.
+`v0.1.0-beta.1` is an unsigned Windows prerelease for IT evaluation, not an accepted final release. It pairs the app and native helper with plugin `0.1.0`, which uses the local HTTP connection. The current marketplace branch is plugin `0.1.1` over stdio and is incompatible with beta.1. The app still reports version `0.1.0`, so that number alone cannot identify the pairing.
 
-1. Download the setup executable, `configure-claude-plugin.ps1`, `SHA256SUMS`, and the test checklist from the [beta release](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1).
-2. Verify the downloaded files against their matching entries in `SHA256SUMS` before running them.
-3. Install the setup executable for the current Windows user. The installer is unsigned; follow your organization’s policy if Windows or security software warns you.
-4. Open Scribe from the Start menu and leave it running.
-5. Run the configuration script in a normal PowerShell 5.1 or 7 window, then close Claude Code sessions and start a fresh interactive session.
+The [beta release page](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1) retains its original setup executable, script, checksums, and test checklist. Those instructions apply only when the installed plugin is the matching beta.1-tag version and the beta app is open. Do not use the current repository setup script or refresh the marketplace to its current branch with the beta.1 app. A fresh setup with a matching marketplace source is not documented here.
 
-The script requires the native `claude.exe` on `PATH`; npm `.cmd` shims are not supported in this beta. Follow the downloaded checklist. The script intentionally withholds Claude CLI output; if it fails, record the stage and exit code without sharing tokens or private profile contents.
-
-From the download folder, check the installer hash and compare it with the corresponding `SHA256SUMS` entry:
-
-```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath .\Scribe_0.1.0_x64-setup.exe
-```
-
-With the installed app open, configure the plugin in a normal PowerShell window:
+If you are checking an existing, correctly paired beta.1 installation, verify each downloaded file against the release's `SHA256SUMS` before use. The installer is unsigned; follow your organization's policy if Windows or security software warns you. The original setup script requires native `claude.exe` on `PATH`; npm `.cmd` shims are not supported. Its original PowerShell command was:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
 ```
 
-In PowerShell 7, use `pwsh -NoProfile -File .\configure-claude-plugin.ps1`. If execution policy blocks the unsigned script, follow the reviewed procedure in the downloaded README and your organization’s policy.
+PowerShell 7 uses `pwsh -NoProfile -File .\configure-claude-plugin.ps1`. Close Claude Code and start a fresh interactive session after setup. The script withholds Claude CLI output; if it fails, record the stage and exit code without sharing tokens or private profile contents.
+
+## Stdio migration candidate: not published
+
+The app/helper/plugin stdio candidate is still under preparation and review. It is not an installable release or an acceptance result. Do not download or configure a candidate from the repository branch.
+
+When a paired package is published, it will include the README, setup script, IT test checklist, Windows setup, native helper, plugin `0.1.1`, `SHA256SUMS.txt`, and `BUILD-METADATA.txt` with `source_sha`. Verify hashes and the recorded source SHA together: app version `0.1.0` is shared with beta.1 and does not distinguish the packages. The candidate script requires an updated native Claude Code CLI, updates the existing marketplace/plugin, and verifies that plugin `0.1.1` is enabled in user scope, including its folder version when reported, before configuration. The commands were checked in CLI `2.1.294` help; the real installation test remains pending.
+
+Launch the paired app once so it creates its connection file before configuration; it may close while configuration runs. If an MCP tool call reports the app unavailable, reopen Scribe and retry in the same Claude Code session. This recovery path is not a claim of completed human acceptance testing.
 
 ## Other operating systems
 
-The published beta installer and its documented onboarding target Windows. This site does not claim a ready macOS or Linux installer.
+The published beta installer targets Windows only. This site does not claim a ready macOS or Linux installer.

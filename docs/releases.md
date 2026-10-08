@@ -14,9 +14,12 @@ interações nativas. Um build verde não comprova esses aceites. Preserve os
 relatórios correspondentes e só crie a tag depois de integrar o código
 revisado e de o CI desse commit de `main` terminar com sucesso.
 
-Atualize `app/package.json`, `app/src-tauri/tauri.conf.json` e
-`plugins/scribe/.claude-plugin/plugin.json` para a versão exata da tag sem `v`.
-Os três valores precisam coincidir, inclusive o sufixo de prerelease. Mantenha
+Atualize `app/package.json` e `app/src-tauri/tauri.conf.json` para a versão exata
+da tag sem `v`, inclusive o sufixo de prerelease. O plugin tem versão própria
+em `plugins/scribe/.claude-plugin/plugin.json`: a migração stdio usa `0.1.1`
+para que o Claude reconheça a atualização do plugin HTTP `0.1.0`. A versão do
+plugin precisa ser SemVer válida e consta nos metadados e nas notas da release.
+Registre a compatibilidade app/helper/plugin na documentação. Mantenha
 os manifests/locks Rust coerentes quando atualizar as versões dos componentes;
 health/MCP usam a versão do pacote Rust. O validador verifica os três JSONs,
 não afirma que a versão interna de cada crate é idêntica.
@@ -27,7 +30,7 @@ node scripts/prepare-release.mjs validate-tag --tag v0.1.0 --source-sha (git rev
 
 Tags aceitas têm a forma `vX.Y.Z` ou `vX.Y.Z-sufixo`, sem build metadata.
 O `v0.1.0-beta.1` já publicado usava versão-base `0.1.0`: ele permanece
-preservado. O novo gate exige identidade exata para as próximas versões e
+preservado. O gate exige identidade exata do app/desktop para as próximas versões e
 não reconstrói nem substitui os assets dessa beta antiga.
 
 ## Construção e publicação

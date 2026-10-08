@@ -4,43 +4,80 @@ Aplicativo desktop local para acompanhar sessões do Claude Code e decisões hum
 
 [English](README.md)
 
-**Estado dos testes:** `v0.1.0-beta.1` é uma versão beta Windows para avaliação
-pela equipe de TI. Ainda não é a release final. Perguntas nativas e aprovação de
-planos precisam de teste em uma sessão interativa nova do Claude Code. Veja
+**Estado da release:** `v0.1.0-beta.1` é a última beta Windows publicada. O
+candidato atual com MCP stdio ainda está em validação; não foi publicado nem
+aceito como release. Perguntas nativas e aprovação de planos ainda precisam de
+teste em uma sessão interativa nova do Claude Code. Veja
 [a verificação das decisões](docs/fase-4.md) para evidências e limites pendentes.
+
+O plugin candidato é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper.
+O plugin publicado na beta.1 usa HTTP/Bearer e é incompatível. O app/helper
+candidato ainda informa versão de pacote `0.1.0`, também usada na beta.1; o
+número sozinho não identifica uma versão compatível. Mantenha app, helper,
+script de configuração, fonte do plugin e checksums do mesmo pacote/revisão
+candidata; anote o `source_sha` de `BUILD-METADATA.txt`. O script verifica a
+capacidade do helper, mas isso não confirma que o app desktop está em execução
+nem valida uma chamada MCP. Se o app for atualizado primeiro, o plugin antigo
+pode mostrar “MCP server failed” após HTTP 401; instale o plugin 0.1.1 e execute
+novamente a configuração.
 
 Este repositório é o marketplace `rexia-scribe`; o plugin de configuração está
 em `plugins/scribe`. O instalador inclui o cliente Rust de hooks, sem exigir uma
 instalação separada do Node para o Scribe.
 
-## Teste da versão beta no Windows
+Em produção, app e helper usam o perfil da conta do sistema operacional e
+ignoram overrides de ambiente. No Linux, a conexão fica em
+`~/.config/com.rexia.scribe` e o histórico em `~/.local/share/com.rexia.scribe`,
+com o home obtido pelo cadastro da conta. Quem usava `XDG_CONFIG_HOME` ou
+`XDG_DATA_HOME` personalizados verá um perfil novo nesses caminhos; os dados
+antigos não são importados nem apagados. Preserve-os antes de atualizar.
 
-Baixe estes arquivos na
-[página da versão v0.1.0-beta.1](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1):
+## Teste do candidato no Windows
 
-- `Scribe_*_x64-setup.exe`
+O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
+pacote candidato, use estes arquivos correspondentes:
+
+- `Scribe_0.1.0_x64-setup.exe` (app e helper)
 - `configure-claude-plugin.ps1`
-- `SHA256SUMS`
+- `SHA256SUMS.txt` e `BUILD-METADATA.txt`
 - `teste-equipe-ti.md` (roteiro de testes)
+- plugin `scribe` versão `0.1.1` da mesma revisão candidata
 
-Antes de executar os arquivos, confira os hashes dos
-arquivos baixados com os nomes correspondentes em `SHA256SUMS`. No PowerShell:
+A versão publicada anteriormente,
+[v0.1.0-beta.1](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1),
+fica disponível como referência histórica. O app/helper e o plugin HTTP/Bearer
+dessa beta são incompatíveis com o candidato stdio; não use esse download neste
+teste. Antes do ensaio, a origem de marketplace usada pelo script precisa
+fornecer o plugin `0.1.1`: o script reutiliza um marketplace `rexia-scribe`
+existente ou, se não houver um, instala do branch padrão do repositório público.
+O script candidato atualiza o marketplace existente e o plugin, e verifica que
+o plugin `0.1.1` está habilitado para o usuário antes de configurá-lo. Uma versão
+antiga ou incompatível causa falha na configuração. O candidato ainda aguarda
+CI e um ensaio interativo externo.
+
+Antes de executar, confira os hashes do instalador e do script com as entradas
+correspondentes em `SHA256SUMS.txt`. No PowerShell:
 
 ```powershell
 $setup = Get-ChildItem .\Scribe_*_x64-setup.exe
 Get-FileHash $setup.FullName -Algorithm SHA256
 Get-FileHash .\configure-claude-plugin.ps1 -Algorithm SHA256
-Get-Content .\SHA256SUMS
+Get-Content .\SHA256SUMS.txt
+Get-Content .\BUILD-METADATA.txt
 ```
 
 Compare cada valor de `Get-FileHash` com a entrada SHA-256 do mesmo nome de
-arquivo. Se faltar uma entrada ou um hash for diferente, pare e fale com a TI.
-Não execute os arquivos antes de confirmar os hashes.
+arquivo. Confira o `source_sha` em `BUILD-METADATA.txt` e confirme que
+instalador, helper, script e plugin pertencem à mesma revisão candidata. Se
+faltar uma entrada ou um hash for diferente, pare e fale com a TI. Não execute
+os arquivos antes de confirmar os hashes.
 
 Instale o executável para o usuário atual. Abra o **Scribe** pelo atalho do menu
-Iniciar do Windows e deixe o app aberto. Em uma
-janela normal do PowerShell 5.1 ou 7, sem elevação, execute o script na pasta em
-que foi baixado:
+Iniciar do Windows uma vez para criar o arquivo de conexão privado; você pode
+fechar o Scribe antes de configurar o Claude Code. Use uma janela normal do
+PowerShell 5.1 ou 7, sem elevação. A instalação oficial nativa do Claude Code
+deve disponibilizar `claude.exe` no `PATH`; shims npm não são suportados.
+Execute o script na pasta do pacote candidato:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
@@ -53,10 +90,23 @@ pwsh -NoProfile -File .\configure-claude-plugin.ps1
 ```
 
 O script não recebe parâmetros. Ele exige o executável nativo `claude.exe` no
-`PATH` e o app Scribe aberto. A configuração do plugin vale para seu usuário;
-você não precisa copiar nem colar um token. Se o script falhar, anote a etapa e
-o código de saída para a TI. Por segurança, ele não mostra a saída da CLI do
-Claude.
+`PATH`, o `scribe-hook.exe` instalado e um arquivo de conexão atual do Scribe.
+A configuração do plugin vale para seu usuário; você não precisa copiar nem
+colar um token. O plugin inicia por stdio o helper configurado; o helper
+instalado precisa ser do build candidato correspondente e oferecer `--mcp`. A
+configuração não faz uma requisição HTTP de health e o Scribe não precisa ficar
+aberto. Se o script informar que a chave ou capacidade MCP do helper está
+ausente, instale o app/helper candidato correspondente antes de configurar o
+plugin. Se houver falha, anote a etapa e o código de saída para a TI. O script
+não mostra a saída da CLI do Claude.
+
+O plugin MCP deixou de armazenar ou enviar o token Bearer da conexão pelo
+`userConfig` do Claude Code. Um token salvo por uma configuração antiga do
+plugin deixa de ser usado por este candidato; o arquivo de conexão continua
+privado ao Scribe. O script usa a CLI oficial e não edita nem limpa diretamente
+os arquivos de configuração do Claude Code. Atualize app/helper e plugin juntos; use `source_sha` e a
+capacidade verificada para identificar compatibilidade, pois a versão de pacote
+`0.1.0` do app/helper não distingue o candidato da beta.1.
 
 O script não é assinado. `Restricted` bloqueia scripts; `RemoteSigned` pode
 bloquear este arquivo baixado. Só depois de aprovar o arquivo e seu SHA-256,
@@ -73,21 +123,27 @@ Consulte a Microsoft sobre [políticas de execução](https://learn.microsoft.co
 e [Unblock-File](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unblock-file).
 
 Depois da configuração, feche as sessões do Claude Code e inicie uma nova sessão
-interativa com `claude` para carregar os hooks. O modo não interativo `claude
--p` não é o caminho de teste para perguntas AskUserQuestion interativas. Siga o
+interativa com `claude` para carregar os hooks. Com o Scribe fechado, `/mcp`
+deve continuar listando o servidor `scribe` e suas ferramentas; uma chamada que
+precisa do app deve informar que o Scribe está indisponível. Reabra o Scribe e
+tente novamente na mesma sessão do Claude; a chamada deve se recuperar sem
+reiniciar o Claude Code. O modo não interativo `claude -p` não é o caminho de
+teste para perguntas AskUserQuestion interativas. Siga o
 [roteiro de teste da TI](docs/teste-equipe-ti.md), também disponível no arquivo
 baixado `teste-equipe-ti.md`, e registre falhas sem incluir
 tokens, segredos ou o conteúdo de `%APPDATA%\com.rexia.scribe`.
 
 ### Atualizar e desinstalar
 
-Feche o Scribe pelo menu da bandeja e execute o novo instalador para atualizar.
-O upgrade verificado preservou histórico e credenciais. Desinstale em
+Feche o Scribe pelo menu da bandeja e execute o instalador candidato para
+atualizar. O teste de upgrade da beta anterior preservou histórico e
+credenciais; a atualização do candidato ainda precisa ser validada. Desinstale em
 **Configurações → Aplicativos → Scribe**; isso remove o app e mantém o perfil em
 `%APPDATA%\com.rexia.scribe`. Para remover também o histórico pessoal, feche o
 app e exclua esse perfil explicitamente. Reinstalar depois de excluir
 `connection.json` gera credenciais novas: execute o script de configuração
-novamente.
+novamente. Depois de atualizar o Scribe, execute o script outra vez para
+atualizar o caminho do helper salvo pelo plugin.
 
 ### Solução de problemas
 

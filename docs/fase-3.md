@@ -39,10 +39,28 @@ cargo test --manifest-path src-tauri/Cargo.toml --features desktop --locked -- -
 cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop,tauri/custom-protocol --locked --bin scribe
 ```
 
-Para testar a janela, usar `SCRIBE_CONNECTION_FILE` e `SCRIBE_DATA_DIR` absolutos
-sob `.artifacts/phase-3-native`, sem configuração de sessões pessoais. O primeiro
-é um arquivo; o segundo é um diretório privado de histórico. A conexão/token
-é criada pelo Rust. O helper usa o mesmo formato `port/token/app_path`.
+Os executáveis usados pelas fixtures isoladas devem ser compilados como release
+em um diretório de destino separado, com a feature explícita `test-fixture`:
+
+```powershell
+cargo build --manifest-path hook-client/Cargo.toml --locked --release --features test-fixture --target-dir hook-client/target/fixture
+cargo build --manifest-path src-tauri/Cargo.toml --features desktop,test-fixture --locked --release --target-dir src-tauri/target/fixture --bin scribe
+```
+
+Para fixtures isoladas da janela, usar esses artefatos `target/fixture/release`
+e `SCRIBE_CONNECTION_FILE` e `SCRIBE_DATA_DIR` absolutos sob
+`.artifacts/phase-3-native`, sem configuração de sessões pessoais. O primeiro é
+um arquivo; o segundo é um diretório privado de histórico. Os overrides só
+existem com a feature explícita `test-fixture`; builds debug comuns não a
+habilitam automaticamente, e builds de produção sem ela ignoram os overrides.
+Artefatos com essa feature não devem ser distribuídos como produção.
+Em produção, app e helper resolvem o perfil pela identidade da conta do sistema
+operacional e ignoram `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`,
+`XDG_CONFIG_HOME` e `XDG_DATA_HOME`. No Windows, a pasta Known Folder é obtida
+com o token explícito da conta, preservando redirecionamentos válidos. No Unix,
+o home vem do cadastro do UID; Linux usa `.config` e `.local/share`, enquanto
+macOS usa `Library/Application Support`. A validação Windows dessa resolução
+segue em andamento; não há novo resultado concluído nesta documentação.
 
 O inspetor `app/ui/test/native-inspect.mjs` usa CDP local de WebView2 somente
 no processo de teste (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`).
