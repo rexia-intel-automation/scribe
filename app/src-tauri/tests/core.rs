@@ -38,6 +38,39 @@ fn apply(core: &Core, input: Value, at: u64) {
 }
 
 #[test]
+fn ambiguous_project_labels_and_reports_never_enter_visible_or_stored_metadata() {
+    for marker in ['\u{202e}', '\u{2066}', '\u{3164}', '\u{00a0}'] {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, 0).unwrap();
+        let mut event = payload("SessionStart");
+        event["cwd"] = json!(format!("/public/demo{marker}txt.exe"));
+        apply(&core, event, 0);
+        let session = core.snapshot(0).unwrap().sessions.remove(0);
+        assert_eq!(session.project, "?");
+        assert_eq!(session.cwd, "?");
+        assert!(core
+            .report("public-session", &format!("done{marker}pending"), 1)
+            .is_err());
+        let metadata = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
+        assert!(!metadata.contains(marker));
+        let stored = String::from_utf8_lossy(&fs::read(&path).unwrap()).into_owned();
+        assert!(!stored.contains(marker));
+    }
+
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
+    let mut event = payload("SessionStart");
+    event["cwd"] = json!("/public/projeto ação");
+    apply(&core, event, 0);
+    core.report("public-session", "Verificação concluída", 1)
+        .unwrap();
+    let session = core.snapshot(1).unwrap().sessions.remove(0);
+    assert_eq!(session.project, "projeto ação");
+    assert_eq!(session.action, "Verificação concluída");
+}
+
+#[test]
 fn quoted_headers_escaped_secret_values_and_lowercase_env_never_enter_state_or_storage() {
     for (text, marker) in [
         (

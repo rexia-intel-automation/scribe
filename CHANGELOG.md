@@ -48,6 +48,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Projetos/caminhos com texto invisível recebem rótulo neutro; relatórios com
+  apresentação ambígua são recusados. Alertas de risco incluem refspec Git
+  forçado, limpeza forçada, `find -delete`, upload de arquivo pelo curl e
+  `Remove-Item -Force`. Dependabot acompanha também os dois projetos npm.
 - MCP stdio e hooks usam nonce novo por troca autenticada e mantêm desafio e
   requisição no mesmo socket. O token privado da conexão não vai para o
   `userConfig` do Claude Code. EOF e cancelamento encerram o fluxo stdio sem

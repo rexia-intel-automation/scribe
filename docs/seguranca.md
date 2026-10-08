@@ -65,6 +65,11 @@ resposta padrão. Falha, expiração ou cancelamento nunca representam consentim
 Espaços não ASCII e preenchimentos invisíveis Hangul/Braille também são tratados
 como ambíguos. Permissões com esses caracteres exigem o terminal; perguntas
 ambíguas são recusadas. Espaços ASCII e texto Unicode visível permanecem aceitos.
+Rótulos de projeto e caminhos ambíguos recebem `?` em vez de texto invisível;
+relatórios cuja apresentação ainda seja ambígua após a higienização são recusados.
+Os alertas de risco também incluem refspec forçado de Git, limpeza forçada,
+`find -delete`, upload de arquivo pelo curl e `Remove-Item -Force`. A lista é
+um aviso conservador, não uma análise completa do shell nem uma barreira de segurança.
 
 SQLite guarda metadados higienizados e o conteúdo seguro apresentado dos cartões
 nativos, com retenção padrão de 14 dias. Não guarda raw envelopes, ambiente,
@@ -100,6 +105,7 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Flood de challenges/provas falsas | Não ocupar desafios nem consumir quota legítima de hooks/MCP/health | unauthenticated_challenge_flood_cannot_block_a_native_hook e teste bearer_only_hooks |
 | Prova do desafio com chave/nonce errado, duplicada ou refletida | Nenhum desafio reservado; nenhum payload enviado ao servidor falso | challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof e native-client.test.mjs |
 | Alvo oculto, campo ignorado, segredo ou Unicode ambíguo | Não permitir aprovação | tests/decisions.rs e tests/interactive.rs |
+| Projeto ou relatório com direção de texto ou preenchimento invisível | Rótulo neutro ou relatório recusado, sem persistir o texto ambíguo | tests/core.rs, ambiguous_project_labels_and_reports_never_enter_visible_or_stored_metadata |
 | Clique tardio, repetido, sem armar ou antes de um segundo | Não permitir novamente | tests/decisions.rs e tests/interactive.rs |
 | Desconexão, SessionEnd, reinício ou timeout | Cancelar sem inventar resposta | Mesmos testes de decisões |
 
