@@ -827,13 +827,14 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
         );
         let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
         let asking = tokio::spawn(async move {
-            raw_request(
+            raw_request_with_timeout(
                 port,
                 "invalid",
                 "POST",
                 "/v1/hooks/PreToolUse",
                 &headers,
                 &body,
+                Duration::from_secs(125),
             )
             .await
         });
@@ -854,6 +855,14 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
         .await
         .unwrap();
         assert!(!asking.is_finished(), "native hook must await human input");
+        if tool == "AskUserQuestion" {
+            // A person may take longer than an ordinary HTTP response deadline.
+            tokio::time::sleep(Duration::from_millis(3500)).await;
+            assert!(
+                !asking.is_finished(),
+                "native hook must keep waiting for the person"
+            );
+        }
         let path = format!("/v1/decisions/{}", pending.id);
         assert_eq!(
             request(port, TOKEN, "POST", &path, "", &choice.to_string())
@@ -896,7 +905,12 @@ async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decisio
             .code,
             204
         );
-        let result = asking.await.unwrap();
+        // Human input (including deliberate confirmation) is not response
+        // latency. Bound delivery separately after committing the final choice.
+        let result = tokio::time::timeout(Duration::from_secs(3), asking)
+            .await
+            .expect("native hook response must arrive after the final decision")
+            .unwrap();
         if terminal {
             assert_eq!(result.code, 204);
             assert!(result.body.is_empty());
@@ -1004,11 +1018,32 @@ async fn raw_request(
     extra: &str,
     body: &str,
 ) -> Reply {
+    raw_request_with_timeout(
+        port,
+        token,
+        method,
+        path,
+        extra,
+        body,
+        Duration::from_secs(3),
+    )
+    .await
+}
+
+async fn raw_request_with_timeout(
+    port: u16,
+    token: &str,
+    method: &str,
+    path: &str,
+    extra: &str,
+    body: &str,
+    read_timeout: Duration,
+) -> Reply {
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
     let data = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}", body.len());
     socket.write_all(data.as_bytes()).await.unwrap();
     let mut bytes = vec![];
-    tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut bytes))
+    tokio::time::timeout(read_timeout, socket.read_to_end(&mut bytes))
         .await
         .unwrap()
         .unwrap();
