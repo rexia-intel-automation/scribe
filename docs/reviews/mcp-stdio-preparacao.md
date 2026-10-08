@@ -162,3 +162,97 @@ Claude Code 2.1.294. Backup íntegro e privado em
 Extra: o app abriu pelo Iniciar (PID 8520, 127.0.0.1:7717) e o `/v1/health` sem token
 deu 401. O `scribe-hook.exe.bak-main` (cópia minha de 2026-10-07 22:57) continua na
 pasta de instalação; o NSIS não o remove.
+
+## 4. Resultados do ensaio real — rodada 2 (2026-10-08, ~15:08–15:14 -03:00; relatado às 18:14Z)
+
+Pacote: Windows do Release run 37818887638, `main` `b0f9bbf` (setup `7F86FE5B…`,
+`sha256sum -c` OK, `source_sha` b0f9bbf). Plugin, script e guia iguais ao `7dfaec7`;
+o espelho do plugin é igual ao do b0f. Mesma TRAVA e mesmo backup da rodada 1.
+
+| Passo | Resultado |
+| --- | --- |
+| Upgrade NSIS `/S` (app fechado antes) | PASSOU: exit 0; perfil intacto; `--mcp-check` com `attested-stdio-v1`; app pelo Iniciar, PID 11052, :7717 |
+| `claude mcp list` real | PASSOU: `plugin:scribe:scribe … ✔ Connected`, sem "tools fetch failed" (corrige a rodada 1) |
+| Hooks no app | PASSOU: a tabela `sessions` traz a sessão do `claude -p` e a sessão do agente (consulta read-only só de id e last_event_at) |
+| `scribe_report` via `claude -p`, com app aberto e session_id correto | **FALHOU (bloqueante)**: "Scribe is unavailable or incompatible…". O debug do Claude mostra `negotiatedProtocolVersion: 2026-07-28` ("modern") |
+| Reprodução direta no helper | Legado (initialize 2025-11-25 ou 2025-06-18) + tools/call → `{"ok":true}`. Moderno (sem initialize, `_meta` 2026-07-28 + clientCapabilities) → tools/list OK, tools/call com isError e a mensagem genérica |
+| H3–H5 (ask, concorrência, cancelamento, EOF) | BLOQUEADOS pela falha acima |
+
+Causa provável, lida na fonte do rmcp 3.5.0: no modo inline, o helper repassa ao app o
+cabeçalho `mcp-protocol-version: 2026-07-28` sem o `_meta` obrigatório. O app responde
+`invalid_params`, e o helper troca o erro pela mensagem genérica.
+
+## 5. Resultados do ensaio real — rodada 3 (2026-10-08, ~15:38–15:43 -03:00; relatado às 18:43Z)
+
+Pacote: build LOCAL do Codex no `f38e0ba` (PR35 sobre PR34), setup `6C36D751…`,
+`sha256sum -c` OK, `source_sha` f38e0ba. Não é artefato do CI. Plugin, script e guia
+iguais ao b0f.
+
+| Passo | Resultado |
+| --- | --- |
+| Upgrade NSIS `/S` | PASSOU: exit 0; perfil intacto; app pelo Iniciar, PID 1688, :7717 |
+| `claude mcp list` | PASSOU: ✔ Connected |
+| `scribe_report` via `claude -p` | **FALHOU (bloqueante)**: "missing required resultType — servers implementing protocol revision 2026-07-28 MUST include it". A chamada já atravessa o salto privado: a correção do PR35 vale |
+| Reprodução direta (moderna) | Sucesso → resultado SEM `resultType`; erro montado localmente → COM `resultType: complete` |
+
+Causa: o helper repassa o resultado do app, que vem do salto legado e não tem
+`resultType`. Só o caminho de erro, montado localmente, inclui o campo.
+
+## 6. Resultados do ensaio real — rodada 4 (2026-10-08, ~16:05–16:11 -03:00; relatado às 19:11Z)
+
+Pacote: build LOCAL do Codex no `b268a38` (PR35 corrigido), setup `1C9DACE5…`,
+`sha256sum -c` OK, `source_sha` b268a38. Não é artefato do CI. Plugin, script e guia
+iguais ao f38/b0f. Cliente: Claude Code 2.1.294 real, em sessões `claude -p` desta
+máquina.
+
+| # | Passo | Resultado |
+| --- | --- | --- |
+| 1 | Upgrade NSIS `/S` | PASSOU: exit 0; perfil intacto; app pelo Iniciar, PID 24544, :7717 |
+| 3 | `claude mcp list` | PASSOU: ✔ Connected |
+| 4a | `scribe_report` com o app aberto | **PASSOU**: `{"ok":true}`; o session_id veio de `CLAUDE_CODE_SESSION_ID` |
+| 4b | `scribe_report` com o app FECHADO | PASSOU: erro explícito "Scribe is unavailable… No answer or consent was supplied."; `mcp list` continua ✔ Connected |
+| 5 | App reaberto pelo Iniciar, nova chamada | PASSOU: `{"ok":true}`. É sessão nova; a recuperação na MESMA sessão interativa fica para o passo humano |
+| 9 | Processos órfãos depois das sessões | PASSOU: nenhum `scribe-hook.exe` restante |
+| 6–8 | `scribe_ask` respondido na UI, ask + report concorrente, Esc/cancelamento | PENDENTE HUMANO: precisa de clique na UI ou de tecla na sessão interativa |
+| 12–13 | stderr sem dados; nenhuma janela extra | stderr: os logs de debug do Claude da rodada 2 só mostram a mensagem genérica; janela: PENDENTE HUMANO |
+
+Conclusão: o caminho MCP de ponta a ponta funciona no cliente real com o pacote b268,
+com os três bloqueios das rodadas 1 a 3 corrigidos (tools/list, protocolo moderno,
+resultType). Sobram os passos humanos e a confirmação no artefato oficial do CI.
+
+## 7. Resultados do ensaio real — rodada 5, artefato OFICIAL do CI (2026-10-08, ~16:25–16:33 -03:00; relatado às 19:33Z)
+
+Pacote: artefato `scribe-distribution-preview-windows-d40079421bc315cc5e70dcfdc562d123c10ede39`
+do run 37828609230 (preview do CI, ainda não é release). Setup `0875C65F…`, `sha256sum -c` OK,
+`source_sha` d400794 (merge sintético do GitHub). Conferido por git: a tree do d400794 é
+IDÊNTICA à do b268a38 (`49adc764…`). Plugin pareado b268 instalado. Cliente: Claude Code
+2.1.294 real.
+
+| Passo | Resultado |
+| --- | --- |
+| Upgrade NSIS `/S` | PASSOU: exit 0, perfil intacto, app pelo Iniciar (PID 19184, :7717) |
+| `claude mcp list` | PASSOU: ✔ Connected |
+| `scribe_report` com o app aberto | PASSOU: `{"ok":true}` |
+| `scribe_report` com o app fechado | PASSOU: erro explícito, servidor continua ✔ Connected |
+| App reaberto + chamada | PASSOU: `{"ok":true}` |
+| `scribe-hook.exe` órfãos | PASSOU: 0 |
+
+### Roteiro humano curto (Mohamad, ~10 min, na instalação atual)
+
+1. Abra o Scribe pelo menu Iniciar. Num terminal novo, rode `claude` (sessão interativa).
+2. Digite `/mcp`: o servidor `scribe` deve aparecer conectado, com `scribe_ask` e `scribe_report`.
+3. Peça: "use o scribe_ask para me perguntar se posso continuar, com as opções Sim e Não".
+   Responda no Scribe. A resposta escolhida tem de voltar ao Claude.
+4. Peça outra `scribe_ask` e, com ela pendente, peça também "registre um progresso com
+   scribe_report". O report aparece no Scribe enquanto a pergunta espera.
+5. Com uma `scribe_ask` pendente, aperte Esc no terminal. O cartão some ou expira no
+   Scribe e nada é respondido depois.
+6. Feche o Scribe pela bandeja e, NA MESMA sessão, peça um `scribe_report`: deve vir
+   erro de indisponível. Reabra o Scribe pelo Iniciar e peça de novo: deve funcionar
+   sem reiniciar o Claude.
+7. Durante tudo isso, observe: nenhuma janela de console extra; a sessão e os passos
+   aparecem no Scribe; se surgir uma notificação do Windows, clique e confira se ela
+   traz o Scribe com o cartão.
+Anote só passo, esperado e obtido. Não copie tokens nem o conteúdo de `%APPDATA%\com.rexia.scribe`.
+
+> Nota de registro (2026-10-08 16:40 -03:00, relógio do sistema): os horários das seções 4 a 7 foram corrigidos a partir dos carimbos UTC do `Claude.jsonl`. A primeira versão trazia horários estimados e adiantados pelo agente. Os resultados não mudam.

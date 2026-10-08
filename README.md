@@ -145,7 +145,95 @@ prompts. Follow the
 `teste-equipe-ti.md`, and record failures without including
 tokens, secrets, or the contents of either Scribe data folder.
 
-### Update and uninstall
+## macOS and Linux candidate setup
+
+The stdio candidate packages are not published yet. These instructions describe
+the expected candidate package layout and are not evidence of a completed clean
+install; the published beta.1 is Windows-only and incompatible with plugin
+0.1.1. Use only a future paired package whose app, helper, plugin, checksums,
+and `BUILD-METADATA.txt` `source_sha` match. Follow your organization's policy
+for unsigned software. Do not disable Gatekeeper or other security controls.
+
+On macOS, verify the DMG with `shasum -a 256 -c SHA256SUMS.txt`, open it in
+Finder, and copy `Scribe.app` to Applications. Launch Scribe from Applications
+once to create its private connection. The helper path for the system
+Applications folder is `/Applications/Scribe.app/Contents/MacOS/scribe-hook`.
+If macOS blocks the unsigned app, stop and follow your organization's process
+for approved software; this guide does not bypass Gatekeeper.
+
+For a Debian/Ubuntu package, verify it with `sha256sum -c SHA256SUMS.txt`,
+install the matching `.deb`, and locate the helper from the installed package.
+For the 0.1.0 candidate on Debian/Ubuntu:
+
+```sh
+sudo apt install ./Scribe_0.1.0_amd64.deb
+dpkg -L scribe | grep '/scribe-hook$'
+```
+
+Launch Scribe from the desktop application menu once to create its private
+connection. Use the absolute helper path printed by `dpkg -L` as
+`SCRIBE_HELPER` below.
+
+On macOS, set `SCRIBE_HELPER` to the path above. On Debian/Ubuntu, set it to
+the exact path printed by `dpkg -L`:
+
+```sh
+SCRIBE_HELPER='/absolute/path/to/scribe-hook'
+test -x "$SCRIBE_HELPER"
+```
+
+For an AppImage, verify its checksum, make it executable, and extract it into a
+new, empty permanent directory owned by your account. The helper must remain there so
+Claude Code can start it when Scribe is closed. Do not configure a helper path
+under a temporary AppImage mount:
+
+```sh
+chmod +x ./Scribe*.AppImage
+mkdir -p "$HOME/.local/opt/scribe-candidate"
+cd "$HOME/.local/opt/scribe-candidate"
+/absolute/path/to/Scribe.AppImage --appimage-extract
+mv squashfs-root appimage-root
+find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print
+```
+
+Open the original AppImage from your file manager once to create the private
+connection. Keep the extracted directory in place for the helper path.
+
+Use the absolute path printed by `find` as `SCRIBE_HELPER`. Type 2 AppImages
+support `--appimage-extract`, which creates `squashfs-root` in the current
+directory; see the [official AppImage extraction guide](https://docs.appimage.org/user-guide/run-appimages.html#extract-the-contents-of-an-appimage).
+
+Set it to the path returned by `find` and confirm it is executable:
+
+```sh
+SCRIBE_HELPER="$(find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print -quit)"
+test -x "$SCRIBE_HELPER"
+```
+
+After installing and opening the app once, install the paired plugin for your
+user with the native Claude Code CLI. These argument forms are used by the
+candidate setup script; the Windows PowerShell script is not used on macOS or
+Linux:
+
+```sh
+claude plugin install scribe --marketplace rexia-intel-automation/scribe --scope user --config "client_path=$SCRIBE_HELPER"
+```
+
+To set or refresh the path on an already installed plugin, pass only the helper
+path as `client_path` JSON on standard input:
+
+```sh
+printf '%s\n' "{\"client_path\":\"$SCRIBE_HELPER\"}" | claude plugin configure scribe@rexia-scribe --values-stdin
+```
+
+Neither command requires copying the Scribe token. The plugin stores only the
+helper path; the helper reads the connection from the current OS account's
+private Scribe profile. Restart Claude Code after configuration. CLI setup on
+macOS and Linux, clean package installation, and visual app behavior remain
+unvalidated; a fresh interactive session and visual checks are separate manual
+acceptance steps.
+
+## Windows update and uninstall
 
 Close Scribe from its tray menu and run the candidate installer to update. The
 previous beta upgrade test preserved history and credentials; the candidate
@@ -162,7 +250,7 @@ creates new credentials: run the configuration script again. After updating
 Scribe, run the configuration script again to refresh the helper path stored by
 the plugin.
 
-### Troubleshooting
+## Windows troubleshooting
 
 - The installer is unsigned; SmartScreen or corporate antivirus may block it.
   Record the exact message and follow IT’s policy.

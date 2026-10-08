@@ -146,7 +146,96 @@ teste para perguntas AskUserQuestion interativas. Siga o
 baixado `teste-equipe-ti.md`, e registre falhas sem incluir
 tokens, segredos ou o conteúdo de qualquer pasta de dados do Scribe.
 
-### Atualizar e desinstalar
+## Configuração candidata no macOS e Linux
+
+Os pacotes candidatos com stdio ainda não foram publicados. Estas instruções
+descrevem o layout esperado do pacote candidato e não comprovam uma instalação
+limpa concluída; a beta.1 publicada é somente para Windows e incompatível com o
+plugin 0.1.1. Use apenas uma futura combinação em que app, helper, plugin,
+checksums e `source_sha` de `BUILD-METADATA.txt` correspondam. Siga a política
+da sua organização para software sem assinatura. Não desative o Gatekeeper nem
+outros controles de segurança.
+
+No macOS, confira o DMG com `shasum -a 256 -c SHA256SUMS.txt`, abra-o no Finder
+e copie `Scribe.app` para Aplicativos. Abra o Scribe em Aplicativos uma vez para
+criar sua conexão privada. Para Aplicativos do sistema, o helper fica em
+`/Applications/Scribe.app/Contents/MacOS/scribe-hook`. Se o macOS bloquear o
+app sem assinatura, pare e siga o processo da sua organização para software
+aprovado; este guia não contorna o Gatekeeper.
+
+Para um pacote Debian/Ubuntu, confira o checksum com
+`sha256sum -c SHA256SUMS.txt`, instale o `.deb` correspondente pelo processo
+aprovado de gerenciamento de pacotes e localize o helper instalado. Para o
+candidato 0.1.0 no Debian/Ubuntu:
+
+```sh
+sudo apt install ./Scribe_0.1.0_amd64.deb
+dpkg -L scribe | grep '/scribe-hook$'
+```
+
+Abra o Scribe pelo menu de aplicativos uma vez para criar a conexão privada.
+Use o caminho absoluto impresso por `dpkg -L` como `SCRIBE_HELPER` abaixo.
+
+No macOS, defina `SCRIBE_HELPER` com o caminho acima. No Debian/Ubuntu, use o
+caminho exato impresso por `dpkg -L`:
+
+```sh
+SCRIBE_HELPER='/caminho/absoluto/para/scribe-hook'
+test -x "$SCRIBE_HELPER"
+```
+
+Para AppImage, confira o checksum, torne o arquivo executável e extraia-o para
+uma pasta permanente nova e vazia da sua conta. O helper precisa permanecer nesse caminho
+extraído para que o Claude Code possa iniciá-lo mesmo com o Scribe fechado. Não
+configure um caminho dentro de uma montagem temporária do AppImage:
+
+```sh
+chmod +x ./Scribe*.AppImage
+mkdir -p "$HOME/.local/opt/scribe-candidate"
+cd "$HOME/.local/opt/scribe-candidate"
+/caminho/absoluto/Scribe.AppImage --appimage-extract
+mv squashfs-root appimage-root
+find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print
+```
+
+Abra o AppImage original pelo gerenciador de arquivos uma vez para criar a
+conexão privada. Mantenha a pasta extraída no lugar para o caminho do helper.
+
+Use o caminho absoluto mostrado por `find` como `SCRIBE_HELPER`. AppImages do
+tipo 2 aceitam `--appimage-extract`, que cria `squashfs-root` na pasta atual;
+veja o [guia oficial de extração do AppImage](https://docs.appimage.org/user-guide/run-appimages.html#extract-the-contents-of-an-appimage).
+
+Defina a variável com o caminho retornado por `find` e confirme que o arquivo
+é executável:
+
+```sh
+SCRIBE_HELPER="$(find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print -quit)"
+test -x "$SCRIBE_HELPER"
+```
+
+Depois de instalar e abrir o app uma vez, instale o plugin combinado para seu
+usuário com a CLI nativa do Claude Code. Estas formas de argumentos são usadas
+pelo script candidato; o script PowerShell não é usado no macOS nem no Linux:
+
+```sh
+claude plugin install scribe --marketplace rexia-intel-automation/scribe --scope user --config "client_path=$SCRIBE_HELPER"
+```
+
+Para definir ou atualizar o caminho de um plugin já instalado, envie somente o
+caminho do helper como JSON `client_path` pela entrada padrão:
+
+```sh
+printf '%s\n' "{\"client_path\":\"$SCRIBE_HELPER\"}" | claude plugin configure scribe@rexia-scribe --values-stdin
+```
+
+Nenhum dos comandos exige copiar o token do Scribe. O plugin guarda apenas o
+caminho do helper; ele lê a conexão do perfil privado da conta atual do
+sistema. Reinicie o Claude Code após configurar. A configuração pela CLI no
+macOS e Linux, a instalação limpa dos pacotes e o comportamento visual do app
+ainda não foram validados; uma sessão interativa nova e as verificações visuais
+são etapas manuais separadas de aceite.
+
+## Atualizar e desinstalar no Windows
 
 Feche o Scribe pelo menu da bandeja e execute o instalador candidato para
 atualizar. O teste de upgrade da beta anterior preservou histórico e
@@ -163,7 +252,7 @@ bytes remanescentes no disco. Reinstalar depois de excluir
 novamente. Depois de atualizar o Scribe, execute o script outra vez para
 atualizar o caminho do helper salvo pelo plugin.
 
-### Solução de problemas
+## Solução de problemas no Windows
 
 - O instalador não é assinado; SmartScreen ou antivírus corporativo podem
   bloqueá-lo. Anote a mensagem exata e siga a política da TI.

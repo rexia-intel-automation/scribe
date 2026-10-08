@@ -24,4 +24,94 @@ Launch the paired app once so it creates its connection file before configuratio
 
 ## Other operating systems
 
-The published beta installer targets Windows only. This site does not claim a ready macOS or Linux installer.
+The published beta installer targets Windows only. The stdio candidate packages
+for macOS and Linux have not been published or validated by a clean installation.
+The Windows beta.1 app/plugin pair is incompatible with plugin 0.1.1. Use these
+steps only with a future paired candidate whose app, helper, plugin, checksums,
+and `BUILD-METADATA.txt` `source_sha` match. Follow your organization's policy
+for unsigned software; do not disable Gatekeeper or other security controls.
+
+### macOS DMG
+
+Verify the DMG with `shasum -a 256 -c SHA256SUMS.txt`, open it in Finder, and
+copy `Scribe.app` to Applications. Launch Scribe once from Applications to
+create its private connection. The helper path for system Applications is
+`/Applications/Scribe.app/Contents/MacOS/scribe-hook`. If macOS blocks the
+unsigned app, stop and follow your organization's approved-software process;
+this guide does not bypass Gatekeeper.
+
+### Linux DEB
+
+Verify the package with `sha256sum -c SHA256SUMS.txt`, install the `.deb` using
+your approved package-management process, and locate the helper from the package
+file list instead of assuming its installation path:
+
+```sh
+sudo apt install ./Scribe_0.1.0_amd64.deb
+dpkg -L scribe | grep '/scribe-hook$'
+```
+
+Launch Scribe from the desktop application menu once to create its private
+connection. Use the absolute helper path printed by `dpkg -L` below.
+
+On macOS set `SCRIBE_HELPER` to the path above. On Debian/Ubuntu, set it to the
+exact path printed by `dpkg -L`:
+
+```sh
+SCRIBE_HELPER='/absolute/path/to/scribe-hook'
+test -x "$SCRIBE_HELPER"
+```
+
+### Linux AppImage
+
+Verify the checksum, mark the file executable, and extract it into a permanent
+new, empty directory owned by your account. Claude Code must be able to start the helper
+even when Scribe is closed, so configure the helper path inside this persistent
+extraction, never inside a temporary mounted AppImage:
+
+```sh
+chmod +x ./Scribe*.AppImage
+mkdir -p "$HOME/.local/opt/scribe-candidate"
+cd "$HOME/.local/opt/scribe-candidate"
+/absolute/path/to/Scribe.AppImage --appimage-extract
+mv squashfs-root appimage-root
+find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print
+```
+
+Open the original AppImage from your file manager once to create its private
+connection. Keep the extracted directory in place for the helper path.
+
+Use the absolute path printed by `find` below. Type 2 AppImages support
+`--appimage-extract`, which creates `squashfs-root` in the current directory;
+see the [official AppImage extraction guide](https://docs.appimage.org/user-guide/run-appimages.html#extract-the-contents-of-an-appimage).
+
+Set the variable to the path returned by `find` and confirm the helper is
+executable:
+
+```sh
+SCRIBE_HELPER="$(find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print -quit)"
+test -x "$SCRIBE_HELPER"
+```
+
+### Configure the paired plugin
+
+After installing and launching the app once, set `SCRIBE_HELPER` to the absolute
+helper path found above and use the native Claude Code CLI. These argument forms
+match the candidate setup script; that PowerShell script itself is Windows-only.
+
+```sh
+claude plugin install scribe --marketplace rexia-intel-automation/scribe --scope user --config "client_path=$SCRIBE_HELPER"
+```
+
+To set or refresh the path on an already installed plugin, provide only the
+`client_path` JSON on standard input:
+
+```sh
+printf '%s\n' "{\"client_path\":\"$SCRIBE_HELPER\"}" | claude plugin configure scribe@rexia-scribe --values-stdin
+```
+
+These commands do not require copying the Scribe token. The plugin stores only
+the helper path; the helper reads its connection from the private profile of
+the current OS account. Restart Claude Code after setup. CLI setup on macOS and
+Linux, clean package installation, and visual app behavior remain unvalidated;
+this guide does not claim those manual acceptance results.
