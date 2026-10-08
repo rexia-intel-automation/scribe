@@ -834,35 +834,30 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                 "cwd":"/public/project","tool_name":"Bash","tool_use_id":format!("{action}-{sample}"),
                 "tool_input":{"command":"echo public"}}).to_string();
                 let nonce = format!("{:032x}", rand::random::<u128>());
-                assert_eq!(
-                    raw_request(
-                        port,
-                        "invalid",
-                        "GET",
-                        &format!("/v1/hooks/challenge/{nonce}"),
-                        &challenge_headers(&nonce),
-                        ""
-                    )
-                    .await
-                    .code,
-                    204
-                );
-                let proof = scribe_hook_protocol::sign(
+                let challenge = raw_request(
+                    port,
+                    "invalid",
+                    "GET",
+                    &format!("/v1/hooks/challenge/{nonce}"),
+                    &challenge_headers(&nonce),
+                    "",
+                )
+                .await;
+                assert_eq!(challenge.code, 204);
+                let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+                assert!(scribe_hook_protocol::verify(
                     HOOK_KEY,
-                    &[
-                        b"request",
-                        nonce.as_bytes(),
-                        b"PermissionRequest",
-                        body.as_bytes(),
-                    ],
-                );
-                let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+                    &[b"hook-challenge", nonce.as_bytes(), server_nonce.as_bytes(),],
+                    &reply_header(&challenge, "x-scribe-proof"),
+                ));
+                let hook_path = "/v1/hooks/PermissionRequest";
+                let headers = hook_request_headers(&nonce, &server_nonce, hook_path, &body);
                 let asking = tokio::spawn(async move {
                     raw_request_with_timeout(
                         port,
                         "invalid",
                         "POST",
-                        "/v1/hooks/PermissionRequest",
+                        hook_path,
                         &headers,
                         &body,
                         Duration::from_secs(5),
@@ -882,6 +877,10 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                             assert_eq!(pending.len(), 1);
                             break decision.clone();
                         }
+                        assert!(
+                            !asking.is_finished(),
+                            "signed hook ended before a pending decision"
+                        );
                         tokio::time::sleep(Duration::from_millis(1)).await;
                     }
                 })
@@ -931,9 +930,10 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                 assert!(scribe_hook_protocol::verify(
                     HOOK_KEY,
                     &[
-                        b"response",
+                        b"hook-response",
                         nonce.as_bytes(),
-                        b"PermissionRequest",
+                        server_nonce.as_bytes(),
+                        hook_path.as_bytes(),
                         b"200",
                         reply.body.as_bytes()
                     ],
