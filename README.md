@@ -21,6 +21,7 @@ When the prerelease is published, download these assets from the
 - `Scribe_*_x64-setup.exe`
 - `configure-claude-plugin.ps1`
 - `SHA256SUMS`
+- `teste-equipe-ti.md` (test checklist)
 
 Verify the downloaded executable and script against
 the matching filenames in `SHA256SUMS` before running them. In PowerShell:
@@ -55,16 +56,42 @@ The script takes no parameters. It requires the native `claude.exe` to be on
 `PATH` and the Scribe app to be open. It configures the plugin for your user; it
 does not require you to copy or paste a token. If the script reports a failure,
 record its stage and exit status for IT. It deliberately withholds Claude CLI
-output. Do not bypass your organization’s execution policy; ask IT for help if
-PowerShell blocks the script.
+output.
+
+The script is unsigned. `Restricted` blocks scripts; `RemoteSigned` can block
+this downloaded file. Only after IT approves the file and its SHA-256, IT can
+authorize this file-specific unblock and a `RemoteSigned` child process:
+
+```powershell
+Unblock-File -LiteralPath .\configure-claude-plugin.ps1
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\configure-claude-plugin.ps1
+```
+
+The flag affects that process, without changing the machine/user policy.
+`MachinePolicy`/`UserPolicy` take precedence; follow IT’s managed policy.
+See Microsoft’s [execution policies](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-5.1)
+and [Unblock-File](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/unblock-file).
 
 After setup, close Claude Code sessions and start a fresh interactive session
 with `claude` so it loads the hooks. The `claude -p` non-interactive mode is not
 the test path for interactive AskUserQuestion prompts. Follow the
-[IT test guide](docs/teste-equipe-ti.md) and record failures without including
+[IT test guide](docs/teste-equipe-ti.md), also included as the downloaded
+`teste-equipe-ti.md`, and record failures without including
 tokens, secrets, or the contents of `%APPDATA%\com.rexia.scribe`.
 
+### Update and uninstall
+
+Close Scribe from its tray menu and run the newer setup to update. The verified
+upgrade preserved the history and credentials. Uninstall through **Settings →
+Apps → Scribe**; this removes the app while keeping its profile in
+`%APPDATA%\com.rexia.scribe`. To remove personal history too, close the app and
+remove that profile explicitly. Reinstalling after removing `connection.json`
+creates new credentials: run the configuration script again.
+
 ### Troubleshooting
+
+- The installer is unsigned; SmartScreen or corporate antivirus may block it.
+  Record the exact message and follow IT’s policy.
 
 - If a command contains `=` (for example, `x=y`) or looks like it contains a
   secret, Scribe may redact it and route the decision to the Claude Code
