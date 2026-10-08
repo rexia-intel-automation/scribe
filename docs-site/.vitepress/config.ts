@@ -54,6 +54,9 @@ export default defineConfig({
   lang: "en-US",
   title: "Scribe",
   description: "Local desktop companion for Claude Code sessions.",
+  themeConfig: {
+    search: { provider: "local" },
+  },
   locales: {
     root: {
       label: "English",
