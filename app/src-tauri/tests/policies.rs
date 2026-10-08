@@ -26,6 +26,9 @@ fn combined_policy_failure_rolls_back_both_settings_cleanup_and_memory() {
     hook(&core, "completed", "SessionStart", at - 21 * 60_000);
     hook(&core, "completed", "SessionEnd", at - 20 * 60_000);
     let db = rusqlite::Connection::open(&path).unwrap();
+    // This fault-injection writer must use the same per-connection rollback mode.
+    #[cfg(windows)]
+    db.execute_batch("PRAGMA journal_mode=TRUNCATE;").unwrap();
     db.execute_batch(
         "CREATE TRIGGER fail_second BEFORE INSERT ON settings
         WHEN NEW.key='completed_minutes' BEGIN SELECT RAISE(ABORT, 'PUBLIC_FAILURE'); END;",

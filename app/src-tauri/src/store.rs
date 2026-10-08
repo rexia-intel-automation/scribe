@@ -24,6 +24,15 @@ impl Store {
         private_fs::file(path)?;
         let db = Connection::open(path)?;
         db.busy_timeout(Duration::from_millis(100))?;
+        #[cfg(windows)]
+        {
+            // Avoid journal deletion on every Windows commit; keep full-sync rollback.
+            let mode: String = db.query_row("PRAGMA journal_mode = TRUNCATE", [], |r| r.get(0))?;
+            if mode != "truncate" {
+                return Err("Private Windows storage requires a truncating journal".into());
+            }
+            db.execute_batch("PRAGMA synchronous = FULL;")?;
+        }
         db.execute_batch(
             "PRAGMA secure_delete = ON;
             CREATE TABLE IF NOT EXISTS sessions (
@@ -176,5 +185,67 @@ impl Store {
     pub(crate) fn set_policy(&self, key: &str, value: u16) -> Result<()> {
         self.0.execute(SET_POLICY, params![key, value])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_journal_mode_keeps_full_sync_and_secure_delete() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let store = Store::open(&directory.path().join("state.db")).unwrap();
+        let mode: String = store
+            .0
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, if cfg!(windows) { "truncate" } else { "delete" });
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            let actual: i32 = store
+                .0
+                .pragma_query_value(None, name, |r| r.get(0))
+                .unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn truncating_journal_is_empty_after_commit_and_rollback_and_reopens() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("state.db");
+        let store = Store::open(&path).unwrap();
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            let actual: i32 = store
+                .0
+                .pragma_query_value(None, name, |r| r.get(0))
+                .unwrap();
+            assert_eq!(actual, expected);
+        }
+        let journal = directory.path().join("state.db-journal");
+        store.set_policy("retention_days", 14).unwrap();
+        assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
+        {
+            let transaction = store.0.unchecked_transaction().unwrap();
+            transaction
+                .execute(SET_POLICY, params!["retention_days", 30])
+                .unwrap();
+            // Dropping an uncommitted transaction must roll back the saved preference.
+        }
+        assert_eq!(store.policy("retention_days", 0).unwrap(), 14);
+        assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
+        drop(store);
+        let copy = directory.path().join("restored.db");
+        std::fs::copy(&path, &copy).unwrap();
+        std::fs::copy(&journal, directory.path().join("restored.db-journal")).unwrap();
+        let reopened = Store::open(&copy).unwrap();
+        assert_eq!(reopened.policy("retention_days", 0).unwrap(), 14);
+        assert_eq!(
+            std::fs::metadata(directory.path().join("restored.db-journal"))
+                .unwrap()
+                .len(),
+            0
+        );
     }
 }

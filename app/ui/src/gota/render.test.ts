@@ -5,6 +5,7 @@ beforeEach(() => vi.spyOn(performance, "now").mockReturnValue(1000));
 afterEach(() => {
   for (const renderer of owned.splice(0)) renderer.dispose();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 function avatar(size: number) {
   const canvas = document.createElement("canvas");
@@ -15,6 +16,88 @@ function avatar(size: number) {
   return { canvas, context, renderer };
 }
 describe("canvas scheduling and accessibility", () => {
+  it("does not schedule frames for settled eyeless forms, but resumes a morph", () => {
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const pending = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+      (callback) => {
+        pending.set(++id, callback);
+        return id;
+      },
+    );
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((key) => {
+      pending.delete(key);
+    });
+    const { renderer } = avatar(24);
+    expect(pending.size).toBe(0);
+    renderer.update("selo", 24, false);
+    expect(pending.size).toBe(1);
+    now = 1500;
+    const callbacks = [...pending.values()];
+    pending.clear();
+    callbacks.forEach((callback) => callback(now));
+    expect(pending.size).toBe(0);
+    renderer.update("orbita", 24, false);
+    expect(pending.size).toBe(1);
+    renderer.dispose();
+    expect(pending.size).toBe(0);
+  });
+  it("sleeps until a blink, then reopens the eyes and sleeps again", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const pending = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+      (callback) => {
+        pending.set(++id, callback);
+        return id;
+      },
+    );
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((key) => {
+      pending.delete(key);
+    });
+    const { renderer, context } = avatar(96);
+    expect(pending.size).toBe(0);
+    now = 3500;
+    vi.advanceTimersByTime(2500);
+    expect(pending.size).toBe(1);
+    const tick = (time: number) => {
+      now = time;
+      const callbacks = [...pending.values()];
+      pending.clear();
+      callbacks.forEach((callback) => callback(now));
+    };
+    tick(3500);
+    tick(3630);
+    tick(3700);
+    expect(context.clearRect).toHaveBeenCalledTimes(2);
+    expect(pending.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(1);
+    renderer.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("cancels sleeping blink work while hidden or reduced, and on disposal", () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    const { renderer } = avatar(96);
+    expect(vi.getTimerCount()).toBe(1);
+    hidden.mockReturnValue(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(vi.getTimerCount()).toBe(0);
+    hidden.mockReturnValue(false);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(vi.getTimerCount()).toBe(1);
+    renderer.update("gota", 96, true);
+    expect(vi.getTimerCount()).toBe(0);
+    renderer.update("gota", 96, false);
+    expect(vi.getTimerCount()).toBe(1);
+    renderer.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("limits small avatars to 30 draws and large avatars to 60 per second", () => {
     for (const [size, draws] of [
       [40, 30],
