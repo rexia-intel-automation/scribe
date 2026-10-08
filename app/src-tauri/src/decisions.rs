@@ -165,7 +165,7 @@ impl Core {
             options: vec![],
             native_questions: vec![],
             plan_file_path: None,
-            risk: !can_allow || RISK.is_match(&raw_target),
+            risk: !can_allow || RISK.is_match(&raw_target) || self.custom_risk(&raw_target)?,
             can_allow,
             armed: false,
             status: "pending".into(),

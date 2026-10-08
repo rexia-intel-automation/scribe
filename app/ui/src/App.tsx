@@ -20,6 +20,31 @@ function useTheme(theme: Preferences["theme"]) {
   }, [effective]);
   return effective;
 }
+function validateRiskPatterns(lines: string[]) {
+  const patterns: string[] = [];
+  for (const line of lines) {
+    if (/[\p{Cc}\p{Cf}]/u.test(line))
+      return { patterns: [], error: "riskPatternsControl" as const };
+    const pattern = line.trim();
+    if (pattern) patterns.push(pattern);
+  }
+  if (patterns.length > 32)
+    return { patterns: [], error: "riskPatternsTooMany" as const };
+  const encoder = new TextEncoder();
+  if (patterns.some((pattern) => encoder.encode(pattern).length > 128))
+    return { patterns: [], error: "riskPatternsEntryTooLong" as const };
+  const folded = patterns.map((pattern) => pattern.toLowerCase());
+  if (new Set(folded).size !== folded.length)
+    return { patterns: [], error: "riskPatternsDuplicate" as const };
+  if (
+    patterns.reduce(
+      (total, pattern) => total + encoder.encode(pattern).length,
+      0,
+    ) > 2048
+  )
+    return { patterns: [], error: "riskPatternsTotalTooLong" as const };
+  return { patterns, error: null };
+}
 /** Sanitized session summary with keyboard-accessible recent steps. */
 function SessionRow({
   session,
@@ -117,7 +142,14 @@ function Settings({
       ? document.activeElement
       : null,
   );
-  const [preferences, setPreferences] = useState(view.preferences);
+  const [preferences, setPreferences] = useState(() => ({
+    ...view.preferences,
+    riskPatterns: Array.isArray(view.preferences.riskPatterns)
+      ? view.preferences.riskPatterns.filter(
+          (pattern): pattern is string => typeof pattern === "string",
+        )
+      : [],
+  }));
   const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const actionFocus = useRef<HTMLElement | null>(null);
@@ -167,10 +199,20 @@ function Settings({
     setPreferences((previous) => ({ ...previous, [key]: value }));
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    const validatedPatterns = validateRiskPatterns(preferences.riskPatterns);
+    if (validatedPatterns.error) {
+      setError(validatedPatterns.error);
+      return;
+    }
     startAction();
     setError(null);
     try {
-      receive(await bridge.savePreferences(preferences));
+      receive(
+        await bridge.savePreferences({
+          ...preferences,
+          riskPatterns: validatedPatterns.patterns,
+        }),
+      );
       if (mounted.current) close();
     } catch (cause) {
       setError(
@@ -261,6 +303,17 @@ function Settings({
           />
           {t(language, "notifications")}
         </label>
+        <label htmlFor="risk-patterns">{t(language, "riskPatterns")}</label>
+        <textarea
+          id="risk-patterns"
+          aria-describedby="risk-patterns-hint"
+          value={preferences.riskPatterns.join("\n")}
+          maxLength={2079}
+          onChange={(e) =>
+            change("riskPatterns", e.target.value.split(/\r?\n/))
+          }
+        />
+        <small id="risk-patterns-hint">{t(language, "riskPatternsHint")}</small>
         <label>
           {t(language, "retention")}
           <input

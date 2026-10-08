@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import * as bridge from "./bridge";
 import { t, action } from "./i18n";
-import { priority, type View } from "./types";
+import { priority, type Preferences, type View } from "./types";
 vi.mock("./bridge", async () => {
   const actual = await vi.importActual<typeof import("./bridge")>("./bridge");
   return {
@@ -134,6 +134,124 @@ describe("session window", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(screen.getByText("Editing …/project/test.ts")).toBeVisible();
+  });
+  it("normalizes additional risk patterns on save and tolerates older preferences", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    delete (data.preferences as Partial<Preferences>).riskPatterns;
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => ({
+        ...data,
+        revision: data.revision + 1,
+        preferences,
+      }),
+    );
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = screen.getByRole("textbox", {
+      name: t("pt-BR", "riskPatterns"),
+    });
+    expect(patterns).toHaveValue("");
+    expect(screen.getByText(t("pt-BR", "riskPatternsHint"))).toHaveTextContent(
+      "continuam ativos",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(t("pt-BR", "theme")),
+      "dark",
+    );
+    fireEvent.change(patterns, {
+      target: { value: "  suspicious  \n\nPowerShell\n" },
+    });
+    await user.click(screen.getByRole("button", { name: t("pt-BR", "save") }));
+
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: "dark",
+        riskPatterns: ["suspicious", "PowerShell"],
+      }),
+    );
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe("dark"),
+    );
+  });
+  it("allows 2,048 pattern bytes without counting line separators", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => ({
+        ...data,
+        revision: data.revision + 1,
+        preferences,
+      }),
+    );
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = Array.from(
+      { length: 16 },
+      (_, index) => `${String(index).padStart(2, "0")}${"é".repeat(63)}`,
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: t("pt-BR", "riskPatterns") }),
+      { target: { value: patterns.join("\n") } },
+    );
+    await user.click(screen.getByRole("button", { name: t("pt-BR", "save") }));
+
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({ riskPatterns: patterns }),
+    );
+  });
+  it("reports each invalid risk-pattern limit without discarding the settings draft", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = screen.getByRole("textbox", {
+      name: t("pt-BR", "riskPatterns"),
+    });
+    const invalidPatterns = [
+      {
+        value: "PowerShell\npowershell",
+        error: "riskPatternsDuplicate",
+      },
+      { value: "bad\u200Epattern", error: "riskPatternsControl" },
+      {
+        value: "é".repeat(65),
+        error: "riskPatternsEntryTooLong",
+      },
+      {
+        value: Array.from(
+          { length: 33 },
+          (_, index) => `pattern-${index}`,
+        ).join("\n"),
+        error: "riskPatternsTooMany",
+      },
+      {
+        value: Array.from(
+          { length: 17 },
+          (_, index) => `${String(index).padStart(2, "0")}${"é".repeat(63)}`,
+        ).join("\n"),
+        error: "riskPatternsTotalTooLong",
+      },
+    ] as const;
+
+    await user.selectOptions(
+      screen.getByLabelText(t("pt-BR", "theme")),
+      "dark",
+    );
+    for (const invalid of invalidPatterns) {
+      fireEvent.change(patterns, { target: { value: invalid.value } });
+      await user.click(
+        screen.getByRole("button", { name: t("pt-BR", "save") }),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        t("pt-BR", invalid.error),
+      );
+      expect(screen.getByRole("dialog")).toBeVisible();
+      expect(screen.getByLabelText(t("pt-BR", "theme"))).toHaveValue("dark");
+      expect(patterns).toHaveValue(invalid.value);
+    }
+    expect(bridge.savePreferences).not.toHaveBeenCalled();
+    expect(screen.getByText("public-project")).toBeVisible();
   });
   it("does not call clear until explicit confirmation and retains failure details", async () => {
     const user = userEvent.setup();

@@ -36,6 +36,7 @@ export interface Preferences {
   theme: "light" | "dark" | "auto";
   shortcut: string;
   notifications: boolean;
+  riskPatterns: string[];
   retentionDays: number;
   completedMinutes: number;
   permissionSeconds?: number;
