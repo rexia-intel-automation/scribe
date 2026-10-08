@@ -171,14 +171,14 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     }
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
-fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
-    let config = directories::BaseDirs::new()
-        .ok_or("No configuration directory")?
-        .config_dir()
-        .join("com.rexia.scribe");
+fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
+    let profile =
+        scribe_hook_protocol::trusted_profile_dirs().ok_or("No OS account profile directory")?;
+    let connection_path = profile.config.join("connection.json");
+    #[cfg(debug_assertions)]
     let connection_path = std::env::var_os("SCRIBE_CONNECTION_FILE")
         .map(PathBuf::from)
-        .unwrap_or(config.join("connection.json"));
+        .unwrap_or(connection_path);
     if !connection_path.is_absolute() {
         return Err("Configuration path must be absolute".into());
     }
@@ -230,9 +230,11 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
     if error.is_none() && write_private(&connection_path, &connection).is_err() {
         error = Some("configUnavailable".into());
     }
+    let data_path = profile.data.join("history");
+    #[cfg(debug_assertions)]
     let data_path = std::env::var_os("SCRIBE_DATA_DIR")
         .map(PathBuf::from)
-        .unwrap_or(app.path().app_data_dir()?.join("history"));
+        .unwrap_or(data_path);
     if !data_path.is_absolute() {
         return Err("Data path must be absolute".into());
     }
@@ -955,7 +957,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             let _ = notify_rust::set_application("com.rexia.scribe");
-            let data = init(app.handle())?;
+            let data = init()?;
             let p = data
                 .preferences
                 .lock()

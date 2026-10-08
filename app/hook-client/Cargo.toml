@@ -8,7 +8,6 @@ description = "Local native hook transport for Scribe"
 [dependencies]
 scribe-hook-protocol = { path = "../hook-protocol" }
 rand = "0.10"
-directories = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rmcp = { version = "=3.5.0", default-features = false, features = ["server", "transport-io"] }
@@ -18,6 +17,9 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 strip = true

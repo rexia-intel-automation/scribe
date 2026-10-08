@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { access, mkdtemp, mkdir, readdir, realpath, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, realpath, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,6 @@ const configDir = path.join(canonicalRoot, 'claude-config');
 const profileDir = path.join(canonicalRoot, 'profile');
 const appDataDir = path.join(canonicalRoot, 'appdata');
 const localAppDataDir = path.join(canonicalRoot, 'localappdata');
-const missingConnection = path.join(canonicalRoot, 'missing-connection.json');
 
 function cleanEnvironment() {
   const env = { ...process.env };
@@ -91,7 +90,6 @@ try {
   assert.ok(isInside(canonicalRoot, realProfileDir), 'profile directory escaped the temporary root');
   assert.equal((await stat(configDir)).isDirectory(), true);
   assert.deepEqual(await readdir(configDir), [], 'temporary Claude config directory is not empty');
-  assert.equal(await access(missingConnection).then(() => true, () => false), false);
   assert.equal((await stat(helperPath)).isFile(), true, 'release helper is missing; build it before running this smoke');
   const realHelperPath = await realpath(helperPath);
   assert.ok(isInside(awaitRealRepoRoot, realHelperPath), 'release helper resolves outside the checked-out repository');
@@ -113,9 +111,11 @@ try {
   assert.ok(versionOutput === expectedCliVersion || versionOutput === `${expectedCliVersion} (Claude Code)`,
     `expected Claude Code ${expectedCliVersion}`);
 
+  // Discovery never loads the Scribe connection or calls a tool. Release ignores
+  // profile overrides; isolation here applies to the Claude CLI's configuration.
   runCli('isolated MCP registration', [
-    'mcp', 'add', serverName, '--transport', 'stdio', '--scope', 'user', '--env',
-    `SCRIBE_CONNECTION_FILE=${missingConnection}`, '--', helperPath, '--mcp',
+    'mcp', 'add', serverName, '--transport', 'stdio', '--scope', 'user',
+    '--', helperPath, '--mcp',
   ], env);
 
   const listOutput = runCli('isolated MCP discovery', ['mcp', 'list'], env)

@@ -1,6 +1,5 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use directories::BaseDirs;
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
@@ -41,15 +40,16 @@ struct Connection {
 }
 
 fn config_path() -> Option<PathBuf> {
-    // This non-secret path override isolates integration tests and portable installs.
+    // Overrides are exclusive to the debug fixture, never the distributed helper.
+    #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("SCRIBE_CONNECTION_FILE") {
         let path = PathBuf::from(path);
         return path.is_absolute().then_some(path);
     }
     Some(
-        BaseDirs::new()?
-            .config_dir()
-            .join("com.rexia.scribe/connection.json"),
+        scribe_hook_protocol::trusted_profile_dirs()?
+            .config
+            .join("connection.json"),
     )
 }
 
@@ -465,6 +465,45 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_configuration_ignores_project_environment() {
+        const EXPECTED: &str = "SCRIBE_PUBLIC_EXPECTED_CONFIG_PATH";
+        if let Some(expected) = std::env::var_os(EXPECTED) {
+            assert_eq!(config_path(), Some(PathBuf::from(expected)));
+            return;
+        }
+        let expected = config_path().expect("The OS account must have a profile");
+        let temp = tempfile::TempDir::new().unwrap();
+        let untrusted = temp.path();
+        fs::create_dir_all(untrusted.join("AppData/Roaming")).unwrap();
+        fs::create_dir_all(untrusted.join("AppData/Local")).unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap());
+        child.args([
+            "--exact",
+            "tests::release_configuration_ignores_project_environment",
+            "--nocapture",
+        ]);
+        child.env(EXPECTED, expected);
+        child.env("SCRIBE_CONNECTION_FILE", untrusted.join("connection.json"));
+        for name in [
+            "HOME",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+        ] {
+            child.env(name, untrusted);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            child.creation_flags(0x08000000);
+        }
+        assert!(child.status().unwrap().success());
+    }
 
     fn ask_input() -> Value {
         serde_json::json!({

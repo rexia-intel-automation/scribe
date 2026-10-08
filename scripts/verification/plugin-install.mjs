@@ -19,7 +19,7 @@ await mkdir(workspace, { recursive: true });
 await mkdir(clientDir, { recursive: true });
 const exeName = process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook';
 const executable = join(clientDir, exeName);
-await copyFile(resolve('app/hook-client/target/release', exeName), executable);
+await copyFile(resolve('app/hook-client/target/debug', exeName), executable);
 const token = randomBytes(32).toString('base64url');
 let hookSession;
 const events = [], calls = [], cli = [];

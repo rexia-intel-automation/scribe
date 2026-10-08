@@ -15,10 +15,10 @@ const configPath = installed
   : join(root, "config/connection.json");
 const executable = installed
   ? join(process.env.LOCALAPPDATA, "Scribe/scribe-hook.exe")
-  : resolve("hook-client/target/release/scribe-hook.exe");
+  : resolve("hook-client/target/debug/scribe-hook.exe");
 const app = installed
   ? join(process.env.LOCALAPPDATA, "Scribe/scribe.exe")
-  : resolve("src-tauri/target/release/scribe.exe");
+  : resolve("src-tauri/target/debug/scribe.exe");
 const connection = JSON.parse(await readFile(configPath, "utf8"));
 function proof(...fields) {
   const hmac = createHmac("sha256", connection.hook_key).update(

@@ -29,12 +29,20 @@ sem declaração duplicada em plugin.json. O comando /scribe fica em commands/;
 a skill de contexto tem name scribe-context e user-invocable false, evitando
 colisão com o comando. `${CLAUDE_SESSION_ID}` correlaciona ferramentas.
 
-O helper lê connection.json em BaseDirs.config_dir()/com.rexia.scribe.
-SCRIBE_CONNECTION_FILE permite um caminho absoluto para isolar testes e
-instalações portáteis. A configuração exige uma chave `hook_key` local
-independente do token interno. O helper stdio deve manter o transporte autenticado
-e validar o servidor antes de encaminhar conteúdo; essa integração requer
-validação própria e não é coberta pela evidência histórica abaixo.
+O helper lê `connection.json` do perfil confiável da conta do sistema
+operacional. Em Windows, usa `FOLDERID_RoamingAppData/com.rexia.scribe`, obtido
+com o token explícito do processo para preservar redirecionamentos legítimos do
+Known Folder. Em macOS, deriva o home do UID e usa
+`Library/Application Support/com.rexia.scribe`; em Linux, usa o home da conta
+do UID em `.config/com.rexia.scribe` e `.local/share/com.rexia.scribe`.
+Produção não usa `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME`
+ou `XDG_DATA_HOME` para escolher esse perfil. `SCRIBE_CONNECTION_FILE` e
+`SCRIBE_DATA_DIR` são overrides absolutos disponíveis somente em builds de
+debug para fixtures isoladas; builds de produção os ignoram. A configuração
+exige uma chave `hook_key` local independente do token interno. O helper stdio
+deve manter o transporte autenticado e validar o servidor antes de encaminhar
+conteúdo; essa integração requer validação própria e não é coberta pela
+evidência histórica abaixo.
 
 ## Evidência e divergência de teste
 

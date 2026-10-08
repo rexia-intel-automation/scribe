@@ -10,7 +10,7 @@ import { performance } from 'node:perf_hooks';
 import { EVENTS } from './lib.mjs';
 
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror');
-const binary = resolve('app/hook-client/target/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+const binary = resolve('app/hook-client/target/debug', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
 const token = 'PUBLIC_SYNTHETIC_TOKEN_WITH_32_CHARACTERS';
 const hookKey = 'PUBLIC_INDEPENDENT_HOOK_KEY_32_CHARACTERS';
 function sign(key, fields) {
