@@ -74,19 +74,19 @@ jobs:
       - run: cargo clippy --manifest-path app/hook-client/Cargo.toml --locked -- -D warnings
       - run: cargo test --manifest-path app/hook-client/Cargo.toml --locked
       - name: Check release trust root against project environment
-        run: cargo test --manifest-path app/hook-client/Cargo.toml --release --locked
-      - name: Test hook protocol resolver and debug configuration overrides
+        run: cargo test --manifest-path app/hook-client/Cargo.toml --release --no-default-features --locked
+      - name: Test hook protocol account resolver
         run: |
           cargo fmt --manifest-path app/hook-protocol/Cargo.toml --check
           cargo clippy --manifest-path app/hook-protocol/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path app/hook-protocol/Cargo.toml --locked
-      - name: Build debug hook client for isolated configuration fixtures
-        run: cargo build --manifest-path app/hook-client/Cargo.toml --locked
-      - run: cargo build --release --manifest-path app/hook-client/Cargo.toml --locked
+      - name: Build release fixture with explicit configuration overrides
+        run: cargo build --manifest-path app/hook-client/Cargo.toml --release --features test-fixture --target-dir app/hook-client/target/fixture --locked
+      - run: cargo build --release --no-default-features --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
-      - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --features desktop,tauri/custom-protocol --locked --bin scribe
+      - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --no-default-features --features desktop,tauri/custom-protocol --locked --bin scribe
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'
         run: |

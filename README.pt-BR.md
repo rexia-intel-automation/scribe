@@ -25,6 +25,13 @@ Este repositório é o marketplace `rexia-scribe`; o plugin de configuração es
 em `plugins/scribe`. O instalador inclui o cliente Rust de hooks, sem exigir uma
 instalação separada do Node para o Scribe.
 
+Em produção, app e helper usam o perfil da conta do sistema operacional e
+ignoram overrides de ambiente. No Linux, a conexão fica em
+`~/.config/com.rexia.scribe` e o histórico em `~/.local/share/com.rexia.scribe`,
+com o home obtido pelo cadastro da conta. Quem usava `XDG_CONFIG_HOME` ou
+`XDG_DATA_HOME` personalizados verá um perfil novo nesses caminhos; os dados
+antigos não são importados nem apagados. Preserve-os antes de atualizar.
+
 ## Teste do candidato no Windows
 
 O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o

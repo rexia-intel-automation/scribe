@@ -175,7 +175,7 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
     let profile =
         scribe_hook_protocol::trusted_profile_dirs().ok_or("No OS account profile directory")?;
     let connection_path = profile.config.join("connection.json");
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "test-fixture")]
     let connection_path = std::env::var_os("SCRIBE_CONNECTION_FILE")
         .map(PathBuf::from)
         .unwrap_or(connection_path);
@@ -231,7 +231,7 @@ fn init() -> Result<Desktop, Box<dyn std::error::Error>> {
         error = Some("configUnavailable".into());
     }
     let data_path = profile.data.join("history");
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "test-fixture")]
     let data_path = std::env::var_os("SCRIBE_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or(data_path);

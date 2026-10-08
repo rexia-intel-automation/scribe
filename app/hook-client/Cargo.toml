@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT"
 description = "Local native hook transport for Scribe"
 
+[features]
+test-fixture = []
+
 [dependencies]
 scribe-hook-protocol = { path = "../hook-protocol" }
 rand = "0.10"

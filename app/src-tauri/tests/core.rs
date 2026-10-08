@@ -1684,7 +1684,7 @@ async fn stream_starts_with_snapshot_and_emits_sanitized_delta() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn debug_fixture_helper_reaches_the_production_server_with_silent_output() {
+async fn release_fixture_helper_reaches_the_production_server_with_silent_output() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), 0).unwrap();
     let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
@@ -1697,7 +1697,7 @@ async fn debug_fixture_helper_reaches_the_production_server_with_silent_output()
     )
     .unwrap();
     let executable = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../hook-client/target/debug")
+        .join("../hook-client/target/fixture/release")
         .join(if cfg!(windows) {
             "scribe-hook.exe"
         } else {
@@ -1705,7 +1705,7 @@ async fn debug_fixture_helper_reaches_the_production_server_with_silent_output()
         });
     assert!(
         executable.is_file(),
-        "Build the debug hook client before isolated core integration tests"
+        "Build the release fixture hook client with the test-fixture feature before isolated core integration tests"
     );
     let start = Instant::now();
     let output = tokio::task::spawn_blocking(move || {

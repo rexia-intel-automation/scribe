@@ -29,7 +29,11 @@ No Unix, obtêm o home do cadastro do UID, exigindo UID real e efetivo iguais.
 `SCRIBE_CONNECTION_FILE`, `SCRIBE_DATA_DIR`, `HOME`, `USERPROFILE`, `APPDATA`,
 `LOCALAPPDATA` e `XDG_CONFIG_HOME`/`XDG_DATA_HOME` não escolhem a raiz de produção.
 Assim, um ambiente herdado de configuração de projeto não substitui o arquivo
-de confiança. Overrides Scribe existem somente em debug, para fixtures isoladas.
+de confiança. Overrides Scribe existem somente com a feature explícita
+`test-fixture`; builds debug comuns não a habilitam automaticamente. A feature é
+usada em artefatos release separados sob `target/fixture`.
+Builds release de produção não incluem essa feature e ignoram os overrides;
+artefatos com `test-fixture` não devem ser distribuídos.
 Configurações Linux com XDG personalizado e instalações portáteis com overrides
 precisam usar os diretórios fixos documentados; não há fallback para esses valores.
 
@@ -164,9 +168,10 @@ Nenhuma proteção do CI ou alerta é contornada para publicar.
 ## Como verificar e reportar
 
 Execute os testes com lockfiles, como no CI, e os testes Node de processo contra
-o helper debug para fixtures de conexão isoladas; o CI também testa o resolver
-do helper release contra ambiente de projeto e usa o release para descoberta
-real no Claude Code. No espelho D: use SCRIBE_TEST_FIXTURES_ROOT apontando aos
+o helper release de fixture, compilado com `test-fixture` em
+`app/hook-client/target/fixture`; não use esse artefato como produção. O resolver
+do helper release de produção deve ser verificado sem a feature, e a descoberta
+real no Claude Code usa o release de produção. No espelho D: use SCRIBE_TEST_FIXTURES_ROOT apontando aos
 46 fixtures versionados da fonte OneDrive; fixtures locais extras não pertencem
 à suíte pública. Vereditos são ligados ao SHA. A release depende da revisão
 independente, CI das três plataformas, cobertura e ensaio da instalação real.

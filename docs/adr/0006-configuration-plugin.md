@@ -37,8 +37,11 @@ Known Folder. Em macOS, deriva o home do UID e usa
 do UID em `.config/com.rexia.scribe` e `.local/share/com.rexia.scribe`.
 Produção não usa `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME`
 ou `XDG_DATA_HOME` para escolher esse perfil. `SCRIBE_CONNECTION_FILE` e
-`SCRIBE_DATA_DIR` são overrides absolutos disponíveis somente em builds de
-debug para fixtures isoladas; builds de produção os ignoram. A configuração
+`SCRIBE_DATA_DIR` são overrides absolutos disponíveis somente quando a feature
+explícita `test-fixture` é habilitada; builds debug comuns não a habilitam
+automaticamente. As fixtures usam builds release em
+`target/fixture`; builds release de produção, sem essa feature, ignoram os
+overrides. O artefato com `test-fixture` não é o executável de produção. A configuração
 exige uma chave `hook_key` local independente do token interno. O helper stdio
 deve manter o transporte autenticado e validar o servidor antes de encaminhar
 conteúdo; essa integração requer validação própria e não é coberta pela

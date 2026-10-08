@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the runtime mirror');
-const binary = resolve('app/hook-client/target/debug', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+const binary = resolve('app/hook-client/target/fixture/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
 const token = 'PUBLIC_SYNTHETIC_MCP_TOKEN_32_CHARACTERS';
 const key = 'PUBLIC_INDEPENDENT_MCP_KEY_32_CHARACTERS';
 const fresh = 'abcdef0123456789abcdef0123456789';

@@ -40,8 +40,8 @@ struct Connection {
 }
 
 fn config_path() -> Option<PathBuf> {
-    // Overrides are exclusive to the debug fixture, never the distributed helper.
-    #[cfg(debug_assertions)]
+    // Overrides require an explicit fixture build, never the distributed helper.
+    #[cfg(feature = "test-fixture")]
     if let Some(path) = std::env::var_os("SCRIBE_CONNECTION_FILE") {
         let path = PathBuf::from(path);
         return path.is_absolute().then_some(path);
@@ -466,7 +466,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(feature = "test-fixture"))]
     #[test]
     fn release_configuration_ignores_project_environment() {
         const EXPECTED: &str = "SCRIBE_PUBLIC_EXPECTED_CONFIG_PATH";
