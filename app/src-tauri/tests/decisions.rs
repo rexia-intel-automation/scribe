@@ -229,6 +229,14 @@ fn every_documented_risk_pattern_needs_confirmation() {
         "kubectl delete public",
         "terraform apply",
         "npm publish",
+        "Remove-Item public -Recurse",
+        "Format-Volume -DriveLetter X",
+        "Stop-Computer",
+        "Restart-Computer",
+        "Set-ExecutionPolicy RemoteSigned",
+        "Start-Process public.exe -Verb RunAs",
+        "iex public",
+        "Invoke-Expression public",
     ] {
         let wait = core.permission(&permission("one", command), 120).unwrap();
         assert!(

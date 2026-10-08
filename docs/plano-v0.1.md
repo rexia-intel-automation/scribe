@@ -10,6 +10,11 @@ no Claude Code. A v0.2 e a v0.3 ficam fora deste ciclo.
 - Direção de produto: interface amigável para aproveitar PowerShell; expansão
   futura para OpenCode e Codex. Integração opcional por Claude Mods em avaliação
   após a v0.1; ver [pesquisa de Mods](claude-mods.md).
+- Em 2026-10-08, o usuário definiu uma direção para a v0.3: tornar o Scribe a
+  interface interativa da cooperação entre agentes de diferentes harness,
+  tomando o fórum Codex/Claude deste projeto como protótipo do fluxo.
+  Conversa compartilhada, tarefas, revisão cruzada, travas de recursos e decisões
+  humanas são hipóteses de produto; não são capacidades já entregues da v0.1.
 - Referências: scribe-conceito.html e ZIPs/vídeos locais. Gota em argila.
 - Em 2026-10-07, o humano autorizou instalar a compilação local e adiou a parte
   visual, priorizando o lançamento. Instalação e desenvolvimento das decisões
@@ -109,6 +114,14 @@ Testes locais e cobertura de 94,41% estão em docs/fase-4.md. Isto não aprova
 a Fase 4 completa: notificações, aceite humano, revisão independente e demais
 catracas de entrega continuam registradas como pendentes.
 
-Diagnóstico externo em 2026-10-07 encontrou divergência MSIX/AppData: a instalação
-real vista pelo Claude Code fora do Codex ainda precisa ser reparada e validada.
-Os testes anteriores não comprovam essa instalação externa; ver docs/fase-4.md.
+Diagnóstico externo em 2026-10-07 encontrou divergência MSIX/AppData. Claude
+reparou e verificou a instalação externa. Em 2026-10-08, o instalador NSIS
+por usuário também passou um ensaio de atualização: preservou histórico e token,
+migrou hook_key e recebeu hooks HMAC reais. Primeiro uso com perfil limpo e
+desinstalação ainda exigem ensaio. A v0.1 continua em construção, sem release.
+
+A PR #5 foi integrada após revisão cruzada e CI verde nas três plataformas.
+A PR #6 continua draft: o delta de segurança, o empacotamento e títulos de
+sessão foram revisados, mas isso não aprova a fase inteira. AskUserQuestion,
+ExitPlanMode, notificações, configuração inicial e gates de entrega permanecem
+no caminho crítico; seus checks e relatórios ficam registrados nos próximos lotes.
