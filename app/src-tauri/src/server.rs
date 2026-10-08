@@ -68,6 +68,10 @@ impl LocalServer {
             return Err("Invalid local token".into());
         }
         let socket = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None)?;
+        // Match Tokio's Unix listener behavior so TIME_WAIT does not prevent restart.
+        // SO_REUSEPORT remains disabled; an active listener still owns the port.
+        #[cfg(unix)]
+        socket.set_reuse_address(true)?;
         #[cfg(windows)]
         {
             use std::os::windows::io::AsRawSocket;

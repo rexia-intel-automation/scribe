@@ -1172,20 +1172,18 @@ async fn http_latency_port_collision_drop_and_incomplete_bodies_are_bounded() {
     assert!(String::from_utf8_lossy(&buffer[..read]).starts_with("HTTP/1.1 408"));
     drop(socket);
     drop(server);
-    tokio::time::timeout(Duration::from_secs(1), async {
+    let restarted = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            if let Ok(listener) = tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
-                drop(listener);
-                break;
+            if let Ok(restarted) =
+                LocalServer::start(core.clone(), port, TOKEN.into(), HOOK_KEY.into()).await
+            {
+                break restarted;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
     .unwrap();
-    let restarted = LocalServer::start(core, port, TOKEN.into(), HOOK_KEY.into())
-        .await
-        .unwrap();
     restarted.stop().await.unwrap();
 }
 
