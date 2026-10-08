@@ -8,7 +8,7 @@ Local desktop companion for Claude Code sessions and human decisions.
 current MCP stdio candidate is still under validation; it has not been published
 or accepted as a release. Interactive native questions and plan approval still
 need a fresh Claude Code session test. See
-[decision verification](docs/fase-4.md) for evidence and remaining limits.
+[decision verification](https://github.com/rexia-intel-automation/scribe/blob/main/docs/fase-4.md) for evidence and remaining limits.
 
 The candidate plugin is `0.1.1` and requires helper capability
 `attested-stdio-v1`. The published beta.1 plugin uses HTTP/Bearer and is
@@ -141,7 +141,7 @@ that Scribe is unavailable. Reopen Scribe and retry in that same Claude session;
 the call should recover without restarting Claude Code. The `claude -p`
 non-interactive mode is not the test path for interactive AskUserQuestion
 prompts. Follow the
-[IT test guide](docs/teste-equipe-ti.md), also included as the downloaded
+[IT test guide](https://github.com/rexia-intel-automation/scribe/blob/main/docs/teste-equipe-ti.md), also included as the downloaded
 `teste-equipe-ti.md`, and record failures without including
 tokens, secrets, or the contents of either Scribe data folder.
 
@@ -312,7 +312,7 @@ the plugin.
   setup script does not change Git settings.
 
 The v0.1 beta remains a focused session companion. The v0.3 direction for
-cross-agent collaboration is recorded in the [product plan](docs/plano-v0.1.md)
+cross-agent collaboration is recorded in the [product plan](https://github.com/rexia-intel-automation/scribe/blob/main/docs/plano-v0.1.md)
 and remains future work, not a v0.1 capability.
 
 MIT © 2026 RexIA Tecnologia e Automação Digital LTDA.

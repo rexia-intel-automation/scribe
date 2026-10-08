@@ -63,7 +63,15 @@ automaticamente. Correções em uma release publicada exigem uma nova versão.
 ## Limites
 
 Os pacotes continuam sem assinatura/notarização; isso está nas notas geradas.
-O gate automatizado não verifica instalação limpa nem gestos humanos e não
-atribui notas de revisão adversarial. Nesta PR, o caminho de publicação ainda
-não foi exercitado com uma tag nova. Não crie uma release de teste só para
-atribuir esse aceite; use o dispatch sem publicação para validar os builds.
+O workflow de release instala NSIS, MSI, DMG, DEB e AppImage em runners limpos
+no `main` ou numa tag e verifica o app aberto, a autenticação do helper, o hook
+e uma chamada MCP. O job não roda em PRs. Antes de criar uma tag, execute
+`workflow_dispatch` no `main` e confira o sucesso dos cinco jobs de instalação;
+a publicação também depende desses cinco resultados verdes na execução da tag.
+
+Esses testes não comprovam gestos humanos, o fluxo completo de sessões reais do
+Claude Code, políticas corporativas, a quarentena do download no macOS nem a
+desinstalação. Também não atribuem notas de revisão adversarial. A experiência
+manual e os aceites das fases precisam de evidência própria. Um dispatch sem
+publicação valida os pacotes sem criar uma release de teste; só um resultado
+verde da execução correspondente comprova o teste, não a existência do job.

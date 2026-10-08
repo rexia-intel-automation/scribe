@@ -8,7 +8,7 @@ Aplicativo desktop local para acompanhar sessões do Claude Code e decisões hum
 candidato atual com MCP stdio ainda está em validação; não foi publicado nem
 aceito como release. Perguntas nativas e aprovação de planos ainda precisam de
 teste em uma sessão interativa nova do Claude Code. Veja
-[a verificação das decisões](docs/fase-4.md) para evidências e limites pendentes.
+[a verificação das decisões](https://github.com/rexia-intel-automation/scribe/blob/main/docs/fase-4.md) para evidências e limites pendentes.
 
 O plugin candidato é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper.
 O plugin publicado na beta.1 usa HTTP/Bearer e é incompatível. O app/helper
@@ -142,7 +142,7 @@ precisa do app deve informar que o Scribe está indisponível. Reabra o Scribe e
 tente novamente na mesma sessão do Claude; a chamada deve se recuperar sem
 reiniciar o Claude Code. O modo não interativo `claude -p` não é o caminho de
 teste para perguntas AskUserQuestion interativas. Siga o
-[roteiro de teste da TI](docs/teste-equipe-ti.md), também disponível no arquivo
+[roteiro de teste da TI](https://github.com/rexia-intel-automation/scribe/blob/main/docs/teste-equipe-ti.md), também disponível no arquivo
 baixado `teste-equipe-ti.md`, e registre falhas sem incluir
 tokens, segredos ou o conteúdo de qualquer pasta de dados do Scribe.
 
@@ -318,7 +318,7 @@ atualizar o caminho do helper salvo pelo plugin.
   longos no Git da organização. O script não altera configurações do Git.
 
 A beta v0.1 mantém o foco em acompanhar sessões. A direção da v0.3 para
-cooperação entre agentes está registrada no [plano do produto](docs/plano-v0.1.md)
+cooperação entre agentes está registrada no [plano do produto](https://github.com/rexia-intel-automation/scribe/blob/main/docs/plano-v0.1.md)
 e continua sendo trabalho futuro, não uma capacidade da v0.1.
 
 MIT © 2026 RexIA Tecnologia e Automação Digital LTDA.
