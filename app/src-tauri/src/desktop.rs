@@ -472,12 +472,28 @@ fn notify_requests(
         current.at,
     ) {
         let Some(listener) = notifications.listener() else {
+            notifications.defer(&decision.id);
             continue;
         };
         let app = app.clone();
         let id = decision.id.clone();
-        let body =
-            crate::notifications::body(&decision.project, current.preferences.language == "pt-BR");
+        let label = current
+            .sessions
+            .iter()
+            .find(|s| s.id == decision.session_id)
+            .and_then(|s| s.title.as_deref())
+            .filter(|title| !title.is_empty())
+            .unwrap_or(&decision.project);
+        let body = crate::notifications::body(
+            label,
+            &text(&current.preferences.language, "notificationBody"),
+        );
+        // XDG daemons may render notification bodies as markup.
+        let body = if cfg!(all(unix, not(target_os = "macos"))) {
+            crate::notifications::escape_markup(&body)
+        } else {
+            body
+        };
         let _ = std::thread::Builder::new()
             .name("scribe-notification".into())
             .spawn(move || {

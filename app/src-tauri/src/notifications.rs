@@ -46,24 +46,30 @@ impl Notifications {
     // An OS backend may retain its callback indefinitely. The hard cap keeps
     // missing dismissal events from creating an unbounded number of threads.
     pub(crate) fn listener(&self) -> Option<Listener> {
-        self.listeners
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                (n < MAX_LISTENERS).then_some(n + 1)
-            })
-            .ok()
-            .map(|_| Listener(self.listeners.clone()))
+        if self.listeners.fetch_add(1, Ordering::Relaxed) >= MAX_LISTENERS {
+            self.listeners.fetch_sub(1, Ordering::Relaxed);
+            None
+        } else {
+            Some(Listener(self.listeners.clone()))
+        }
+    }
+
+    pub(crate) fn defer(&mut self, id: &str) {
+        self.seen.remove(id);
     }
 }
 
-pub(crate) fn body(project: &str, portuguese: bool) -> String {
+pub(crate) fn body(project: &str, template: &str) -> String {
     // The project was sanitized by the core; keep OS previews small and omit
     // paths, commands, question/plan text and answers.
     let project: String = project.chars().take(80).collect();
-    if portuguese {
-        format!("{project} precisa de uma resposta. Clique para abrir o Scribe.")
-    } else {
-        format!("{project} needs a response. Click to open Scribe.")
-    }
+    template.replace("{project}", &project)
+}
+
+pub(crate) fn escape_markup(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -121,9 +127,35 @@ mod tests {
         drop(listeners);
         assert!(notifications.listener().is_some());
         let decision = request("one");
-        let preview = body(&decision.project, true);
+        let preview = body(&decision.project, "{project} precisa de uma resposta.");
         assert!(preview.contains("demo"));
         assert!(!preview.contains(&decision.target));
-        assert!(body("demo", false).contains("needs a response"));
+        assert!(body("demo", "{project} needs a response").contains("needs a response"));
+        assert_eq!(
+            escape_markup("<a href='x'>A&B</a>"),
+            "&lt;a href='x'&gt;A&amp;B&lt;/a&gt;"
+        );
+    }
+
+    #[test]
+    fn capacity_deferred_request_retries_while_live_but_not_after_pause() {
+        let mut notifications = Notifications::default();
+        let requests = [request("one")];
+        assert_eq!(
+            notifications.new_requests(&requests, true, false, 2).len(),
+            1
+        );
+        notifications.defer("one");
+        assert_eq!(
+            notifications.new_requests(&requests, true, false, 3).len(),
+            1
+        );
+        notifications.defer("one");
+        assert!(notifications
+            .new_requests(&requests, false, false, 4)
+            .is_empty());
+        assert!(notifications
+            .new_requests(&requests, true, false, 5)
+            .is_empty());
     }
 }

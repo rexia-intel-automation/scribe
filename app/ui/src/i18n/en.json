@@ -82,6 +82,7 @@
   "trayResume": "Resume notifications",
   "trayQuit": "Quit",
   "permissionTerminal": "Respond in your Claude Code terminal.",
+  "notificationBody": "{project} needs a response. Click to open Scribe.",
   "initialAction": "Session started",
   "thinkingAction": "Thinking",
   "turnAction": "Turn finished",
