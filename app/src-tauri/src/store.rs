@@ -24,14 +24,8 @@ impl Store {
         private_fs::file(path)?;
         let db = Connection::open(path)?;
         db.busy_timeout(Duration::from_millis(100))?;
-        let journal: String =
-            db.query_row("PRAGMA journal_mode = TRUNCATE", [], |row| row.get(0))?;
-        if journal != "truncate" {
-            return Err("Private storage requires a truncating rollback journal".into());
-        }
         db.execute_batch(
-            "PRAGMA synchronous = FULL;
-            PRAGMA secure_delete = ON;
+            "PRAGMA secure_delete = ON;
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY, last_event_at INTEGER NOT NULL, data TEXT NOT NULL
             ); CREATE INDEX IF NOT EXISTS sessions_age ON sessions(last_event_at);
@@ -182,48 +176,5 @@ impl Store {
     pub(crate) fn set_policy(&self, key: &str, value: u16) -> Result<()> {
         self.0.execute(SET_POLICY, params![key, value])?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_store_uses_full_sync_and_truncates_private_journal_after_commit() {
-        let directory = tempfile::TempDir::new().unwrap();
-        let path = directory.path().join("state.db");
-        let store = Store::open(&path).unwrap();
-        let mode: String = store
-            .0
-            .pragma_query_value(None, "journal_mode", |row| row.get(0))
-            .unwrap();
-        assert_eq!(mode, "truncate");
-        for (pragma, expected) in [("synchronous", 2), ("secure_delete", 1)] {
-            let value: i32 = store
-                .0
-                .pragma_query_value(None, pragma, |row| row.get(0))
-                .unwrap();
-            assert_eq!(value, expected, "{pragma}");
-        }
-        store.set_policy("retention_days", 14).unwrap();
-        let journal = path.with_file_name("state.db-journal");
-        assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
-        drop(store);
-        let copied = directory.path().join("copied.db");
-        std::fs::copy(&path, &copied).unwrap();
-        std::fs::copy(&journal, copied.with_file_name("copied.db-journal")).unwrap();
-        let reopened = Store::open(&copied).unwrap();
-        let mode: String = reopened
-            .0
-            .pragma_query_value(None, "journal_mode", |row| row.get(0))
-            .unwrap();
-        assert_eq!(mode, "truncate");
-        let sync: i32 = reopened
-            .0
-            .pragma_query_value(None, "synchronous", |row| row.get(0))
-            .unwrap();
-        assert_eq!(sync, 2);
-        assert_eq!(reopened.policy("retention_days", 30).unwrap(), 14);
     }
 }

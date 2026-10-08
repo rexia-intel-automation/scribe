@@ -86,22 +86,3 @@ cobertura atingiu p95 de 141 ms no caminho Core/permitir. Uma execução normal
 do macOS atingiu 109 ms em Core/negar; a pior amostra teve 156 ms na escolha e
 306 ms de espera adicional depois dela. Portanto, não há prova de que todas as
 pausas sejam causadas pela gravação do banco.
-
-## Journal durável sem excluir o arquivo a cada commit
-
-O armazenamento seleciona `journal_mode=TRUNCATE` em toda abertura e exige que
-o SQLite aceite esse modo. `synchronous=FULL` e `secure_delete=ON` são explícitos.
-O upsert durável da decisão continua antes do envio da resposta. Segundo a
-[documentação do SQLite](https://www.sqlite.org/pragma.html#pragma_journal_mode),
-truncar o journal pode evitar o custo de alterar seu diretório a cada commit.
-Isso é uma hipótese de melhoria de I/O; não explica pausas de scheduling ou
-instrumentação e não comprova a solução das falhas anteriores.
-
-O journal permanece vazio depois do commit, e a regressão confere tamanho zero,
-configuração efetiva e política recuperada na reabertura. Os testes de remoção
-dos bytes do histórico, retenção e rollback continuam obrigatórios. Como no
-modo DELETE, truncar não apaga cópias de backup nem garante sobrescrever os
-blocos antigos no disco. Conexões auxiliares que escrevam diretamente no mesmo
-banco precisam usar o mesmo modo de journal; os três instrumentos de falha por
-trigger agora fazem isso, preservando seus asserts de rollback e de ausência de
-autorização quando o commit falha.

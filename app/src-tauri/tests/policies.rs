@@ -27,8 +27,7 @@ fn combined_policy_failure_rolls_back_both_settings_cleanup_and_memory() {
     hook(&core, "completed", "SessionEnd", at - 20 * 60_000);
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute_batch(
-        "PRAGMA journal_mode=TRUNCATE;
-        CREATE TRIGGER fail_second BEFORE INSERT ON settings
+        "CREATE TRIGGER fail_second BEFORE INSERT ON settings
         WHEN NEW.key='completed_minutes' BEGIN SELECT RAISE(ABORT, 'PUBLIC_FAILURE'); END;",
     )
     .unwrap();

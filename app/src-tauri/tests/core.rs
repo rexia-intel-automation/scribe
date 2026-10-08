@@ -247,7 +247,7 @@ fn failed_retention_setting_rolls_back_history_and_policy() {
     apply(&core, payload("SessionStart"), 13 * DAY);
     let before = serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("PRAGMA journal_mode=TRUNCATE; CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
+    db.execute_batch("CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
     assert!(core.set_retention_days(1, 15 * DAY).is_err());
     assert_eq!(
         serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap(),
