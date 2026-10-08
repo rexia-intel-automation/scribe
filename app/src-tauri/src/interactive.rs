@@ -72,7 +72,25 @@ pub(crate) fn questions(input: &Value) -> Result<Vec<NativeQuestion>> {
             }
         }
     }
+    // Each free answer can contain 200 four-byte Unicode scalars. This also
+    // bounds four selected 40-character labels, their commas and JSON escapes;
+    // control characters are rejected by visible(). Reserve every answer now
+    // so the card cannot offer a valid choice that exceeds the transport limit.
+    let mut updated = input.clone();
+    updated["answers"] = Value::Object(
+        questions
+            .iter()
+            .map(|q| (q.question.clone(), Value::String("\u{20000}".repeat(200))))
+            .collect(),
+    );
+    if serde_json::to_vec(&allow_response(updated))?.len() > 8192 {
+        return Err("Question answers exceed transport limit".into());
+    }
     Ok(questions)
+}
+
+fn allow_response(updated: Value) -> Value {
+    json!({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":updated}})
 }
 
 pub(crate) fn plan(input: &Value) -> Result<(&str, &str)> {
@@ -161,7 +179,7 @@ pub(crate) fn answer(kind: &str, original: &Value, input: &DecisionInput) -> Res
         }
         _ => return Err("Invalid native choice".into()),
     }
-    let response = json!({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":updated}});
+    let response = allow_response(updated);
     if serde_json::to_vec(&response)?.len() > 8192 {
         return Err("Answer exceeds transport limit".into());
     }

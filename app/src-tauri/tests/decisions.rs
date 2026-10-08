@@ -31,6 +31,226 @@ fn id(core: &Core, session: &str) -> String {
 }
 
 #[tokio::test]
+async fn custom_literal_risk_requires_the_same_deliberate_confirmation() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    core.set_risk_patterns(&["Restart-Service".into()]).unwrap();
+    start(&core, "custom-risk");
+    let wait = core
+        .permission(&permission("custom-risk", "restart-service spooler"), 120)
+        .unwrap();
+    let decision_id = id(&core, "custom-risk");
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.id == decision_id)
+            .unwrap()
+            .risk
+    );
+    assert!(core
+        .resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .is_err());
+    core.resolve_decision(&decision_id, input(json!({"action":"arm"})))
+        .unwrap();
+    assert!(core
+        .resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(1050)).await;
+    core.resolve_decision(&decision_id, input(json!({"action":"allow"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+}
+
+#[tokio::test]
+async fn invalid_patterns_preserve_previous_rules_and_clearing_never_removes_defaults() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    core.set_risk_patterns(&["echo public".into()]).unwrap();
+    assert!(core.set_risk_patterns(&[String::new()]).is_err());
+    start(&core, "kept-rule");
+    let wait = core
+        .permission(&permission("kept-rule", "ECHO PUBLIC"), 120)
+        .unwrap();
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "kept-rule")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+    core.set_risk_patterns(&[]).unwrap();
+    start(&core, "cleared-rule");
+    let wait = core
+        .permission(&permission("cleared-rule", "echo public"), 120)
+        .unwrap();
+    assert!(
+        !core
+            .snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "cleared-rule")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+    start(&core, "built-in");
+    let wait = core
+        .permission(&permission("built-in", "rm -rf ./public-tmp"), 120)
+        .unwrap();
+    assert!(
+        core.snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.session_id == "built-in")
+            .unwrap()
+            .risk
+    );
+    drop(wait);
+}
+
+#[tokio::test]
+async fn permission_updates_require_exact_choice_and_separate_confirmation() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "updates");
+    let update = json!({"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm run test"}],"behavior":"allow","destination":"projectSettings"});
+    let mode = json!({"type":"setMode","mode":"acceptEdits","destination":"session"});
+    let mut envelope: Value =
+        serde_json::from_slice(&permission("updates", "npm run test")).unwrap();
+    envelope["permission_suggestions"] = json!([update.clone(), mode]);
+    let wait = core
+        .permission(&serde_json::to_vec(&envelope).unwrap(), 120)
+        .unwrap();
+    let card = core.snapshot(now_ms()).unwrap().decisions.remove(0);
+    assert!(!card.risk);
+    assert_eq!(card.permission_updates.len(), 2);
+    assert!(core
+        .resolve_decision(&card.id, input(json!({"action":"allow","option":0})))
+        .is_err());
+    assert!(core
+        .resolve_decision(&card.id, input(json!({"action":"arm","option":2})))
+        .is_err());
+    core.resolve_decision(&card.id, input(json!({"action":"arm","option":0})))
+        .unwrap();
+    assert!(core
+        .resolve_decision(&card.id, input(json!({"action":"allow","option":0})))
+        .is_err());
+    assert!(core
+        .resolve_decision(&card.id, input(json!({"action":"deny","option":0})))
+        .is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    for value in [
+        json!({"action":"allow","option":1}),
+        json!({"action":"allow"}),
+    ] {
+        assert!(core.resolve_decision(&card.id, input(value)).is_err());
+    }
+    core.resolve_decision(&card.id, input(json!({"action":"allow","option":0})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"],
+        json!({"behavior":"allow","updatedPermissions":[update]})
+    );
+    assert!(core
+        .resolve_decision(&card.id, input(json!({"action":"allow","option":0})))
+        .is_err());
+}
+
+#[test]
+fn documented_permission_updates_are_bounded_before_display_or_echo() {
+    use scribe_hook_protocol::valid_permission_update as valid;
+    for destination in [
+        "session",
+        "localSettings",
+        "projectSettings",
+        "userSettings",
+    ] {
+        for kind in ["addRules", "replaceRules", "removeRules"] {
+            for behavior in ["allow", "deny", "ask"] {
+                assert!(valid(
+                    &json!({"type":kind,"rules":[{"toolName":"Read"}],"behavior":behavior,"destination":destination})
+                ));
+            }
+        }
+        for mode in [
+            "default",
+            "auto",
+            "acceptEdits",
+            "dontAsk",
+            "bypassPermissions",
+            "plan",
+            "manual",
+        ] {
+            assert!(valid(
+                &json!({"type":"setMode","mode":mode,"destination":destination})
+            ));
+        }
+        for kind in ["addDirectories", "removeDirectories"] {
+            assert!(valid(
+                &json!({"type":kind,"directories":["/public/project"],"destination":destination})
+            ));
+        }
+    }
+    let rule = json!({"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm run test"}],"behavior":"allow","destination":"projectSettings"});
+    for value in [
+        json!(null),
+        json!({"type":"setMode","mode":"unknown","destination":"session"}),
+        json!({"type":"setMode","mode":"auto","destination":"managedSettings"}),
+        json!({"type":"addDirectories","directories":[],"destination":"session"}),
+        json!({"type":"addDirectories","directories":["\u{200b}"],"destination":"session"}),
+        json!({"type":"addDirectories","directories":["x".repeat(1025)],"destination":"session"}),
+        json!({"type":"removeRules","rules":[],"behavior":"allow","destination":"session"}),
+    ] {
+        assert!(!valid(&value));
+    }
+    let mut oversized = rule.clone();
+    oversized["rules"] = json!(vec![json!({"toolName":"Bash"}); 9]);
+    assert!(!valid(&oversized));
+    oversized["rules"] = json!([{"toolName":"Bash","ruleContent":"a".repeat(1024)},{"toolName":"Bash","ruleContent":"b".repeat(1024)}]);
+    assert!(!valid(&oversized));
+    let mut hidden = rule;
+    hidden["rules"][0]["extra"] = json!(true);
+    assert!(!valid(&hidden));
+}
+
+#[tokio::test]
+async fn unsafe_suggestions_are_hidden_and_once_never_creates_rules() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "once");
+    let mut envelope: Value = serde_json::from_slice(&permission("once", "echo public")).unwrap();
+    envelope["permission_suggestions"] = json!([
+        {"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"echo sk-publicmarker123456"}],"behavior":"allow","destination":"projectSettings"},
+        {"type":"setMode","mode":"auto","destination":"session"},
+        {"type":"setMode","mode":"auto","destination":"session","hidden":true}
+    ]);
+    let wait = core
+        .permission(&serde_json::to_vec(&envelope).unwrap(), 120)
+        .unwrap();
+    let card = core.snapshot(now_ms()).unwrap().decisions.remove(0);
+    assert_eq!(
+        card.permission_updates,
+        vec![json!({"type":"setMode","mode":"auto","destination":"session"})]
+    );
+    core.resolve_decision(&card.id, input(json!({"action":"allow"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"],
+        json!({"behavior":"allow"})
+    );
+}
+
+#[tokio::test]
 async fn returning_an_mcp_question_to_terminal_never_invents_an_answer() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();

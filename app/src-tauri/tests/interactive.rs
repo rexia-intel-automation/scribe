@@ -39,6 +39,106 @@ fn native_question(question: &str, multi_select: bool) -> Value {
     })
 }
 
+fn unicode_questions(question_length: usize) -> Value {
+    Value::Array(
+        (0..4)
+            .map(|index| {
+                json!({
+                    "question": format!("{index}{}", "\u{20000}".repeat(question_length)),
+                    "header": "H",
+                    "options": [
+                        {"label": format!("A{}", "\u{20000}".repeat(39)), "description": "D"},
+                        {"label": format!("B{}", "\u{20000}".repeat(39)), "description": "D"},
+                    ],
+                    "multiSelect": true,
+                })
+            })
+            .collect(),
+    )
+}
+
+#[tokio::test]
+async fn questions_with_oversized_valid_answers_stay_in_terminal() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "unicode-large");
+    let questions = unicode_questions(158);
+    let mut updated = json!({"questions": questions.clone()});
+    let answers = questions
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| {
+            (
+                q["question"].as_str().unwrap().to_owned(),
+                Value::String(format!(
+                    "{},{}",
+                    q["options"][0]["label"].as_str().unwrap(),
+                    q["options"][1]["label"].as_str().unwrap()
+                )),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    updated["answers"] = Value::Object(answers);
+    let response = json!({"hookSpecificOutput": {"hookEventName":"PreToolUse", "permissionDecision":"allow", "updatedInput":updated}});
+    assert_eq!(
+        serde_json::to_vec(&json!({"questions":questions.clone()}))
+            .unwrap()
+            .len(),
+        4291
+    );
+    assert_eq!(serde_json::to_vec(&response).unwrap().len(), 8217);
+    assert!(core
+        .interactive(&question_input("unicode-large", questions), 60)
+        .is_err());
+    assert!(core.snapshot(now_ms()).unwrap().decisions.is_empty());
+}
+
+#[tokio::test]
+async fn largest_free_answers_fit_exact_transport_boundary() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "unicode-boundary");
+    let mut questions = unicode_questions(90);
+    questions[0]["options"][0]["description"] = Value::String("D".repeat(212));
+    let body = question_input("unicode-boundary", questions.clone());
+    let wait = core.interactive(&body, 60).unwrap();
+    let id = pending_id(&core, "unicode-boundary");
+    let text = "\u{20000}".repeat(200);
+    core.resolve_decision(
+        &id,
+        input(json!({
+            "action": "answer", "answers": (0..4).map(|_| json!({"text":text})).collect::<Vec<_>>(),
+        })),
+    )
+    .unwrap();
+    let response = wait.receive().await;
+    assert_eq!(serde_json::to_vec(&response).unwrap().len(), 8192);
+    assert_eq!(
+        response["hookSpecificOutput"]["updatedInput"]["questions"],
+        questions
+    );
+    for question in questions.as_array().unwrap() {
+        assert_eq!(
+            response["hookSpecificOutput"]["updatedInput"]["answers"]
+                [question["question"].as_str().unwrap()],
+            text
+        );
+    }
+
+    start(&core, "unicode-over-boundary");
+    questions[0]["options"][0]["description"] = Value::String("D".repeat(213));
+    assert!(core
+        .interactive(&question_input("unicode-over-boundary", questions), 60)
+        .is_err());
+    assert!(core
+        .snapshot(now_ms())
+        .unwrap()
+        .decisions
+        .iter()
+        .all(|d| d.status != "pending"));
+}
+
 fn plan_input(session: &str, plan: &str, path: &str) -> Vec<u8> {
     json!({
         "hook_event_name": "PreToolUse",

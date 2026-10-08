@@ -5,7 +5,10 @@ mod interactive;
 mod mcp;
 pub use decisions::{Decision, DecisionInput, DecisionWait};
 mod model;
+#[cfg(feature = "desktop")]
+mod notifications;
 mod private_fs;
+mod risk;
 mod sanitize;
 mod server;
 mod store;
@@ -64,6 +67,7 @@ pub struct Core {
     data: Arc<Mutex<Data>>,
     events: broadcast::Sender<StateEvent>,
     permission_seconds: Arc<AtomicU64>,
+    risk_patterns: Arc<Mutex<Vec<String>>>,
 }
 
 /// Current Unix time used by the live server; tests supply explicit timestamps.
@@ -120,6 +124,7 @@ impl Core {
             })),
             events,
             permission_seconds: Arc::new(AtomicU64::new(120)),
+            risk_patterns: Arc::new(Mutex::new(vec![])),
         })
     }
 
@@ -130,6 +135,29 @@ impl Core {
         }
         self.permission_seconds.store(seconds, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Set additional literal warnings for future requests; built-ins remain active.
+    /// The desktop persists the originals in its private preferences file.
+    pub fn set_risk_patterns(&self, patterns: &[String]) -> Result<()> {
+        let normalized = risk::validate(patterns)?;
+        *self
+            .risk_patterns
+            .lock()
+            .map_err(|_| "Risk configuration unavailable")? = normalized;
+        Ok(())
+    }
+
+    fn custom_risk(&self, target: &str) -> Result<bool> {
+        let patterns = self
+            .risk_patterns
+            .lock()
+            .map_err(|_| "Risk configuration unavailable")?;
+        if patterns.is_empty() {
+            return Ok(false);
+        }
+        let target = target.to_lowercase();
+        Ok(patterns.iter().any(|pattern| target.contains(pattern)))
     }
 
     /// Current deadline policy; changes affect new requests only.

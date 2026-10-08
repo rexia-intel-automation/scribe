@@ -25,8 +25,12 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 pub struct Preferences {
     language: String,
     theme: String,
+    #[serde(default = "default_drop_color")]
+    drop_color: String,
     shortcut: String,
     notifications: bool,
+    #[serde(default)]
+    risk_patterns: Vec<String>,
     retention_days: u16,
     completed_minutes: u16,
     #[serde(default = "default_permission_seconds")]
@@ -40,6 +44,18 @@ pub struct Preferences {
 fn default_permission_seconds() -> u16 {
     120
 }
+fn default_drop_color() -> String {
+    "clay".into()
+}
+fn drop_rgb(color: &str) -> [u8; 3] {
+    match color {
+        "blue" => [47, 63, 146],
+        "green" => [95, 112, 80],
+        "wine" => [110, 47, 82],
+        "ochre" => [196, 145, 47],
+        _ => [217, 119, 87],
+    }
+}
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -50,6 +66,7 @@ impl Default for Preferences {
             }
             .into(),
             theme: "auto".into(),
+            drop_color: default_drop_color(),
             shortcut: if cfg!(target_os = "macos") {
                 "Super+Shift+Space"
             } else {
@@ -57,6 +74,7 @@ impl Default for Preferences {
             }
             .into(),
             notifications: true,
+            risk_patterns: vec![],
             retention_days: 14,
             completed_minutes: 10,
             permission_seconds: 120,
@@ -70,8 +88,13 @@ impl Default for Preferences {
 }
 impl Preferences {
     fn validate(&self) -> Result<(), String> {
+        crate::risk::validate(&self.risk_patterns).map_err(|_| "invalidPreferences")?;
         if !matches!(self.language.as_str(), "en" | "pt-BR")
             || !matches!(self.theme.as_str(), "light" | "dark" | "auto")
+            || !matches!(
+                self.drop_color.as_str(),
+                "clay" | "blue" | "green" | "wine" | "ochre"
+            )
             || !(1..=365).contains(&self.retention_days)
             || !(1..=1440).contains(&self.completed_minutes)
             || !(1..=120).contains(&self.permission_seconds)
@@ -104,6 +127,7 @@ pub struct View {
     decisions: Vec<crate::Decision>,
     preferences: Preferences,
     error: Option<String>,
+    notification_decision_id: Option<String>,
 }
 struct Desktop {
     core: Option<Core>,
@@ -238,6 +262,8 @@ fn init(app: &AppHandle) -> Result<Desktop, Box<dyn std::error::Error>> {
         None
     };
     if let Some(core) = &core {
+        core.set_risk_patterns(&preferences.risk_patterns)
+            .map_err(|_| "Invalid risk patterns")?;
         core.set_permission_seconds(u64::from(preferences.permission_seconds))
             .map_err(|_| "Invalid permission timeout")?;
         let policy = core.data.lock().map_err(|_| "State lock unavailable")?;
@@ -311,6 +337,7 @@ fn view(data: &Desktop) -> Result<View, String> {
             .map_err(|_| "bridgeUnavailable")?
             .clone(),
         error: data.error.lock().map_err(|_| "bridgeUnavailable")?.clone(),
+        notification_decision_id: None,
     })
 }
 #[tauri::command]
@@ -418,6 +445,13 @@ fn apply_layout(
     Ok(())
 }
 fn set_panel(app: &AppHandle, collapsed: bool) -> Result<View, String> {
+    set_panel_for_decision(app, collapsed, None)
+}
+fn set_panel_for_decision(
+    app: &AppHandle,
+    collapsed: bool,
+    decision_id: Option<&str>,
+) -> Result<View, String> {
     let data = app.state::<Desktop>();
     let _saving = data.saving.try_lock().map_err(|_| "bridgeUnavailable")?;
     let window = app.get_webview_window("main").ok_or("bridgeUnavailable")?;
@@ -433,9 +467,97 @@ fn set_panel(app: &AppHandle, collapsed: bool) -> Result<View, String> {
     if !collapsed {
         window.set_focus().map_err(|_| "bridgeUnavailable")?;
     }
-    let current = view(&data)?;
+    let mut current = view(&data)?;
+    current.notification_decision_id = decision_id
+        .filter(|id| {
+            current
+                .decisions
+                .iter()
+                .any(|d| d.id == *id && d.status == "pending" && d.expires_at > current.at)
+        })
+        .map(str::to_owned);
     let _ = app.emit_to("main", "scribe:view", &current);
     Ok(current)
+}
+
+fn notify_requests(
+    app: &AppHandle,
+    current: &View,
+    notifications: &mut crate::notifications::Notifications,
+) {
+    let foreground = app.get_webview_window("main").is_some_and(|w| {
+        !current.preferences.collapsed
+            && w.is_visible().unwrap_or(false)
+            && w.is_focused().unwrap_or(false)
+    });
+    for decision in notifications.new_requests(
+        &current.decisions,
+        current.preferences.notifications,
+        foreground,
+        current.at,
+    ) {
+        let Some(listener) = notifications.listener() else {
+            notifications.defer(&decision.id);
+            continue;
+        };
+        let app = app.clone();
+        let id = decision.id.clone();
+        let label = current
+            .sessions
+            .iter()
+            .find(|s| s.id == decision.session_id)
+            .and_then(|s| s.title.as_deref())
+            .filter(|title| !title.is_empty())
+            .unwrap_or(&decision.project);
+        let body = crate::notifications::body(
+            label,
+            &text(&current.preferences.language, "notificationBody"),
+        );
+        // XDG daemons may render notification bodies as markup.
+        let body = if cfg!(all(unix, not(target_os = "macos"))) {
+            crate::notifications::escape_markup(&body)
+        } else {
+            body
+        };
+        let _ = std::thread::Builder::new()
+            .name("scribe-notification".into())
+            .spawn(move || {
+                let _listener = listener;
+                let mut notification = notify_rust::Notification::new();
+                notification
+                    .summary("Scribe")
+                    .body(&body)
+                    .appname("Scribe")
+                    .timeout(8000);
+                #[cfg(windows)]
+                notification.app_id("com.rexia.scribe");
+                #[cfg(all(unix, not(target_os = "macos")))]
+                notification.action("default", "Scribe");
+                if let Ok(handle) = notification.show() {
+                    let _ =
+                        handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
+                            if !response.is_default_action() {
+                                return;
+                            }
+                            let handle = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                let data = handle.state::<Desktop>();
+                                if let Ok(current) = view(&data) {
+                                    if current.preferences.notifications
+                                        && current.decisions.iter().any(|d| {
+                                            d.id == id
+                                                && d.status == "pending"
+                                                && d.expires_at > current.at
+                                        })
+                                    {
+                                        let _ = set_panel_for_decision(&handle, false, Some(&id));
+                                    }
+                                }
+                            });
+                        });
+                }
+            });
+    }
 }
 #[tauri::command]
 fn move_panel(
@@ -553,6 +675,11 @@ async fn set_preferences(
         .map_err(|_| "bridgeUnavailable")?
         .clone();
     preferences.collapsed = old.collapsed;
+    if old.risk_patterns != preferences.risk_patterns
+        && !window.is_focused().map_err(|_| "bridgeUnavailable")?
+    {
+        return Err("bridgeUnavailable".into());
+    }
     preferences.side = old.side.clone();
     preferences.y = old.y;
     preferences.monitor = old.monitor.clone();
@@ -604,6 +731,8 @@ async fn set_preferences(
             now_ms(),
         )
         .map_err(|_| "storageUnavailable")?;
+        core.set_risk_patterns(&preferences.risk_patterns)
+            .map_err(|_| "invalidPreferences")?;
         *data.connection.lock().map_err(|_| "bridgeUnavailable")? = next_connection;
         Ok::<_, String>(())
     })();
@@ -633,8 +762,14 @@ async fn set_preferences(
     update_tray(&app)?;
     view(&data)
 }
-fn icon(state: Option<SessionState>) -> tauri::image::Image<'static> {
+fn icon(state: Option<SessionState>, color: &str) -> tauri::image::Image<'static> {
     let mut bytes = vec![0; 24 * 24 * 4];
+    let [red, green, blue] = drop_rgb(color);
+    let ink = if matches!(color, "blue" | "green" | "wine") {
+        [250, 249, 245, 255]
+    } else {
+        [20, 20, 19, 255]
+    };
     for y in 0..24 {
         for x in 0..24 {
             let a = (x as f64 - 11.5) / 8.0;
@@ -671,12 +806,12 @@ fn icon(state: Option<SessionState>) -> tauri::image::Image<'static> {
             };
             if inside {
                 let i = (y * 24 + x) * 4;
-                bytes[i..i + 4].copy_from_slice(&[217, 119, 87, 255]);
+                bytes[i..i + 4].copy_from_slice(&[red, green, blue, 255]);
                 if state == Some(SessionState::Selo)
                     && ((-0.45..=-0.05).contains(&a) && (b - a - 0.45).abs() < 0.12
                         || (-0.05..=0.45).contains(&a) && (b + a - 0.35).abs() < 0.12)
                 {
-                    bytes[i..i + 4].copy_from_slice(&[20, 20, 19, 255]);
+                    bytes[i..i + 4].copy_from_slice(&ink);
                 }
             }
         }
@@ -735,7 +870,7 @@ fn update_tray(app: &AppHandle) -> Result<(), String> {
         .map(|s| s.state);
     if let Some(tray) = app.tray_by_id("scribe") {
         tray.set_menu(Some(menu)).map_err(|_| "bridgeUnavailable")?;
-        tray.set_icon(Some(icon(priority)))
+        tray.set_icon(Some(icon(priority, &p.drop_color)))
             .map_err(|_| "bridgeUnavailable")?;
     }
     Ok(())
@@ -815,6 +950,8 @@ pub fn run() {
             resolve_decision
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            let _ = notify_rust::set_application("com.rexia.scribe");
             let data = init(app.handle())?;
             let p = data
                 .preferences
@@ -833,7 +970,7 @@ pub fn run() {
                     .map_err(|_| "Error lock unavailable")? = Some("shortcutConflict".into());
             }
             TrayIconBuilder::with_id("scribe")
-                .icon(icon(None))
+                .icon(icon(None, &p.drop_color))
                 .tooltip("Scribe")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -882,6 +1019,7 @@ pub fn run() {
                 let mut receiver = handle.state::<Desktop>().core.as_ref().map(Core::subscribe);
                 let mut tick = tokio::time::interval(Duration::from_secs(1));
                 let mut last = String::new();
+                let mut notifications = crate::notifications::Notifications::default();
                 loop {
                     tokio::select! {
                         _ = tick.tick() => {},
@@ -897,6 +1035,7 @@ pub fn run() {
                         tokio::task::spawn_blocking(move || view(&handle.state::<Desktop>())).await
                     };
                     if let Ok(Ok(current)) = current {
+                        notify_requests(&handle, &current, &mut notifications);
                         let encoded = serde_json::to_string(&(
                             &current.sessions,
                             &current.decisions,
@@ -960,6 +1099,28 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_risk_preferences_roundtrip_and_old_files_default_to_empty() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = temp.path().join("preferences.json");
+        let mut preferences = Preferences {
+            risk_patterns: vec!["Restart-Service".into()],
+            ..Preferences::default()
+        };
+        preferences.validate().unwrap();
+        write_private(&path, &preferences).unwrap();
+        let restored: Preferences = read_json(&path).unwrap();
+        assert_eq!(restored.risk_patterns, ["Restart-Service"]);
+        let mut old = serde_json::to_value(restored).unwrap();
+        old.as_object_mut().unwrap().remove("riskPatterns");
+        assert!(serde_json::from_value::<Preferences>(old)
+            .unwrap()
+            .risk_patterns
+            .is_empty());
+        preferences.risk_patterns = vec![String::new()];
+        assert!(preferences.validate().is_err());
+    }
 
     #[test]
     fn cold_launch_recognizes_the_hook_open_argument() {
@@ -1050,11 +1211,54 @@ mod tests {
         .validate()
         .is_err());
         assert!(Preferences {
+            drop_color: "#d97757".into(),
+            ..valid.clone()
+        }
+        .validate()
+        .is_err());
+        assert!(Preferences {
             y: Some(f64::INFINITY),
             ..valid
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn legacy_preferences_keep_clay_and_tray_color_does_not_encode_state() {
+        let mut legacy = serde_json::to_value(Preferences::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("dropColor");
+        let restored: Preferences = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.drop_color, "clay");
+        let states = [
+            None,
+            Some(SessionState::Respingo),
+            Some(SessionState::Gota),
+            Some(SessionState::Orbita),
+            Some(SessionState::Pena),
+            Some(SessionState::Interrogacao),
+            Some(SessionState::Ampulheta),
+            Some(SessionState::Mancha),
+            Some(SessionState::Divisao),
+            Some(SessionState::Selo),
+        ];
+        for color in ["clay", "blue", "green", "wine", "ochre"] {
+            let preferences = Preferences {
+                drop_color: color.into(),
+                ..restored.clone()
+            };
+            assert!(preferences.validate().is_ok());
+            let [r, g, b] = drop_rgb(color);
+            for state in states {
+                let image = icon(state, color);
+                let pixels = image.rgba().as_chunks::<4>().0;
+                assert!(pixels.contains(&[r, g, b, 255]));
+                assert!(pixels.iter().all(|p| p[3] == 0
+                    || *p == [r, g, b, 255]
+                    || *p == [20, 20, 19, 255]
+                    || *p == [250, 249, 245, 255]));
+            }
+        }
     }
 
     #[test]
@@ -1065,10 +1269,12 @@ mod tests {
         write_private(&path, &Preferences::default()).unwrap();
         let next = Preferences {
             theme: "dark".into(),
+            drop_color: "blue".into(),
             ..Preferences::default()
         };
         write_private(&path, &next).unwrap();
         assert_eq!(read_json::<Preferences>(&path).unwrap().theme, "dark");
+        assert_eq!(read_json::<Preferences>(&path).unwrap().drop_color, "blue");
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
         let blocked = directory.join("blocked.json");
         fs::create_dir(&blocked).unwrap();

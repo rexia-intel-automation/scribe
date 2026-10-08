@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import App from "./App";
 import * as bridge from "./bridge";
 import { t, action } from "./i18n";
-import { priority, type View } from "./types";
+import { priority, type Decision, type Preferences, type View } from "./types";
 vi.mock("./bridge", async () => {
   const actual = await vi.importActual<typeof import("./bridge")>("./bridge");
   return {
@@ -19,6 +19,7 @@ vi.mock("./bridge", async () => {
     observe: vi.fn(async () => () => {}),
     savePreferences: vi.fn(),
     toggle: vi.fn(),
+    resolveDecision: vi.fn(),
     move: vi.fn(),
     drag: vi.fn(),
     clearHistory: vi.fn(),
@@ -50,6 +51,25 @@ function fixture(): View {
         })),
       },
     ],
+  };
+}
+function pendingDecision(id: string): Decision {
+  const createdAt = Date.now();
+  return {
+    id,
+    sessionId: "public",
+    project: "public-project",
+    kind: "permission",
+    tool: "Bash",
+    target: "echo public",
+    question: null,
+    options: [],
+    risk: false,
+    armed: false,
+    status: "pending",
+    createdAt,
+    expiresAt: createdAt + 120000,
+    resolvedAt: null,
   };
 }
 beforeEach(() => vi.clearAllMocks());
@@ -134,6 +154,197 @@ describe("session window", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(screen.getByText("Editing …/project/test.ts")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const dropColor = screen.getByLabelText("Drop color");
+    expect(
+      within(dropColor)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Clay", "Blue", "Green", "Wine", "Ochre"]);
+  });
+  it("saves the selected drop palette and restores it for a collapsed view", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    let savedView: View | undefined;
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => {
+        savedView = {
+          ...data,
+          revision: data.revision + 1,
+          preferences,
+        };
+        return savedView;
+      },
+    );
+    const app = render(<App initialView={data} />);
+    const originalForms = [...app.container.querySelectorAll("canvas")].map(
+      (canvas) => canvas.getAttribute("aria-label"),
+    );
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const dropColor = screen.getByLabelText("Cor da gota");
+    expect(
+      within(dropColor)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Terracota", "Azul", "Verde", "Vinho", "Ocre"]);
+    await user.selectOptions(dropColor, "blue");
+    await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("blue"),
+    );
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({ dropColor: "blue" }),
+    );
+    expect(
+      [...app.container.querySelectorAll("canvas")].map((canvas) =>
+        canvas.getAttribute("aria-label"),
+      ),
+    ).toEqual(originalForms);
+    expect(savedView?.preferences.dropColor).toBe("blue");
+
+    app.unmount();
+    render(
+      <App
+        initialView={{
+          ...savedView!,
+          preferences: { ...savedView!.preferences, collapsed: true },
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("blue"),
+    );
+    expect(screen.getByRole("button", { name: "Abrir Scribe" })).toBeVisible();
+  });
+  it("normalizes an older preference snapshot without dropColor to clay", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    delete (data.preferences as Partial<Preferences>).dropColor;
+    render(<App initialView={data} />);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.dropColor).toBe("clay"),
+    );
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    expect(screen.getByLabelText("Cor da gota")).toHaveValue("clay");
+  });
+  it("normalizes additional risk patterns on save and tolerates older preferences", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    delete (data.preferences as Partial<Preferences>).riskPatterns;
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => ({
+        ...data,
+        revision: data.revision + 1,
+        preferences,
+      }),
+    );
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = screen.getByRole("textbox", {
+      name: t("pt-BR", "riskPatterns"),
+    });
+    expect(patterns).toHaveValue("");
+    expect(screen.getByText(t("pt-BR", "riskPatternsHint"))).toHaveTextContent(
+      "continuam ativos",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(t("pt-BR", "theme")),
+      "dark",
+    );
+    fireEvent.change(patterns, {
+      target: { value: "  suspicious  \n\nPowerShell\n" },
+    });
+    await user.click(screen.getByRole("button", { name: t("pt-BR", "save") }));
+
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: "dark",
+        riskPatterns: ["suspicious", "PowerShell"],
+      }),
+    );
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe("dark"),
+    );
+  });
+  it("allows 2,048 pattern bytes without counting line separators", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    vi.mocked(bridge.savePreferences).mockImplementation(
+      async (preferences) => ({
+        ...data,
+        revision: data.revision + 1,
+        preferences,
+      }),
+    );
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = Array.from(
+      { length: 16 },
+      (_, index) => `${String(index).padStart(2, "0")}${"é".repeat(63)}`,
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: t("pt-BR", "riskPatterns") }),
+      { target: { value: patterns.join("\n") } },
+    );
+    await user.click(screen.getByRole("button", { name: t("pt-BR", "save") }));
+
+    expect(bridge.savePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({ riskPatterns: patterns }),
+    );
+  });
+  it("reports each invalid risk-pattern limit without discarding the settings draft", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    render(<App initialView={data} />);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const patterns = screen.getByRole("textbox", {
+      name: t("pt-BR", "riskPatterns"),
+    });
+    const invalidPatterns = [
+      {
+        value: "PowerShell\npowershell",
+        error: "riskPatternsDuplicate",
+      },
+      { value: "bad\u200Epattern", error: "riskPatternsControl" },
+      {
+        value: "é".repeat(65),
+        error: "riskPatternsEntryTooLong",
+      },
+      {
+        value: Array.from(
+          { length: 33 },
+          (_, index) => `pattern-${index}`,
+        ).join("\n"),
+        error: "riskPatternsTooMany",
+      },
+      {
+        value: Array.from(
+          { length: 17 },
+          (_, index) => `${String(index).padStart(2, "0")}${"é".repeat(63)}`,
+        ).join("\n"),
+        error: "riskPatternsTotalTooLong",
+      },
+    ] as const;
+
+    await user.selectOptions(
+      screen.getByLabelText(t("pt-BR", "theme")),
+      "dark",
+    );
+    for (const invalid of invalidPatterns) {
+      fireEvent.change(patterns, { target: { value: invalid.value } });
+      await user.click(
+        screen.getByRole("button", { name: t("pt-BR", "save") }),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        t("pt-BR", invalid.error),
+      );
+      expect(screen.getByRole("dialog")).toBeVisible();
+      expect(screen.getByLabelText(t("pt-BR", "theme"))).toHaveValue("dark");
+      expect(patterns).toHaveValue(invalid.value);
+    }
+    expect(bridge.savePreferences).not.toHaveBeenCalled();
+    expect(screen.getByText("public-project")).toBeVisible();
   });
   it("does not call clear until explicit confirmation and retains failure details", async () => {
     const user = userEvent.setup();
@@ -396,6 +607,93 @@ describe("session window", () => {
     expect(
       screen.getByRole("button", { name: "Recolher janela" }),
     ).toHaveFocus();
+  });
+  it("focuses pending notification decisions without activating them", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.decisions = [pendingDecision("pending-notification")];
+    const { container } = render(<App initialView={data} />);
+    await waitFor(() => expect(receive).toBeDefined());
+    const focusTarget = container.querySelector<HTMLDivElement>(
+      ".decision-focus-target",
+    )!;
+    const scrollIntoView = vi.fn();
+    focusTarget.scrollIntoView = scrollIntoView;
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const firstLanguage = screen.getByLabelText(t("pt-BR", "language"));
+    firstLanguage.focus();
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        notificationDecisionId: "pending-notification",
+      }),
+    );
+    await waitFor(() => expect(focusTarget).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const language = screen.getByLabelText(t("pt-BR", "language"));
+    language.focus();
+    act(() =>
+      receive!({
+        ...data,
+        revision: 3,
+        decisions: data.decisions,
+      }),
+    );
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(language).toHaveFocus();
+
+    act(() =>
+      receive!({
+        ...data,
+        revision: 4,
+        notificationDecisionId: "pending-notification",
+      }),
+    );
+    await waitFor(() => expect(focusTarget).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
+  });
+  it("ignores a stale notification decision ID without moving focus or closing settings", async () => {
+    const user = userEvent.setup();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.decisions = [pendingDecision("different-pending-decision")];
+    const { container } = render(<App initialView={data} />);
+    await waitFor(() => expect(receive).toBeDefined());
+    const focusTarget = container.querySelector<HTMLDivElement>(
+      ".decision-focus-target",
+    )!;
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    const language = screen.getByLabelText(t("pt-BR", "language"));
+    language.focus();
+
+    act(() =>
+      receive!({
+        ...data,
+        revision: 2,
+        notificationDecisionId: "stale-decision",
+      }),
+    );
+
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(language).toHaveFocus();
+    expect(focusTarget).not.toHaveFocus();
+    expect(bridge.resolveDecision).not.toHaveBeenCalled();
   });
   it("restores settings focus after the original opener was removed by a mode change", async () => {
     const user = userEvent.setup();

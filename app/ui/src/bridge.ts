@@ -7,6 +7,8 @@ export const defaults: Preferences = {
   theme: "auto",
   shortcut: "CommandOrControl+Shift+Space",
   notifications: true,
+  riskPatterns: [],
+  dropColor: "clay",
   retentionDays: 14,
   completedMinutes: 10,
   permissionSeconds: 120,

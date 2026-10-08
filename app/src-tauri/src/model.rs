@@ -153,6 +153,8 @@ pub(crate) struct Hook {
     pub notification_type: Option<String>,
     pub session_title: Option<String>,
     pub tool_use_id: Option<String>,
+    #[serde(default)]
+    pub permission_suggestions: Value,
 }
 
 impl Hook {

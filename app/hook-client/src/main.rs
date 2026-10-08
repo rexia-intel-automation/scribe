@@ -252,6 +252,20 @@ fn supported_output(event: &str, input: &Value, value: &Value) -> Option<Value> 
             return None;
         }
         let mut decision_out = serde_json::json!({"behavior":behavior});
+        if let Some(updates) = decision.get("updatedPermissions") {
+            let updates = updates.as_array()?;
+            let original = input.get("permission_suggestions")?.as_array()?;
+            if behavior != "allow"
+                || updates.len() != 1
+                || original.len() > 8
+                || serde_json::to_vec(original).ok()?.len() > 8000
+                || !scribe_hook_protocol::valid_permission_update(&updates[0])
+                || !original.contains(&updates[0])
+            {
+                return None;
+            }
+            decision_out["updatedPermissions"] = Value::Array(updates.clone());
+        }
         if behavior == "deny" {
             if let Some(message) = decision
                 .get("message")
@@ -404,11 +418,14 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
     let Ok(text) = response
         .body_mut()
         .with_config()
-        .limit(8192)
+        .limit(8193)
         .read_to_string()
     else {
         return;
     };
+    if text.len() > 8192 {
+        return;
+    }
     if !scribe_hook_protocol::verify(
         &config.hook_key,
         &[
@@ -746,6 +763,39 @@ mod tests {
         let mut plan = plan_input();
         plan["tool_input"]["plan"] = Value::String("x".repeat(5800));
         assert!(within_interactive_input_limit(&plan));
+    }
+
+    #[test]
+    fn permission_updates_must_echo_one_complete_original_suggestion() {
+        let update = serde_json::json!({"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"npm run test"}],"behavior":"allow","destination":"projectSettings"});
+        let input = serde_json::json!({"permission_suggestions":[update.clone()]});
+        let output = serde_json::json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow","updatedPermissions":[update.clone()]}}});
+        assert_eq!(
+            supported_output("PermissionRequest", &input, &output),
+            Some(output.clone())
+        );
+        for (field, value) in [
+            ("destination", serde_json::json!("userSettings")),
+            ("type", serde_json::json!("unknown")),
+            ("extra", serde_json::json!(true)),
+            ("rules", serde_json::json!([{"toolName":"Bash"}])),
+        ] {
+            let mut altered = output.clone();
+            altered["hookSpecificOutput"]["decision"]["updatedPermissions"][0][field] = value;
+            assert!(supported_output("PermissionRequest", &input, &altered).is_none());
+        }
+        let mut denied = output.clone();
+        denied["hookSpecificOutput"]["decision"]["behavior"] = serde_json::json!("deny");
+        assert!(supported_output("PermissionRequest", &input, &denied).is_none());
+        for updates in [
+            serde_json::json!([]),
+            serde_json::json!([update.clone(), update]),
+        ] {
+            let mut altered = output.clone();
+            altered["hookSpecificOutput"]["decision"]["updatedPermissions"] = updates;
+            assert!(supported_output("PermissionRequest", &input, &altered).is_none());
+        }
+        assert!(supported_output("PermissionRequest", &serde_json::json!({}), &output).is_none());
     }
 
     #[test]

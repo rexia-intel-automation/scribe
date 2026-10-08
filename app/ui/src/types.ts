@@ -12,6 +12,7 @@ export const forms = [
   "ponto",
 ] as const;
 export type Form = (typeof forms)[number];
+export type DropColor = "clay" | "blue" | "green" | "wine" | "ochre";
 export interface Step {
   at: number;
   tool: string | null;
@@ -36,6 +37,8 @@ export interface Preferences {
   theme: "light" | "dark" | "auto";
   shortcut: string;
   notifications: boolean;
+  riskPatterns: string[];
+  dropColor: DropColor;
   retentionDays: number;
   completedMinutes: number;
   permissionSeconds?: number;
@@ -52,6 +55,7 @@ export interface View {
   preferences: Preferences;
   error: string | null;
   decisions?: Decision[];
+  notificationDecisionId?: string | null;
 }
 export interface Decision {
   id: string;
@@ -64,6 +68,8 @@ export interface Decision {
   options: string[];
   risk: boolean;
   canAllow?: boolean;
+  permissionUpdates?: Record<string, unknown>[];
+  armedUpdate?: number | null;
   nativeQuestions?: {
     question: string;
     header: string;

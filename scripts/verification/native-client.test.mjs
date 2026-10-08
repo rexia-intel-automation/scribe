@@ -212,21 +212,214 @@ test('native client forwards eleven events, returns only supported human decisio
   }
 });
 
+test('native PermissionRequest echoes only one exact original permission suggestion', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scribe permission update '));
+  const config = join(root, 'connection.json');
+  const update = {
+    type: 'addRules',
+    rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
+    behavior: 'allow',
+    destination: 'projectSettings',
+  };
+  const scenarios = [
+    ['changed-destination', (value) => { value.destination = 'userSettings'; }],
+    ['broadened-rule', (value) => { value.rules[0].ruleContent = 'Bash'; }],
+    ['removed-rule-content', (value) => { delete value.rules[0].ruleContent; }],
+    ['unknown-field', (value) => { value.unrecognized = true; }],
+    ['wrong-field-type', (value) => { value.destination = 7; }],
+    ['deny-with-updates', (_value, decision) => { decision.behavior = 'deny'; }],
+    ['two-entries', (_value, decision) => { decision.updatedPermissions.push(update); }],
+    ['empty-array', (_value, decision) => { decision.updatedPermissions = []; }],
+    ['object-not-array', (_value, decision) => { decision.updatedPermissions = update; }],
+    ['wrong-entry-type', (_value, decision) => { decision.updatedPermissions = ['not-an-update']; }],
+  ];
+  let scenario = 'valid';
+  const server = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    assert.equal(req.headers.authorization, undefined);
+    if (req.url.startsWith('/v1/hooks/challenge/')) {
+      const nonce = req.url.split('/').at(-1);
+      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      return;
+    }
+    assert.equal(req.url, '/v1/hooks/PermissionRequest');
+    const payload = JSON.parse(body);
+    const nonce = req.headers['x-scribe-nonce'];
+    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'PermissionRequest', body]));
+    assert.deepEqual(payload.permission_suggestions, [update]);
+    const echoed = structuredClone(update);
+    const decision = { behavior: 'allow', updatedPermissions: [echoed] };
+    const selected = scenarios.find(([name]) => name === scenario);
+    if (selected) selected[1](echoed, decision);
+    const reply = JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PermissionRequest', decision,
+    } });
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'x-scribe-proof': sign(hookKey, ['response', nonce, 'PermissionRequest', '200', reply]),
+    }).end(reply);
+  });
+  await new Promise(ok => server.listen(0, '127.0.0.1', ok));
+  await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
+  try {
+    const input = JSON.stringify({
+      hook_event_name: 'PermissionRequest', session_id: 'synthetic-session', cwd: '/synthetic/project',
+      permission_suggestions: [update],
+    });
+    const accepted = await launch(binary, config, 'PermissionRequest', input);
+    assert.equal(accepted.code, 0);
+    assert.equal(accepted.stderr, '');
+    assert.deepEqual(JSON.parse(accepted.stdout), { hookSpecificOutput: {
+      hookEventName: 'PermissionRequest',
+      decision: { behavior: 'allow', updatedPermissions: [update] },
+    } });
+
+    for (const [name] of scenarios) {
+      scenario = name;
+      const rejected = await launch(binary, config, 'PermissionRequest', input);
+      assert.equal(rejected.code, 0, name);
+      assert.equal(rejected.stdout, '', `${name} must not emit a decision`);
+      assert.equal(rejected.stderr, '', name);
+    }
+  } finally {
+    server.closeAllConnections();
+    await new Promise(ok => server.close(ok));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('native client rejects oversized/malformed input and terminates with unfinished stdin', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scribe-client-input-'));
   const config = join(root, 'connection.json');
-  await writeFile(config, JSON.stringify({ port: 21517, token, hook_key: hookKey }));
+  let challengeRequests = 0, hookRequests = 0, receivedBodies = [];
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    assert.equal(req.headers.authorization, undefined);
+    if (req.url.startsWith('/v1/hooks/challenge/')) {
+      challengeRequests++;
+      assert.equal(body.length, 0);
+      const nonce = req.url.split('/').at(-1);
+      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      return;
+    }
+    hookRequests++;
+    const text = body.toString('utf8');
+    const payload = JSON.parse(text);
+    const nonce = req.headers['x-scribe-nonce'];
+    assert.equal(req.url, '/v1/hooks/Stop');
+    assert.equal(payload.hook_event_name, 'Stop');
+    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'Stop', text]));
+    receivedBodies.push(body.length);
+    res.writeHead(200).end();
+  });
+  await new Promise(ok => server.listen(0, '127.0.0.1', ok));
+  await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
   try {
-    for (const [event, body, open] of [['Stop', 'invalid', false], ['Stop', 'x'.repeat(1024 * 1024 + 1), false],
-      ['Unknown', '{}', false], ['Stop', '{', true], ['Stop', '{"hook_event_name":"Stop","session_id":42,"cwd":"/public"}', false]]) {
+    const base = JSON.stringify({ hook_event_name: 'Stop', session_id: 'public', cwd: '/public' });
+    const exactBody = base + ' '.repeat(1024 * 1024 - Buffer.byteLength(base));
+    const accepted = await launch(binary, config, 'Stop', exactBody);
+    assert.equal(Buffer.byteLength(exactBody), 1024 * 1024);
+    assert.equal(accepted.code, 0);
+    assert.equal(accepted.stdout, ''); assert.equal(accepted.stderr, '');
+    assert.equal(challengeRequests, 1, 'exact-limit valid input must reach the challenge endpoint');
+    assert.equal(hookRequests, 1, 'exact-limit valid input must reach the signed hook endpoint');
+    assert.deepEqual(receivedBodies, [1024 * 1024]);
+
+    for (const [event, body, open] of [
+      ['Stop', 'invalid', false],
+      ['Stop', base + 'x', false],
+      ['Stop', '{', true],
+      ['Stop', JSON.stringify({ hook_event_name: 'Stop', session_id: 42, cwd: '/public' }), false],
+      ['Unknown', '{}', false],
+      ['Stop', base + ' '.repeat(1024 * 1024 + 1 - Buffer.byteLength(base)), false],
+    ]) {
+      const countBefore = [challengeRequests, hookRequests];
       const result = await launch(binary, config, event, body, open);
       assert.equal(result.code, 0); assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
       assert.ok(result.elapsedMs < 1000);
+      assert.deepEqual([challengeRequests, hookRequests], countBefore,
+        `${event} input (${Buffer.byteLength(body)} bytes) must be rejected before any request`);
     }
     await writeFile(config, '{"port":80,"token":"invalid"}');
+    const countBefore = [challengeRequests, hookRequests];
     const badConfig = await launch(binary, config, 'Stop', '{}');
     assert.equal(badConfig.code, 0); assert.equal(badConfig.stdout, ''); assert.equal(badConfig.stderr, '');
-  } finally { await rm(root, { recursive: true, force: true }); }
+    assert.ok(badConfig.elapsedMs < 1000);
+    assert.deepEqual([challengeRequests, hookRequests], countBefore, 'invalid configuration must not contact the server');
+  } finally {
+    server.closeAllConnections();
+    if (server.listening) await new Promise(ok => server.close(ok));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('native client accepts an exactly 8192-byte signed response and suppresses 8193 bytes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scribe-client-response-'));
+  const config = join(root, 'connection.json');
+  const responseSizes = [8192, 8193];
+  const challengeNonces = [];
+  const hookBodyLengths = [];
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    assert.equal(req.headers.authorization, undefined);
+    if (req.url.startsWith('/v1/hooks/challenge/')) {
+      assert.equal(body.length, 0);
+      const nonce = req.url.split('/').at(-1);
+      challengeNonces.push(nonce);
+      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      return;
+    }
+    assert.equal(req.url, '/v1/hooks/PermissionRequest');
+    const nonce = req.headers['x-scribe-nonce'];
+    const text = body.toString('utf8');
+    const payload = JSON.parse(text);
+    assert.equal(payload.hook_event_name, 'PermissionRequest');
+    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'PermissionRequest', text]));
+    hookBodyLengths.push(body.length);
+    const size = responseSizes.shift();
+    assert.ok(size);
+    const json = Buffer.from(JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PermissionRequest', decision: { behavior: 'allow' },
+    } }));
+    const responseBody = Buffer.concat([json, Buffer.alloc(size - json.length, 0x20)]);
+    assert.equal(responseBody.length, size);
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Content-Length': String(size),
+      'x-scribe-proof': sign(hookKey, ['response', nonce, 'PermissionRequest', '200', responseBody]),
+    }).end(responseBody);
+  });
+  await new Promise(ok => server.listen(0, '127.0.0.1', ok));
+  await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
+  try {
+    const input = JSON.stringify({ hook_event_name: 'PermissionRequest', session_id: 'public', cwd: '/public' });
+    const bounded = await launch(binary, config, 'PermissionRequest', input);
+    assert.equal(bounded.code, 0);
+    assert.equal(bounded.stderr, '');
+    let boundedBehavior = null;
+    try { boundedBehavior = JSON.parse(bounded.stdout).hookSpecificOutput.decision.behavior; } catch { /* asserted after exercising the 8193-byte case */ }
+    assert.equal(challengeNonces.length, 1, '8192-byte response case must complete a challenge');
+    assert.equal(hookBodyLengths.length, 1, '8192-byte response case must reach the signed hook handler');
+
+    const oversized = await launch(binary, config, 'PermissionRequest', input);
+    assert.equal(oversized.code, 0);
+    assert.equal(oversized.stdout, '', '8193-byte response must not emit a decision');
+    assert.equal(oversized.stderr, '');
+    assert.deepEqual(challengeNonces.length, 2, '8193-byte response case must complete a challenge');
+    assert.deepEqual(hookBodyLengths.length, 2, '8193-byte response case must reach the signed hook handler');
+    assert.deepEqual(responseSizes, []);
+    assert.ok(bounded.elapsedMs < 1000);
+    assert.ok(oversized.elapsedMs < 1000);
+    assert.equal(boundedBehavior, 'allow', `8192-byte response was suppressed after ${challengeNonces.length} challenges and ${hookBodyLengths.length} signed requests`);
+  } finally {
+    server.closeAllConnections();
+    if (server.listening) await new Promise(ok => server.close(ok));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('native open detaches the app from captured command streams', async () => {

@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Gota } from "./gota/Gota";
 import { t, action, type Message } from "./i18n";
-import { priority, type View, type Session, type Preferences } from "./types";
+import {
+  priority,
+  type View,
+  type Session,
+  type Preferences,
+  type DropColor,
+} from "./types";
 import * as bridge from "./bridge";
 import { DecisionCard } from "./DecisionCard";
+const dropColors: DropColor[] = ["clay", "blue", "green", "wine", "ochre"];
+const dropColorLabels: Record<DropColor, Message> = {
+  clay: "dropColorClay",
+  blue: "dropColorBlue",
+  green: "dropColorGreen",
+  wine: "dropColorWine",
+  ochre: "dropColorOchre",
+};
+function isDropColor(value: unknown): value is DropColor {
+  return typeof value === "string" && dropColors.includes(value as DropColor);
+}
 function useTheme(theme: Preferences["theme"]) {
   const [dark, setDark] = useState(
     matchMedia("(prefers-color-scheme: dark)").matches,
@@ -19,6 +36,31 @@ function useTheme(theme: Preferences["theme"]) {
     document.documentElement.dataset.theme = effective;
   }, [effective]);
   return effective;
+}
+function validateRiskPatterns(lines: string[]) {
+  const patterns: string[] = [];
+  for (const line of lines) {
+    if (/[\p{Cc}\p{Cf}]/u.test(line))
+      return { patterns: [], error: "riskPatternsControl" as const };
+    const pattern = line.trim();
+    if (pattern) patterns.push(pattern);
+  }
+  if (patterns.length > 32)
+    return { patterns: [], error: "riskPatternsTooMany" as const };
+  const encoder = new TextEncoder();
+  if (patterns.some((pattern) => encoder.encode(pattern).length > 128))
+    return { patterns: [], error: "riskPatternsEntryTooLong" as const };
+  const folded = patterns.map((pattern) => pattern.toLowerCase());
+  if (new Set(folded).size !== folded.length)
+    return { patterns: [], error: "riskPatternsDuplicate" as const };
+  if (
+    patterns.reduce(
+      (total, pattern) => total + encoder.encode(pattern).length,
+      0,
+    ) > 2048
+  )
+    return { patterns: [], error: "riskPatternsTotalTooLong" as const };
+  return { patterns, error: null };
 }
 /** Sanitized session summary with keyboard-accessible recent steps. */
 function SessionRow({
@@ -117,7 +159,17 @@ function Settings({
       ? document.activeElement
       : null,
   );
-  const [preferences, setPreferences] = useState(view.preferences);
+  const [preferences, setPreferences] = useState(() => ({
+    ...view.preferences,
+    riskPatterns: Array.isArray(view.preferences.riskPatterns)
+      ? view.preferences.riskPatterns.filter(
+          (pattern): pattern is string => typeof pattern === "string",
+        )
+      : [],
+    dropColor: isDropColor(view.preferences.dropColor)
+      ? view.preferences.dropColor
+      : "clay",
+  }));
   const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   const actionFocus = useRef<HTMLElement | null>(null);
@@ -167,10 +219,20 @@ function Settings({
     setPreferences((previous) => ({ ...previous, [key]: value }));
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    const validatedPatterns = validateRiskPatterns(preferences.riskPatterns);
+    if (validatedPatterns.error) {
+      setError(validatedPatterns.error);
+      return;
+    }
     startAction();
     setError(null);
     try {
-      receive(await bridge.savePreferences(preferences));
+      receive(
+        await bridge.savePreferences({
+          ...preferences,
+          riskPatterns: validatedPatterns.patterns,
+        }),
+      );
       if (mounted.current) close();
     } catch (cause) {
       setError(
@@ -229,6 +291,23 @@ function Settings({
           </select>
         </label>
         <label>
+          {t(language, "dropColor")}
+          <select
+            value={
+              isDropColor(preferences.dropColor)
+                ? preferences.dropColor
+                : "clay"
+            }
+            onChange={(e) => change("dropColor", e.target.value as DropColor)}
+          >
+            {dropColors.map((color) => (
+              <option key={color} value={color}>
+                {t(language, dropColorLabels[color])}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           {t(language, "language")}
           <select
             value={preferences.language}
@@ -261,6 +340,17 @@ function Settings({
           />
           {t(language, "notifications")}
         </label>
+        <label htmlFor="risk-patterns">{t(language, "riskPatterns")}</label>
+        <textarea
+          id="risk-patterns"
+          aria-describedby="risk-patterns-hint"
+          value={preferences.riskPatterns.join("\n")}
+          maxLength={2079}
+          onChange={(e) =>
+            change("riskPatterns", e.target.value.split(/\r?\n/))
+          }
+        />
+        <small id="risk-patterns-hint">{t(language, "riskPatternsHint")}</small>
         <label>
           {t(language, "retention")}
           <input
@@ -357,6 +447,13 @@ export default function App({
   const [error, setError] = useState<Message | null>(null);
   const opened = useRef(Date.now());
   const revision = useRef(initialView.revision);
+  const notificationSnapshot = useRef<{ revision: number; id: string } | null>(
+    null,
+  );
+  const notificationFocus = useRef<{ revision: number; id: string } | null>(
+    null,
+  );
+  const decisionFocusTargets = useRef(new Map<string, HTMLDivElement>());
   const [heardHook, setHeardHook] = useState(
     initialView.sessions.some(
       (session) => session.lastEventAt >= opened.current,
@@ -368,9 +465,41 @@ export default function App({
   const previousMode = useRef(initialView.preferences.collapsed);
   const language = view.preferences.language;
   const theme = useTheme(view.preferences.theme);
+  const dropColor = isDropColor(view.preferences.dropColor)
+    ? view.preferences.dropColor
+    : "clay";
+  useEffect(() => {
+    document.documentElement.dataset.dropColor = dropColor;
+    return () => {
+      delete document.documentElement.dataset.dropColor;
+    };
+  }, [dropColor]);
   const receive = (next: View) => {
     if (next.revision <= revision.current) return;
     revision.current = next.revision;
+    const notificationId = next.notificationDecisionId ?? null;
+    const isNewNotification =
+      notificationId !== null &&
+      (notificationSnapshot.current?.revision !== next.revision ||
+        notificationSnapshot.current?.id !== notificationId);
+    notificationSnapshot.current = notificationId
+      ? { revision: next.revision, id: notificationId }
+      : null;
+    if (isNewNotification) {
+      const notificationDecision = (next.decisions ?? []).find(
+        (decision) => decision.id === notificationId,
+      );
+      if (
+        notificationDecision?.status === "pending" &&
+        notificationDecision.expiresAt > Date.now()
+      ) {
+        notificationFocus.current = {
+          revision: next.revision,
+          id: notificationId,
+        };
+        setSettings(false);
+      }
+    }
     setView(next);
     if (!next.error) setError(null);
     if (next.sessions.some((session) => session.lastEventAt >= opened.current))
@@ -385,6 +514,32 @@ export default function App({
     previousMode.current = view.preferences.collapsed;
     if (view.preferences.collapsed || !settings) panelToggle.current?.focus();
   }, [view.preferences.collapsed, settings]);
+  useEffect(() => {
+    const request = notificationFocus.current;
+    if (
+      !request ||
+      request.revision !== view.revision ||
+      request.id !== view.notificationDecisionId
+    )
+      return;
+    notificationFocus.current = null;
+    const decision = (view.decisions ?? []).find(
+      (item) => item.id === request.id,
+    );
+    const target = decisionFocusTargets.current.get(request.id);
+    if (
+      decision?.status !== "pending" ||
+      decision.expiresAt <= Date.now() ||
+      !target
+    )
+      return;
+    const timer = window.setTimeout(() => {
+      if (!target.isConnected) return;
+      target.scrollIntoView({ block: "nearest" });
+      target.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [view]);
   useEffect(() => {
     let disposed = false;
     let stop: (() => void) | undefined;
@@ -549,14 +704,26 @@ export default function App({
               {t(language, "decisionsWaiting", { count: pendingCount })}
             </h2>
             {decisions.map((decision) => (
-              <DecisionCard
+              <div
                 key={decision.id}
-                decision={decision}
-                language={language}
-                now={now}
-                receive={receive}
-                fail={fail}
-              />
+                ref={(element) => {
+                  if (element)
+                    decisionFocusTargets.current.set(decision.id, element);
+                  else decisionFocusTargets.current.delete(decision.id);
+                }}
+                className="decision-focus-target"
+                tabIndex={-1}
+                role="group"
+                aria-label={decision.project}
+              >
+                <DecisionCard
+                  decision={decision}
+                  language={language}
+                  now={now}
+                  receive={receive}
+                  fail={fail}
+                />
+              </div>
             ))}
           </section>
         )}
