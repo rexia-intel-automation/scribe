@@ -32,6 +32,19 @@ com o home obtido pelo cadastro da conta. Quem usava `XDG_CONFIG_HOME` ou
 `XDG_DATA_HOME` personalizados verá um perfil novo nesses caminhos; os dados
 antigos não são importados nem apagados. Preserve-os antes de atualizar.
 
+No Windows, o histórico usa `%LOCALAPPDATA%\com.rexia.scribe\history`; conexão
+e preferências continuam em `%APPDATA%\com.rexia.scribe`. O upgrade migra o
+histórico antigo antes de abrir o banco. Um histórico recebido que conflita com
+o histórico local existente é preservado separadamente para a TI; o Scribe
+continua usando a cópia local e mostra um aviso. Falhas na limpeza após a
+publicação verificada também geram um aviso, mantendo o histórico local em uso.
+Mudanças durante a cópia ou metadados de migração inválidos preservam os dados e
+interrompem o armazenamento até a TI resolver a situação.
+O histórico é por máquina. Em VDI/RDS que descartam armazenamento local no
+logoff, o histórico é perdido quando esse armazenamento é descartado; confira
+a política da sua TI. Cópias antigas em backups ou no servidor de Roaming da
+empresa não são apagadas pelo Scribe.
+
 ## Teste do candidato no Windows
 
 O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
@@ -131,16 +144,21 @@ reiniciar o Claude Code. O modo não interativo `claude -p` não é o caminho de
 teste para perguntas AskUserQuestion interativas. Siga o
 [roteiro de teste da TI](docs/teste-equipe-ti.md), também disponível no arquivo
 baixado `teste-equipe-ti.md`, e registre falhas sem incluir
-tokens, segredos ou o conteúdo de `%APPDATA%\com.rexia.scribe`.
+tokens, segredos ou o conteúdo de qualquer pasta de dados do Scribe.
 
 ### Atualizar e desinstalar
 
 Feche o Scribe pelo menu da bandeja e execute o instalador candidato para
 atualizar. O teste de upgrade da beta anterior preservou histórico e
 credenciais; a atualização do candidato ainda precisa ser validada. Desinstale em
-**Configurações → Aplicativos → Scribe**; isso remove o app e mantém o perfil em
-`%APPDATA%\com.rexia.scribe`. Para remover também o histórico pessoal, feche o
-app e exclua esse perfil explicitamente. Reinstalar depois de excluir
+**Configurações → Aplicativos → Scribe**; isso remove o app e mantém a configuração
+em `%APPDATA%\com.rexia.scribe` e o histórico local em
+`%LOCALAPPDATA%\com.rexia.scribe`. Para remover também os dados pessoais, feche o
+Scribe e todas as sessões do Claude Code, depois exclua explicitamente **as duas**
+pastas. Isso inclui recibos locais de migração e cópias de conflito ou limpeza
+preservadas em Roaming. Backups antigos e cópias no servidor corporativo seguem
+o procedimento de retenção da TI; excluir essas pastas não apaga tais cópias nem
+bytes remanescentes no disco. Reinstalar depois de excluir
 `connection.json` gera credenciais novas: execute o script de configuração
 novamente. Depois de atualizar o Scribe, execute o script outra vez para
 atualizar o caminho do helper salvo pelo plugin.
