@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createBuildPlan, defaultBundleRoot, verifyUniversalMacApp, writeArtifactMetadata } from '../build-distribution.mjs';
+import { createBuildPlan, defaultBundleRoot, stageMacTargetSidecars, verifyUniversalMacApp, writeArtifactMetadata } from '../build-distribution.mjs';
 
 const sourceSha = '0123456789abcdef0123456789abcdef01234567';
 
@@ -53,6 +53,25 @@ test('distribution overlay enables all required bundles without changing the bas
   assert.equal(overlay.bundle.active, true);
   assert.deepEqual(overlay.bundle.targets, ['nsis', 'msi', 'app', 'dmg', 'deb', 'appimage']);
   assert.deepEqual(overlay.bundle.externalBin, ['binaries/scribe-hook']);
+});
+
+test('macOS staging provides each Tauri target-specific external sidecar', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'scribe-distribution-sidecars-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const buildDir = join(root, 'build');
+  const binariesDir = join(root, 'binaries');
+  mkdirSync(buildDir);
+  mkdirSync(binariesDir);
+  const plan = createBuildPlan('macos');
+  const built = plan.sidecars.map(({ filename }) => {
+    const path = join(buildDir, filename);
+    writeFileSync(path, filename);
+    return path;
+  });
+
+  const staged = stageMacTargetSidecars(built, plan, binariesDir);
+  assert.deepEqual(staged.map((path) => path.split(/[\\/]/).at(-1)), plan.sidecars.map(({ filename }) => filename));
+  assert.deepEqual(staged.map((path) => readFileSync(path, 'utf8')), plan.sidecars.map(({ filename }) => filename));
 });
 
 test('finalize copies only required bundles and writes LF UTF-8 checksums with source SHA metadata', (t) => {

@@ -92,6 +92,15 @@ function buildHook(triple) {
   return builtPath;
 }
 
+export function stageMacTargetSidecars(built, plan, outputDir) {
+  return plan.sidecars.map(({ filename }, index) => {
+    const staged = join(outputDir, filename);
+    copyFileSync(built[index], staged);
+    chmodSync(staged, 0o755);
+    return staged;
+  });
+}
+
 export function prepareSidecar(platform) {
   const plan = createBuildPlan(platform);
   if (platform === 'windows' && (process.platform !== 'win32' || hostTriple() !== plan.target)) {
@@ -108,6 +117,7 @@ export function prepareSidecar(platform) {
   const built = plan.sidecars.map(({ triple }) => buildHook(triple));
   let staged;
   if (platform === 'macos') {
+    stageMacTargetSidecars(built, plan, binariesDir);
     const sidecar = join(binariesDir, plan.stagedSidecar);
     run('lipo', ['-create', ...built, '-output', sidecar]);
     run('lipo', [sidecar, '-verify_arch', 'arm64', 'x86_64']);
