@@ -6,6 +6,12 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Respostas pela janela: permissões por hook nativo, perguntas pelo MCP,
+  confirmação separada para ações de risco, decisões concorrentes e prazos.
+  Prazo de permissões configurável de 1 a 120 segundos; perguntas até 10 minutos.
+  Decisões encerradas ou de um processo anterior não podem ser reutilizadas.
+  Aprovação, negação e pergunta verificadas com Claude Code real no Windows.
+
 - Instalação local de desenvolvimento autorizada: app/cliente no perfil do
   usuário e plug-in configurado pelo CLI oficial, com conexão MCP privada.
   Não é release; aceite visual foi adiado para priorizar o fluxo de decisões.

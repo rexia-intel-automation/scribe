@@ -1,5 +1,7 @@
 //! Scribe's local session core. Original hook payloads never enter persistence.
+mod decisions;
 mod mcp;
+pub use decisions::{Decision, DecisionInput, DecisionWait};
 mod model;
 mod private_fs;
 mod sanitize;
@@ -12,7 +14,10 @@ pub use server::LocalServer;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::broadcast;
@@ -28,6 +33,7 @@ struct Data {
     agents: HashMap<String, HashSet<String>>,
     retention_days: u16,
     completed_minutes: u16,
+    decisions: HashMap<String, decisions::Pending>,
 }
 
 impl Data {
@@ -45,6 +51,8 @@ impl Data {
         });
         let session_ids: HashSet<_> = self.sessions.keys().cloned().collect();
         self.agents.retain(|id, _| session_ids.contains(id));
+        self.decisions
+            .retain(|_, d| d.view.status == "pending" || d.view.created_at >= before);
     }
 }
 
@@ -53,6 +61,7 @@ impl Data {
 pub struct Core {
     data: Arc<Mutex<Data>>,
     events: broadcast::Sender<StateEvent>,
+    permission_seconds: Arc<AtomicU64>,
 }
 
 /// Current Unix time used by the live server; tests supply explicit timestamps.
@@ -79,6 +88,20 @@ impl Core {
             }
             sessions.insert(session.id.clone(), session);
         }
+        let decisions = store
+            .load_decisions(at)?
+            .into_iter()
+            .map(|view| {
+                (
+                    view.id.clone(),
+                    decisions::Pending {
+                        view,
+                        sender: None,
+                        tool_use_id: None,
+                    },
+                )
+            })
+            .collect();
         let (events, _) = broadcast::channel(64);
         Ok(Self {
             data: Arc::new(Mutex::new(Data {
@@ -87,9 +110,25 @@ impl Core {
                 agents: HashMap::new(),
                 retention_days,
                 completed_minutes,
+                decisions,
             })),
             events,
+            permission_seconds: Arc::new(AtomicU64::new(120)),
         })
+    }
+
+    /// Configure the wait for new permissions, always below the 130-second hook limit.
+    pub fn set_permission_seconds(&self, seconds: u64) -> Result<()> {
+        if !(1..=120).contains(&seconds) {
+            return Err("Invalid permission timeout".into());
+        }
+        self.permission_seconds.store(seconds, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Current deadline policy; changes affect new requests only.
+    pub fn permission_seconds(&self) -> u64 {
+        self.permission_seconds.load(Ordering::Relaxed)
     }
 
     /// Subscribe before taking a snapshot to avoid losing concurrent deltas.
@@ -114,7 +153,36 @@ impl Core {
                 s.id.clone(),
             )
         });
-        Ok(Snapshot { sessions })
+        let mut decisions: Vec<_> = data
+            .decisions
+            .values()
+            .filter(|d| {
+                d.view.status == "pending"
+                    || d.view.resolved_at.is_some_and(|end| {
+                        at.saturating_sub(end)
+                            < if d.view.status == "expired" {
+                                600_000
+                            } else {
+                                5000
+                            }
+                    })
+            })
+            .map(|d| d.view.clone())
+            .collect();
+        decisions.sort_by_key(|d| (d.created_at, d.id.clone()));
+        for session in &mut sessions {
+            if decisions
+                .iter()
+                .any(|d| d.session_id == session.id && d.status == "pending")
+            {
+                session.state = SessionState::Interrogacao;
+                session.action = "Esperando sua permissão".into();
+            }
+        }
+        Ok(Snapshot {
+            sessions,
+            decisions,
+        })
     }
 
     /// Apply a verified hook. Extra payload fields are ignored, never serialized.
@@ -251,6 +319,30 @@ impl Core {
         data.agents.insert(session.id.clone(), agents);
         data.sessions.insert(session.id.clone(), session.clone());
         let _ = self.events.send(StateEvent::Session(session));
+        let cancel_ids: Vec<_> =
+            if matches!(route, "SessionEnd" | "SessionStart" | "UserPromptSubmit") {
+                data.decisions
+                    .values()
+                    .filter(|d| d.view.session_id == hook.session_id && d.view.status == "pending")
+                    .map(|d| d.view.id.clone())
+                    .collect()
+            } else if matches!(route, "PostToolUse" | "PostToolUseFailure") {
+                data.decisions
+                    .values()
+                    .filter(|d| {
+                        d.view.session_id == hook.session_id
+                            && d.view.status == "pending"
+                            && hook.tool_use_id.is_some()
+                            && d.tool_use_id == hook.tool_use_id
+                    })
+                    .map(|d| d.view.id.clone())
+                    .collect()
+            } else {
+                vec![]
+            };
+        for id in cancel_ids {
+            self.expire_locked(&mut data, &id);
+        }
         Ok(())
     }
 
@@ -343,9 +435,17 @@ impl Core {
         data.store.clear()?;
         data.sessions.clear();
         data.agents.clear();
-        let _ = self
-            .events
-            .send(StateEvent::Snapshot(Snapshot { sessions: vec![] }));
+        for pending in data.decisions.values_mut() {
+            if let Some(sender) = pending.sender.take() {
+                let _ =
+                    sender.send(serde_json::json!({"answer":null,"reason":"scribe_unavailable"}));
+            }
+        }
+        data.decisions.clear();
+        let _ = self.events.send(StateEvent::Snapshot(Snapshot {
+            sessions: vec![],
+            decisions: vec![],
+        }));
         Ok(())
     }
 }

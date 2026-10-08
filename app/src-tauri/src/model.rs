@@ -148,6 +148,7 @@ pub(crate) struct Hook {
     pub agent_id: Option<String>,
     pub source: Option<String>,
     pub notification_type: Option<String>,
+    pub tool_use_id: Option<String>,
 }
 
 impl Hook {
@@ -188,6 +189,7 @@ pub(crate) fn identifier(id: &str) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub sessions: Vec<Session>,
+    pub decisions: Vec<crate::Decision>,
 }
 
 /// An update contains sanitized state only; credentials are never serialized.
@@ -196,4 +198,5 @@ pub struct Snapshot {
 pub enum StateEvent {
     Snapshot(Snapshot),
     Session(Session),
+    Decision(crate::Decision),
 }

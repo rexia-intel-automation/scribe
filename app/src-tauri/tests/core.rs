@@ -802,7 +802,7 @@ async fn request(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
+async fn http_boundaries_auth_body_rate_mcp_and_protected_decision_route() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
     let server = LocalServer::start(core.clone(), 0, TOKEN.into())
@@ -844,7 +844,7 @@ async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
         )
         .await
         .code,
-        404
+        403
     );
     let oversized = "x".repeat(1024 * 1024 + 1);
     assert_eq!(
@@ -926,16 +926,44 @@ async fn http_boundaries_auth_body_rate_mcp_and_no_decision_route() {
     );
     let ask = json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"scribe_ask",
         "arguments":{"session_id":"public-session","question":"PUBLIC QUESTION","options":["YES","NO"]}}}).to_string();
+    let asking = tokio::spawn(async move {
+        request(
+            port,
+            TOKEN,
+            "POST",
+            "/mcp",
+            "MCP-Protocol-Version: 2025-11-25\r\n",
+            &ask,
+        )
+        .await
+    });
+    let pending = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(decision) = core
+                .snapshot(scribe_core::now_ms())
+                .unwrap()
+                .decisions
+                .first()
+                .cloned()
+            {
+                break decision;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
     let result = request(
         port,
         TOKEN,
         "POST",
-        "/mcp",
-        "MCP-Protocol-Version: 2025-11-25\r\n",
-        &ask,
+        &format!("/v1/decisions/{}", pending.id),
+        &format!("{ui}Content-Type: application/json\r\n"),
+        "{\"option\":1}",
     )
     .await;
-    assert!(result.body.contains("scribe_unavailable"));
+    assert_eq!(result.code, 204);
+    assert!(asking.await.unwrap().body.contains("NO"));
     for (name, arguments) in [
         (
             "scribe_report",

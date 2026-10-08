@@ -9,6 +9,7 @@ fn main() {
             "start_drag",
             "clear_history",
             "open_help",
+            "resolve_decision",
         ]),
     ))
     .expect("Tauri build configuration is invalid");

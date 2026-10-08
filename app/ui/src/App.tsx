@@ -3,6 +3,7 @@ import { Gota } from "./gota/Gota";
 import { t, action, type Message } from "./i18n";
 import { priority, type View, type Session, type Preferences } from "./types";
 import * as bridge from "./bridge";
+import { DecisionCard } from "./DecisionCard";
 function useTheme(theme: Preferences["theme"]) {
   const [dark, setDark] = useState(
     matchMedia("(prefers-color-scheme: dark)").matches,
@@ -68,9 +69,14 @@ function SessionRow({
       {expanded && (
         <div className="session-detail">
           <p className="path">{session.cwd}</p>
-          {session.state === "interrogacao" && (
-            <p className="terminal-hint">{t(language, "permissionTerminal")}</p>
-          )}
+          {session.state === "interrogacao" &&
+            !view.decisions?.some(
+              (d) => d.sessionId === session.id && d.status === "pending",
+            ) && (
+              <p className="terminal-hint">
+                {t(language, "permissionTerminal")}
+              </p>
+            )}
           <ol className="steps">
             {session.steps.slice(-8).map((step, index) => (
               <li key={`${step.at}-${index}`}>
@@ -287,6 +293,19 @@ function Settings({
             onChange={(e) => change("port", e.target.valueAsNumber)}
           />
         </label>
+        <label>
+          {t(language, "permissionSeconds")}
+          <input
+            type="number"
+            min={1}
+            max={120}
+            required
+            value={preferences.permissionSeconds ?? 120}
+            onChange={(e) =>
+              change("permissionSeconds", e.target.valueAsNumber)
+            }
+          />
+        </label>
         {error && (
           <p role="alert" className="error">
             {t(language, error)}
@@ -404,6 +423,10 @@ export default function App({
   const active = view.sessions.filter((s) => s.endedAt === null);
   const completed = view.sessions.filter((s) => s.endedAt !== null);
   const form = priority(view.sessions);
+  const decisions = view.decisions ?? [];
+  const pendingCount = decisions.filter(
+    (d) => d.status === "pending" && now < d.expiresAt,
+  ).length;
   const problem = (error || view.error) as Message | null;
   if (view.preferences.collapsed)
     return (
@@ -462,6 +485,16 @@ export default function App({
         }}
       >
         <Gota form={form} size={56} label={t(language, form)} theme={theme} />
+        {pendingCount > 0 && (
+          <span
+            className="decision-count"
+            aria-label={t(language, "decisionsWaiting", {
+              count: pendingCount,
+            })}
+          >
+            {pendingCount}
+          </span>
+        )}
         {problem && (
           <span className="collapsed-error">
             <span aria-hidden="true">!</span>
@@ -482,6 +515,9 @@ export default function App({
             {t(language, active.length === 1 ? "summaryOne" : "summary", {
               count: active.length,
             })}
+            {pendingCount > 0 && (
+              <> · {t(language, "decisionsWaiting", { count: pendingCount })}</>
+            )}
           </p>
         </div>
         <button
@@ -505,6 +541,23 @@ export default function App({
         </button>
       </nav>
       <div className="content">
+        {decisions.length > 0 && (
+          <section aria-label={t(language, "decisionsTitle")}>
+            <h2 aria-live="polite">
+              {t(language, "decisionsWaiting", { count: pendingCount })}
+            </h2>
+            {decisions.map((decision) => (
+              <DecisionCard
+                key={decision.id}
+                decision={decision}
+                language={language}
+                now={now}
+                receive={receive}
+                fail={fail}
+              />
+            ))}
+          </section>
+        )}
         {(error || view.error) && (
           <p className="error" role="alert">
             {t(language, (error || view.error) as Message)}

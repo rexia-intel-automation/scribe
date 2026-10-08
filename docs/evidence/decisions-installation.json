@@ -1,0 +1,17 @@
+{
+  "installedDirectory": "%LOCALAPPDATA%\\Scribe",
+  "backupCreated": true,
+  "pluginEnabled": true,
+  "clientSha256": "D2E45D405E08F16138F2353CC7AD2C34B6E8D88D76A90E2A791665DC5C3BE37E",
+  "date": "2026-10-07",
+  "healthOk": true,
+  "appMatchesVerifiedBuild": true,
+  "localPort": 7717,
+  "appSha256": "38827DD8E9067472EE9960061E6893BB53B6F1FEB7DF9CD32E311C5E474F8838",
+  "defaultProfile": true,
+  "startedWithoutDebugArguments": true,
+  "clientMatchesVerifiedBuild": true,
+  "executionEnvironment": "codex-msix-virtualized-windows",
+  "externalInstallationVerified": false,
+  "scopeCorrection": "The invoking process saw MSIX-virtualized AppData. These results do not verify the unpackaged Claude Code installation. External diagnosis recorded on 2026-10-07."
+}

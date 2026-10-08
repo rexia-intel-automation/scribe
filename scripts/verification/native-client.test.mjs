@@ -27,7 +27,7 @@ async function launch(exe, config, event, body, leaveStdinOpen = false, override
   return { code, stdout, stderr, elapsedMs: performance.now() - started };
 }
 
-test('native installed client forwards all eleven events, ignores responses and never follows redirects or proxies', async () => {
+test('native client forwards eleven events, returns only permission decisions and blocks redirects/proxies', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scribe native test '));
   const executable = join(root, process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
   await copyFile(binary, executable);
@@ -55,15 +55,22 @@ test('native installed client forwards all eleven events, ignores responses and 
   try {
     for (const event of EVENTS) {
       const result = await launch(executable, config, event, JSON.stringify({ hook_event_name: event, session_id: 'public', cwd: '/public' }));
-      assert.equal(result.code, 0); assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
+      assert.equal(result.code, 0);
+      if (event === 'PermissionRequest') assert.equal(JSON.parse(result.stdout).hookSpecificOutput.decision.behavior, 'allow');
+      else assert.equal(result.stdout, '');
+      assert.equal(result.stderr, '');
       assert.ok(result.elapsedMs < 1000);
     }
     assert.deepEqual(events, EVENTS);
     for (scenario of ['stalled', 'redirect', 'http-error', 'invalid-json', 'healthy']) {
-      const result = await launch(executable, config, 'PermissionRequest', JSON.stringify({
-        hook_event_name: 'PermissionRequest', session_id: 'public', cwd: '/public' }), false,
+      const event = scenario === 'stalled' ? 'Stop' : 'PermissionRequest';
+      const result = await launch(executable, config, event, JSON.stringify({
+        hook_event_name: event, session_id: 'public', cwd: '/public' }), false,
       { HTTP_PROXY: trapUrl, HTTPS_PROXY: trapUrl, ALL_PROXY: trapUrl, NO_PROXY: '' });
-      assert.equal(result.code, 0); assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
+      assert.equal(result.code, 0);
+      if (scenario === 'healthy') assert.equal(JSON.parse(result.stdout).hookSpecificOutput.decision.behavior, 'allow');
+      else assert.equal(result.stdout, '');
+      assert.equal(result.stderr, '');
       assert.ok(result.elapsedMs < 1000);
     }
     assert.equal(forbiddenRequests, 0);

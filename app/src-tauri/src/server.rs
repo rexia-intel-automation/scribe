@@ -96,6 +96,7 @@ impl LocalServer {
             .route("/v1/hooks/{event}", post(hook))
             .route("/v1/state", get(snapshot))
             .route("/v1/events", get(events))
+            .route("/v1/decisions/{id}", post(decision))
             .nest_service("/mcp", service)
             .with_state(state.clone())
             .layer(middleware::from_fn_with_state(state, defend));
@@ -195,7 +196,8 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
     {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    if matches!(request.uri().path(), "/v1/state" | "/v1/events")
+    if (matches!(request.uri().path(), "/v1/state" | "/v1/events")
+        || request.uri().path().starts_with("/v1/decisions/"))
         && (headers.get_all("x-scribe-ui").iter().count() != 1
             || !matches_secret(
                 headers.get("x-scribe-ui").and_then(|h| h.to_str().ok()),
@@ -232,14 +234,39 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION")}))
 }
 
-async fn hook(
-    State(state): State<HttpState>,
-    Path(event): Path<String>,
-    body: Bytes,
-) -> StatusCode {
+async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: Bytes) -> Response {
+    if event == "PermissionRequest" {
+        let core = state.core.clone();
+        let wait =
+            tokio::task::spawn_blocking(move || core.permission(&body, core.permission_seconds()))
+                .await;
+        return match wait {
+            Ok(Ok(wait)) => {
+                tokio::select! {
+                    result = wait.receive() => {
+                        if result.get("hookSpecificOutput").is_some() { Json(result).into_response() }
+                        else { StatusCode::NO_CONTENT.into_response() }
+                    },
+                    _ = state.cancel.cancelled() => StatusCode::NO_CONTENT.into_response(),
+                }
+            }
+            _ => StatusCode::NO_CONTENT.into_response(),
+        };
+    }
     match tokio::task::spawn_blocking(move || state.core.hook(&event, &body, now_ms())).await {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        _ => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+async fn decision(
+    State(state): State<HttpState>,
+    Path(id): Path<String>,
+    Json(input): Json<crate::DecisionInput>,
+) -> StatusCode {
+    match tokio::task::spawn_blocking(move || state.core.resolve_decision(&id, input)).await {
         Ok(Ok(())) => StatusCode::NO_CONTENT,
-        _ => StatusCode::BAD_REQUEST,
+        _ => StatusCode::CONFLICT,
     }
 }
 

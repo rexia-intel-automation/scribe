@@ -37,6 +37,7 @@ export interface Preferences {
   notifications: boolean;
   retentionDays: number;
   completedMinutes: number;
+  permissionSeconds?: number;
   port: number;
   collapsed: boolean;
   side: "left" | "right";
@@ -49,6 +50,28 @@ export interface View {
   sessions: Session[];
   preferences: Preferences;
   error: string | null;
+  decisions?: Decision[];
+}
+export interface Decision {
+  id: string;
+  sessionId: string;
+  project: string;
+  kind: "permission" | "question";
+  tool: string | null;
+  target: string;
+  question: string | null;
+  options: string[];
+  risk: boolean;
+  armed: boolean;
+  status: "pending" | "allowed" | "denied" | "answered" | "expired";
+  createdAt: number;
+  expiresAt: number;
+  resolvedAt: number | null;
+}
+export interface DecisionInput {
+  action?: "allow" | "deny" | "arm";
+  option?: number;
+  message?: string;
 }
 const priorities: Record<Form, number> = {
   interrogacao: 5,

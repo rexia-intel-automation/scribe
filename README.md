@@ -5,8 +5,9 @@ Local desktop companion for Claude Code sessions and human decisions.
 [Português brasileiro](README.pt-BR.md)
 
 **Development status:** Phases 0, 1 and 2 approved; Phase 3 desktop UI is in verification.
-No desktop release is available yet. The native client currently
-observes events only; permission decisions are not implemented.
+No desktop release is available yet. Allowing, denying and answering questions
+in the window are implemented and verified with real Claude Code on Windows.
+See [decision verification](docs/fase-4.md) for evidence and local-build limitations.
 
 The repository is the `rexia-scribe` marketplace. The configuration-only plugin
 is in `plugins/scribe`. The desktop installer will include the Rust hook client;

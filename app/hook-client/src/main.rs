@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::{
     fs,
-    io::Read,
+    io::{Read, Write},
     path::PathBuf,
     process::{Command, Stdio},
     sync::mpsc,
@@ -101,18 +101,60 @@ fn observe(event: &str, config: Connection, bytes: Vec<u8>) {
         return;
     }
     let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_millis(250)))
+        .timeout_global(Some(if event == "PermissionRequest" {
+            Duration::from_secs(125)
+        } else {
+            Duration::from_millis(250)
+        }))
         .max_redirects(0)
         .proxy(None)
         .build()
         .new_agent();
-    // In Phase 1 this is an observer only: it never returns a permission decision.
-    // The bounded, verified decision protocol is added at the Phase 4 gate.
-    let _ = agent
+    let response = agent
         .post(format!("http://127.0.0.1:{}/v1/hooks/{event}", config.port))
         .header("Authorization", format!("Bearer {}", config.token))
         .header("Content-Type", "application/json")
         .send(bytes);
+    if event != "PermissionRequest" {
+        return;
+    }
+    let Ok(mut response) = response else {
+        return;
+    };
+    if response.status() != 200 {
+        return;
+    }
+    let Ok(text) = response
+        .body_mut()
+        .with_config()
+        .limit(8192)
+        .read_to_string()
+    else {
+        return;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
+    let output = &value["hookSpecificOutput"];
+    if output["hookEventName"] != "PermissionRequest" {
+        return;
+    }
+    let decision = &output["decision"];
+    let Some(behavior @ ("allow" | "deny")) = decision["behavior"].as_str() else {
+        return;
+    };
+    // Reconstruct the supported contract; never forward arbitrary hook output.
+    let mut decision_out = serde_json::json!({"behavior":behavior});
+    if behavior == "deny" {
+        if let Some(message) = decision["message"]
+            .as_str()
+            .filter(|s| s.chars().count() <= 200)
+        {
+            decision_out["message"] = Value::String(message.into());
+        }
+    }
+    let result = serde_json::json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":decision_out}});
+    let _ = writeln!(std::io::stdout(), "{result}");
 }
 
 fn open(config: Option<Connection>) -> bool {

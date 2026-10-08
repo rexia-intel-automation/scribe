@@ -98,3 +98,14 @@ Janela Windows de produção abre e recebe fixtures públicas pelo núcleo real;
 Latência nativa p95 17,46 ms; recursos e avisos GTK estão documentados em
 docs/fase-3.md para avaliação independente. A Fase 3 ainda não passou a catraca.
 Nenhuma versão está publicada; decisões e instalação limpa seguem pendentes.
+
+Em 2026-10-07, o fluxo local de decisões foi implementado e os executáveis
+na visão virtualizada do Codex foram atualizados. Permitir, negar e perguntar passaram com Claude
+real no Windows, inclusive expiração de 120 s e resposta tardia após 125 s.
+Testes locais e cobertura de 94,41% estão em docs/fase-4.md. Isto não aprova
+a Fase 4 completa: notificações, aceite humano, revisão independente e demais
+catracas de entrega continuam registradas como pendentes.
+
+Diagnóstico externo em 2026-10-07 encontrou divergência MSIX/AppData: a instalação
+real vista pelo Claude Code fora do Codex ainda precisa ser reparada e validada.
+Os testes anteriores não comprovam essa instalação externa; ver docs/fase-4.md.
