@@ -67,6 +67,19 @@ function DecisionCardContent({
   const [planFeedback, setPlanFeedback] = useState("");
   const controlId = useId();
   const canAllow = decision.canAllow !== false;
+  const missingTarget =
+    decision.target === "" ||
+    decision.target === "Ferramenta sem alvo informado";
+  const displayedTarget =
+    !canAllow && missingTarget
+      ? t(language, "targetNotProvided")
+      : decision.target;
+  const headingMessage =
+    decision.kind === "permission"
+      ? "permissionHeading"
+      : decision.kind === "question" || decision.kind === "nativeQuestion"
+        ? "questionHeading"
+        : null;
   const permissionUpdates = Array.isArray(decision.permissionUpdates)
     ? decision.permissionUpdates
     : [];
@@ -222,7 +235,10 @@ function DecisionCardContent({
       }}
     >
       <div className="decision-heading">
-        <strong>{decision.project}</strong>
+        <strong>
+          {decision.project}
+          {headingMessage && <> · {t(language, headingMessage)}</>}
+        </strong>
         <time>
           {t(language, "second", {
             count: Math.max(0, Math.floor((now - decision.createdAt) / 1000)),
@@ -237,9 +253,9 @@ function DecisionCardContent({
             aria-expanded={expanded}
             onClick={() => setExpanded(!expanded)}
           >
-            {decision.target}
+            {displayedTarget}
           </button>
-          {expanded && <pre className="decision-full">{decision.target}</pre>}
+          {expanded && <pre className="decision-full">{displayedTarget}</pre>}
           {decision.risk && (
             <p className="risk-warning" role="note">
               {t(language, "riskWarning")}
@@ -579,7 +595,10 @@ function DecisionCardContent({
                       });
                     }}
                   >
-                    {t(language, "confirmAllow")}
+                    {t(
+                      language,
+                      decision.risk ? "confirmRisk" : "confirmAllow",
+                    )}
                   </button>
                 )}
               <button
@@ -664,10 +683,21 @@ function DecisionCardContent({
         </div>
       ) : (
         <p className="decision-status" role="status">
-          {t(
-            language,
-            decision.status === "pending" ? "expired" : decision.status,
-          )}
+          {decision.kind === "permission" &&
+          decision.status === "allowed" &&
+          typeof decision.resolvedAt === "number" &&
+          Number.isFinite(decision.resolvedAt) &&
+          Number.isFinite(new Date(decision.resolvedAt).getTime())
+            ? t(language, "allowedAt", {
+                time: new Intl.DateTimeFormat(language, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(decision.resolvedAt),
+              })
+            : t(
+                language,
+                decision.status === "pending" ? "expired" : decision.status,
+              )}
         </p>
       )}
     </article>

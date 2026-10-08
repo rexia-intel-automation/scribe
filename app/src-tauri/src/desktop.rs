@@ -511,7 +511,10 @@ fn notify_requests(
             .unwrap_or(&decision.project);
         let body = crate::notifications::body(
             label,
-            &text(&current.preferences.language, "notificationBody"),
+            &text(
+                &current.preferences.language,
+                crate::notifications::body_key(&decision.kind),
+            ),
         );
         // XDG daemons may render notification bodies as markup.
         let body = if cfg!(all(unix, not(target_os = "macos"))) {

@@ -71,6 +71,15 @@ pub(crate) fn body(project: &str, template: &str) -> String {
     template.replace("{project}", &project)
 }
 
+pub(crate) fn body_key(kind: &str) -> &'static str {
+    match kind {
+        "permission" => "notificationPermission",
+        "question" | "nativeQuestion" => "notificationQuestion",
+        "plan" => "notificationPlan",
+        _ => "notificationBody",
+    }
+}
+
 pub(crate) fn escape_markup(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -120,6 +129,51 @@ mod tests {
         assert!(notifications
             .new_requests(&[resolved], true, false, 5)
             .is_empty());
+    }
+
+    #[test]
+    fn localized_previews_identify_the_need_without_exposing_decision_content() {
+        for (messages, permission, question, plan) in [
+            (
+                include_str!("../../ui/src/i18n/en.json"),
+                "demo needs your permission",
+                "demo has a question",
+                "demo needs your plan approval",
+            ),
+            (
+                include_str!("../../ui/src/i18n/pt-BR.json"),
+                "demo precisa da sua permissão",
+                "demo tem uma pergunta",
+                "demo precisa da sua aprovação do plano",
+            ),
+        ] {
+            let messages: serde_json::Value = serde_json::from_str(messages).unwrap();
+            let mut decision = request("preview");
+            decision.question = Some("PRIVATE_QUESTION_CONTENT".into());
+            decision.plan_file_path = Some("PRIVATE_PLAN_PATH".into());
+            for (kind, expected) in [
+                ("permission", permission),
+                ("question", question),
+                ("nativeQuestion", question),
+                ("plan", plan),
+            ] {
+                decision.kind = kind.into();
+                let preview = body(
+                    &decision.project,
+                    messages[body_key(&decision.kind)].as_str().unwrap(),
+                );
+                assert_eq!(preview, expected);
+                for private in [
+                    &decision.target,
+                    decision.question.as_ref().unwrap(),
+                    decision.plan_file_path.as_ref().unwrap(),
+                ] {
+                    assert!(!preview.contains(private));
+                }
+            }
+            let fallback = body("demo", messages[body_key("futureKind")].as_str().unwrap());
+            assert!(fallback.contains("demo"));
+        }
     }
 
     #[test]
