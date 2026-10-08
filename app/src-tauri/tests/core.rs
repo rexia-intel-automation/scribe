@@ -777,6 +777,147 @@ struct Reply {
     body: String,
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    apply(&core, payload("SessionStart"), scribe_core::now_ms());
+    let ui = format!("X-Scribe-UI: {}\r\n", server.ui_token());
+    for transport in ["private-http", "direct-core"] {
+        for action in ["allow", "deny"] {
+            let mut samples = Vec::new();
+            for sample in 0..32 {
+                // Pacing is outside the measured interval and preserves the real quota.
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                let body = json!({"hook_event_name":"PermissionRequest","session_id":"public-session",
+                "cwd":"/public/project","tool_name":"Bash","tool_use_id":format!("{action}-{sample}"),
+                "tool_input":{"command":"echo public"}}).to_string();
+                let nonce = format!("{:032x}", rand::random::<u128>());
+                assert_eq!(
+                    raw_request(
+                        port,
+                        "invalid",
+                        "GET",
+                        &format!("/v1/hooks/challenge/{nonce}"),
+                        &challenge_headers(&nonce),
+                        ""
+                    )
+                    .await
+                    .code,
+                    204
+                );
+                let proof = scribe_hook_protocol::sign(
+                    HOOK_KEY,
+                    &[
+                        b"request",
+                        nonce.as_bytes(),
+                        b"PermissionRequest",
+                        body.as_bytes(),
+                    ],
+                );
+                let headers = format!("x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n");
+                let asking = tokio::spawn(async move {
+                    raw_request_with_timeout(
+                        port,
+                        "invalid",
+                        "POST",
+                        "/v1/hooks/PermissionRequest",
+                        &headers,
+                        &body,
+                        Duration::from_secs(5),
+                    )
+                    .await
+                });
+                let pending = tokio::time::timeout(Duration::from_secs(2), async {
+                    loop {
+                        let pending: Vec<_> = core
+                            .snapshot(scribe_core::now_ms())
+                            .unwrap()
+                            .decisions
+                            .into_iter()
+                            .filter(|d| d.session_id == "public-session" && d.status == "pending")
+                            .collect();
+                        if let Some(decision) = pending.first() {
+                            assert_eq!(pending.len(), 1);
+                            break decision.clone();
+                        }
+                        tokio::time::sleep(Duration::from_millis(1)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                assert!(pending.can_allow && !pending.risk);
+                assert!(
+                    !asking.is_finished(),
+                    "hook must wait for the private choice"
+                );
+                let path = format!("/v1/decisions/{}", pending.id);
+                let choice = json!({"action":action}).to_string();
+                // This upper bound includes localhost transport, commit and signing;
+                // it does not measure a physical click or the native helper's stdout.
+                let started = Instant::now();
+                let chosen = if transport == "private-http" {
+                    Some(request(port, TOKEN, "POST", &path, &ui, &choice).await)
+                } else {
+                    // Tauri calls this same primitive; its IPC/focus checks/view are excluded.
+                    core.resolve_decision(&pending.id, serde_json::from_str(&choice).unwrap())
+                        .unwrap();
+                    None
+                };
+                let reply = tokio::time::timeout(Duration::from_secs(3), asking)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                samples.push(started.elapsed());
+                if let Some(chosen) = chosen {
+                    assert_eq!(chosen.code, 204);
+                }
+                assert_eq!(reply.code, 200);
+                let proof = reply
+                    .headers
+                    .lines()
+                    .find_map(|line| {
+                        let (key, value) = line.split_once(':')?;
+                        key.eq_ignore_ascii_case("x-scribe-proof")
+                            .then(|| value.trim())
+                    })
+                    .unwrap();
+                assert!(scribe_hook_protocol::verify(
+                    HOOK_KEY,
+                    &[
+                        b"response",
+                        nonce.as_bytes(),
+                        b"PermissionRequest",
+                        b"200",
+                        reply.body.as_bytes()
+                    ],
+                    proof
+                ));
+                let output: Value = serde_json::from_str(&reply.body).unwrap();
+                assert_eq!(
+                    output["hookSpecificOutput"]["hookEventName"],
+                    "PermissionRequest"
+                );
+                assert_eq!(output["hookSpecificOutput"]["decision"]["behavior"], action);
+            }
+            samples.sort();
+            eprintln!(
+            "NFR02 choice-to-signed-hook-HTTP ms transport={transport} action={action} samples=32 p95={} max={} samples_over_100ms={}",
+            samples[30].as_millis(), samples[31].as_millis(),
+            samples.iter().filter(|sample| **sample >= Duration::from_millis(100)).count()
+        );
+            assert!(
+                samples[30] < Duration::from_millis(100),
+                "NFR02 {transport}/{action}: choice to signed hook HTTP p95 must be below 100 ms"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decision() {
     let temp = TempDir::new().unwrap();
