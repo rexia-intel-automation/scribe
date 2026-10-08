@@ -81,6 +81,8 @@ export function action(text: string, language: Language) {
     ["actionRestartSource", "restartAction"],
     ["actionPermissionSource", "permissionAction"],
     ["actionWaitingSource", "waitingAction"],
+    ["actionQuestionSource", "questionAction"],
+    ["actionPlanSource", "planAction"],
   ];
   for (const [source, target] of exact)
     if (text === t(language, source)) return t(language, target);

@@ -659,7 +659,18 @@ async fn approval_requires_complete_visible_known_metadata() {
             "Write",
             json!({"file_path":"public.txt", "content":"PUBLIC_PRIVATE_CONTENT"}),
         ),
+        (
+            "Edit",
+            json!({"file_path":"public.txt", "old_string":"old", "new_string":"PUBLIC_PRIVATE_CONTENT"}),
+        ),
+        (
+            "WebFetch",
+            json!({"url":"https://example.invalid", "prompt":"PUBLIC_PRIVATE_CONTENT"}),
+        ),
         ("mcp__unknown__execute", json!({"command":"echo public"})),
+        ("Bash", json!({"command":"echo public\necho second"})),
+        ("Bash", json!({"command":"echo public\recho second"})),
+        ("PowerShell", json!({"command":"Write-Output\tpublic"})),
         (
             "Bash",
             json!({"command":"echo public\u{202e}rm -rf /production"}),

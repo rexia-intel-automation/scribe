@@ -219,12 +219,17 @@ impl Core {
             .collect();
         decisions.sort_by_key(|d| (d.created_at, d.id.clone()));
         for session in &mut sessions {
-            if decisions
+            if let Some(decision) = decisions
                 .iter()
-                .any(|d| d.session_id == session.id && d.status == "pending")
+                .find(|d| d.session_id == session.id && d.status == "pending")
             {
                 session.state = SessionState::Interrogacao;
-                session.action = "Esperando sua permissão".into();
+                session.action = match decision.kind.as_str() {
+                    "question" | "nativeQuestion" => "Fez uma pergunta",
+                    "plan" => "Esperando sua aprovação do plano",
+                    _ => "Esperando sua permissão",
+                }
+                .into();
             }
         }
         Ok(Snapshot {

@@ -117,12 +117,94 @@ describe("session window", () => {
     render(<App initialView={data} />);
     expect(screen.queryByText(/^Origem:/)).not.toBeInTheDocument();
   });
+  it("uses singular and plural pending-decision labels", async () => {
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.preferences.language = "en";
+    data.decisions = [pendingDecision("one")];
+    render(<App initialView={data} />);
+    expect(
+      screen.getByRole("heading", { name: "1 decision waiting" }),
+    ).toHaveAttribute("aria-live", "polite");
+
+    await waitFor(() => expect(receive).toBeDefined());
+    act(() =>
+      receive!({
+        ...data,
+        revision: data.revision + 1,
+        decisions: [pendingDecision("one"), pendingDecision("two")],
+      }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "2 decisions waiting" }),
+    ).toHaveAttribute("aria-live", "polite");
+  });
+  it("keeps resolved and expired cards without announcing zero pending decisions", async () => {
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.preferences.language = "en";
+    data.decisions = [pendingDecision("answered")];
+    render(<App initialView={data} />);
+    await waitFor(() => expect(receive).toBeDefined());
+
+    const resolved = {
+      ...data.decisions[0],
+      status: "denied" as const,
+      resolvedAt: Date.now(),
+    };
+    act(() =>
+      receive!({
+        ...data,
+        revision: data.revision + 1,
+        decisions: [resolved],
+      }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Permissions and questions" }),
+    ).not.toHaveAttribute("aria-live");
+    expect(screen.getByText("echo public")).toBeVisible();
+    expect(screen.queryByText(/0 decisions waiting/)).not.toBeInTheDocument();
+
+    const expired = {
+      ...pendingDecision("expired"),
+      expiresAt: Date.now() - 1000,
+    };
+    act(() =>
+      receive!({
+        ...data,
+        revision: data.revision + 2,
+        decisions: [expired],
+      }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Permissions and questions" }),
+    ).not.toHaveAttribute("aria-live");
+    expect(screen.getByText("echo public")).toBeVisible();
+    expect(screen.getByText("Expired: answer in the terminal")).toBeVisible();
+    expect(screen.queryByText(/0 decisions waiting/)).not.toBeInTheDocument();
+  });
   it("translates persisted system actions while preserving user reports", () => {
     expect(action("Editando …/project/file.ts", "en")).toBe(
       "Editing …/project/file.ts",
     );
     expect(action("Falhou: Bash", "en")).toBe("Failed: Bash");
     expect(action("sem notícias há 12 min", "en")).toBe("No news for 12 min");
+    expect(action("Fez uma pergunta", "en")).toBe("Asked a question");
+    expect(action("Esperando sua aprovação do plano", "en")).toBe(
+      "Waiting for plan approval",
+    );
+    expect(action("Fez uma pergunta", "pt-BR")).toBe("Fez uma pergunta");
+    expect(action("Esperando sua aprovação do plano", "pt-BR")).toBe(
+      "Esperando sua aprovação do plano",
+    );
     expect(action("PUBLIC_MILESTONE", "en")).toBe("PUBLIC_MILESTONE");
   });
   it("settings save real selected preferences and switch all visible copy", async () => {
