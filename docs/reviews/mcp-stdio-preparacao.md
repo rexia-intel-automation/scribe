@@ -256,3 +256,24 @@ IDÊNTICA à do b268a38 (`49adc764…`). Plugin pareado b268 instalado. Cliente:
 Anote só passo, esperado e obtido. Não copie tokens nem o conteúdo de `%APPDATA%\com.rexia.scribe`.
 
 > Nota de registro (2026-10-08 16:40 -03:00, relógio do sistema): os horários das seções 4 a 7 foram corrigidos a partir dos carimbos UTC do `Claude.jsonl`. A primeira versão trazia horários estimados e adiantados pelo agente. Os resultados não mudam.
+
+## 8. Ensaio real da migração do histórico (F-12), 2026-10-08 ~18:24–18:26 -03:00 (relógio do sistema)
+
+Pacote: artefato OFICIAL do CI Distribution 37838077210, source `39d22bf` (merge
+checkout). A tree do 39d22bf é idêntica à do `main` f467292 (`89956817…`), que já tem o
+PR36. Setup `0c736c86…`, `sha256sum -c` OK. Não inclui o PR39. Backup novo, privado
+(ACL só do usuário + SYSTEM), feito ANTES em `%LOCALAPPDATA%\scribe-ensaio-backup-f12-20261008-1824`,
+com MANIFEST.sha256. O app foi fechado antes da instalação.
+
+| Passo | Resultado |
+| --- | --- |
+| Antes | Roaming: `connection.json`, `preferences.json`, `history\state.db` (57.344 B). Local: só o cache do WebView2 (`EBWebView`), sem histórico. DB: 13 sessões, 2 decisões, hash dos ids `428872667aa0` |
+| Upgrade NSIS `/S` + abrir pelo Iniciar | PASSOU: exit 0; app PID 11628, :7717 |
+| Migração | PASSOU: o `history` saiu do Roaming (só ficaram `connection.json` e `preferences.json`); `%LOCALAPPDATA%\com.rexia.scribe\history\state.db` (57.344 B) mais marcador e recibo `.scribe-history-*`; sem tombstone nem cópia de conflito |
+| Integridade | PASSOU: 13 sessões, 2 decisões e hash dos ids `428872667aa0` idênticos aos de antes |
+| Escrita depois da migração | PASSOU: `scribe_report` real `{"ok":true}`; o DB Local foi para 14 sessões; o Roaming não ganhou `history` novo |
+| Reinício | PASSOU: o app reabre (PID 20684, :7717), sem nova migração e com o mesmo estado nos dois perfis |
+| Aviso na UI | PENDENTE HUMANO (o caminho feliz não deve mostrar aviso) |
+
+Não foi exercitado: perfil Roaming corporativo real ou SMB, conflito com o histórico voltando
+e falha de limpeza. Esses casos estão cobertos só pelos testes automatizados do PR36.
