@@ -26,6 +26,7 @@ const EVENTS: &[&str] = &[
     "SessionEnd",
 ];
 const BODY_LIMIT: u64 = 1024 * 1024;
+mod mcp;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -496,6 +497,27 @@ fn open(config: Option<Connection>) -> bool {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--mcp-check"] {
+        println!(
+            "{}",
+            serde_json::json!({"name":"scribe-hook", "version":env!("CARGO_PKG_VERSION"), "mcp_transport":"attested-stdio-v1"})
+        );
+        return;
+    }
+    if args == ["--mcp"] {
+        let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+        else {
+            std::process::exit(1);
+        };
+        if runtime.block_on(mcp::run()).is_err() {
+            // Claude records stderr: never include request bodies, paths or credentials.
+            eprintln!("Scribe MCP transport unavailable");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args == ["--open"] {
         if !open(connection()) {
             std::process::exit(1);

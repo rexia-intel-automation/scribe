@@ -1008,6 +1008,30 @@ async fn request_timed(
             "x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n"
         ));
     }
+    if method == "POST"
+        && path == "/mcp"
+        && token == TOKEN
+        && !extra.to_ascii_lowercase().contains("x-scribe-nonce:")
+    {
+        let nonce = format!("{:032x}", rand::random::<u128>());
+        let challenge = raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/mcp/challenge/{nonce}"),
+            &mcp_challenge_headers(&nonce),
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204);
+        let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+        assert!(scribe_hook_protocol::verify(
+            HOOK_KEY,
+            &[b"mcp-challenge", nonce.as_bytes(), server_nonce.as_bytes()],
+            &reply_header(&challenge, "x-scribe-proof")
+        ));
+        extra.push_str(&mcp_request_headers(&nonce, &server_nonce, body));
+    }
     let post_started = Instant::now();
     let reply = raw_request(port, token, method, path, &extra, body).await;
     (reply, challenge_elapsed, post_started.elapsed())
@@ -1016,6 +1040,35 @@ async fn request_timed(
 fn challenge_headers(nonce: &str) -> String {
     let proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"challenge-request", nonce.as_bytes()]);
     format!("x-scribe-proof: {proof}\r\n")
+}
+
+fn reply_header(reply: &Reply, name: &str) -> String {
+    reply
+        .headers
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.trim().to_owned())
+        .unwrap_or_default()
+}
+
+fn mcp_challenge_headers(nonce: &str) -> String {
+    let proof = scribe_hook_protocol::sign(HOOK_KEY, &[b"mcp-challenge-request", nonce.as_bytes()]);
+    format!("x-scribe-proof: {proof}\r\n")
+}
+
+fn mcp_request_headers(nonce: &str, server_nonce: &str, body: &str) -> String {
+    let proof = scribe_hook_protocol::sign(
+        HOOK_KEY,
+        &[
+            b"mcp-request",
+            nonce.as_bytes(),
+            server_nonce.as_bytes(),
+            b"/mcp",
+            body.as_bytes(),
+        ],
+    );
+    format!("x-scribe-nonce: {nonce}\r\nx-scribe-server-nonce: {server_nonce}\r\nx-scribe-proof: {proof}\r\n")
 }
 
 async fn raw_request(
@@ -1062,6 +1115,145 @@ async fn raw_request_with_timeout(
         headers: headers.into(),
         body: body.into(),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_bearer_without_attestation_cannot_call_tools() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let reply = raw_request(
+        server.port(),
+        TOKEN,
+        "POST",
+        "/mcp",
+        "",
+        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+    )
+    .await;
+    assert_eq!(
+        reply.code, 401,
+        "MCP requires attestation, not a transmitted Bearer"
+    );
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_fresh_server_nonce_binds_request_response_and_prevents_reissued_replay() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let path = format!("/v1/mcp/challenge/{nonce}");
+    for headers in [
+        String::new(),
+        challenge_headers(nonce),
+        mcp_challenge_headers("1123456789abcdef0123456789abcdef"),
+    ] {
+        assert_eq!(
+            raw_request(port, TOKEN, "GET", &path, &headers, "")
+                .await
+                .code,
+            401
+        );
+    }
+    let challenge = raw_request(
+        port,
+        "invalid",
+        "GET",
+        &path,
+        &mcp_challenge_headers(nonce),
+        "",
+    )
+    .await;
+    assert_eq!(challenge.code, 204);
+    let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+    assert!(scribe_hook_protocol::valid_nonce(&server_nonce));
+    assert!(scribe_hook_protocol::verify(
+        HOOK_KEY,
+        &[b"mcp-challenge", nonce.as_bytes(), server_nonce.as_bytes()],
+        &reply_header(&challenge, "x-scribe-proof")
+    ));
+    let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+    let signed = mcp_request_headers(nonce, &server_nonce, body);
+    for (extra, altered_body) in [
+        (signed.clone(), body.replace("tools/list", "initialize")),
+        (
+            format!("{signed}x-scribe-proof: duplicate\r\n"),
+            body.to_owned(),
+        ),
+        (
+            format!("{signed}Origin: http://localhost\r\n"),
+            body.to_owned(),
+        ),
+    ] {
+        let response = raw_request(port, "invalid", "POST", "/mcp", &extra, &altered_body).await;
+        assert!(matches!(response.code, 401 | 403));
+    }
+    let response = raw_request(port, "invalid", "POST", "/mcp", &signed, body).await;
+    assert_eq!(response.code, 200);
+    assert!(scribe_hook_protocol::verify(
+        HOOK_KEY,
+        &[
+            b"mcp-response",
+            nonce.as_bytes(),
+            server_nonce.as_bytes(),
+            b"200",
+            response.body.as_bytes()
+        ],
+        &reply_header(&response, "x-scribe-proof")
+    ));
+    assert_eq!(
+        raw_request(port, TOKEN, "POST", "/mcp", &signed, body)
+            .await
+            .code,
+        401
+    );
+    let reissued = raw_request(
+        port,
+        "invalid",
+        "GET",
+        &path,
+        &mcp_challenge_headers(nonce),
+        "",
+    )
+    .await;
+    assert_eq!(reissued.code, 204);
+    let fresh = reply_header(&reissued, "x-scribe-server-nonce");
+    assert_ne!(
+        fresh, server_nonce,
+        "Replayed challenge must not recreate the previous authority"
+    );
+    assert_eq!(
+        raw_request(port, TOKEN, "POST", "/mcp", &signed, body)
+            .await
+            .code,
+        401
+    );
+    assert!(!scribe_hook_protocol::verify(
+        HOOK_KEY,
+        &[
+            b"mcp-response",
+            nonce.as_bytes(),
+            fresh.as_bytes(),
+            b"200",
+            response.body.as_bytes()
+        ],
+        &reply_header(&response, "x-scribe-proof")
+    ));
+    let fresh_request = mcp_request_headers(nonce, &fresh, body);
+    assert_eq!(
+        raw_request(port, "invalid", "POST", "/mcp", &fresh_request, body)
+            .await
+            .code,
+        200
+    );
+    server.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

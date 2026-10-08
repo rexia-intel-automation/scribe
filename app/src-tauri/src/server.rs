@@ -40,6 +40,7 @@ struct HttpState {
     token: String,
     hook_key: String,
     challenges: Arc<Mutex<HashMap<String, Instant>>>,
+    mcp_challenges: Arc<Mutex<HashMap<String, (String, Instant)>>>,
     ui_token: String,
     rate: Arc<Mutex<Rate>>,
     challenge_rate: Arc<Mutex<Rate>>,
@@ -107,6 +108,7 @@ impl LocalServer {
             token,
             hook_key,
             challenges: Arc::new(Mutex::new(HashMap::new())),
+            mcp_challenges: Arc::new(Mutex::new(HashMap::new())),
             ui_token: ui_token.clone(),
             rate: Arc::new(Mutex::new(Rate {
                 since: Instant::now(),
@@ -136,6 +138,7 @@ impl LocalServer {
             .route("/v1/health", get(health))
             .route("/v1/hooks/{event}", post(hook))
             .route("/v1/hooks/challenge/{nonce}", get(challenge))
+            .route("/v1/mcp/challenge/{nonce}", get(mcp_challenge))
             .route("/v1/state", get(snapshot))
             .route("/v1/events", get(events))
             .route("/v1/decisions/{id}", post(decision))
@@ -245,7 +248,13 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         }
     }
     let challenge_request = request.method() == axum::http::Method::GET
-        && request.uri().path().starts_with("/v1/hooks/challenge/");
+        && (request.uri().path().starts_with("/v1/hooks/challenge/")
+            || request.uri().path().starts_with("/v1/mcp/challenge/"));
+    let mcp_endpoint = matches!(request.uri().path(), "/mcp" | "/mcp/");
+    let signed_mcp = mcp_endpoint && request.method() == axum::http::Method::POST;
+    if mcp_endpoint && (!signed_mcp || request.uri().query().is_some()) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     let hook_request = request.method() == axum::http::Method::POST
         && request.uri().path().starts_with("/v1/hooks/")
         && !request.uri().path().starts_with("/v1/hooks/challenge/");
@@ -256,6 +265,7 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         .and_then(|h| h.strip_prefix("Bearer "));
     if !challenge_request
         && !signed_hook
+        && !signed_mcp
         && (headers.get_all(header::AUTHORIZATION).iter().count() != 1
             || !matches_secret(authorization, &state.token))
     {
@@ -271,6 +281,31 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
     {
         return StatusCode::FORBIDDEN.into_response();
     }
+    // Reject unauthenticated MCP clients before collecting their request body.
+    if signed_mcp {
+        let nonce = headers
+            .get("x-scribe-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let server_nonce = headers
+            .get("x-scribe-server-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let issued = state.mcp_challenges.lock().ok().is_some_and(|c| {
+            c.get(nonce).is_some_and(|(expected, at)| {
+                expected == server_nonce && at.elapsed() < Duration::from_secs(2)
+            })
+        });
+        if ["x-scribe-nonce", "x-scribe-server-nonce", "x-scribe-proof"]
+            .iter()
+            .any(|h| headers.get_all(*h).iter().count() != 1)
+            || !scribe_hook_protocol::valid_nonce(nonce)
+            || !scribe_hook_protocol::valid_nonce(server_nonce)
+            || !issued
+        {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
     let (parts, body) = request.into_parts();
     let bytes =
         match tokio::time::timeout(Duration::from_millis(500), to_bytes(body, BODY_LIMIT)).await {
@@ -278,6 +313,76 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
             Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
         };
+    if signed_mcp {
+        let nonce = parts
+            .headers
+            .get("x-scribe-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let server_nonce = parts
+            .headers
+            .get("x-scribe-server-nonce")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let proof = parts
+            .headers
+            .get("x-scribe-proof")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        if !scribe_hook_protocol::verify(
+            &state.hook_key,
+            &[
+                b"mcp-request",
+                nonce.as_bytes(),
+                server_nonce.as_bytes(),
+                b"/mcp",
+                &bytes,
+            ],
+            proof,
+        ) {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        let valid = state.mcp_challenges.lock().ok().is_some_and(|mut c| {
+            if c.get(nonce).is_some_and(|(expected, at)| {
+                expected == server_nonce && at.elapsed() < Duration::from_secs(2)
+            }) {
+                c.remove(nonce);
+                true
+            } else {
+                false
+            }
+        });
+        if !valid {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        if !within_rate(&state.rate, 50) {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        }
+        let nonce = nonce.to_owned();
+        let server_nonce = server_nonce.to_owned();
+        let response = next
+            .run(Request::from_parts(parts, Body::from(bytes)))
+            .await;
+        let (mut parts, body) = response.into_parts();
+        let Ok(bytes) = to_bytes(body, BODY_LIMIT).await else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        };
+        let status = parts.status.as_u16().to_string();
+        let proof = scribe_hook_protocol::sign(
+            &state.hook_key,
+            &[
+                b"mcp-response",
+                nonce.as_bytes(),
+                server_nonce.as_bytes(),
+                status.as_bytes(),
+                &bytes,
+            ],
+        );
+        parts
+            .headers
+            .insert("x-scribe-proof", proof.parse().expect("base64url header"));
+        return Response::from_parts(parts, Body::from(bytes));
+    }
     if signed_hook {
         let nonce = parts
             .headers
@@ -381,6 +486,52 @@ async fn challenge(
     challenges.insert(nonce.clone(), Instant::now());
     let proof = scribe_hook_protocol::sign(&state.hook_key, &[b"challenge", nonce.as_bytes()]);
     ([("x-scribe-proof", proof)], StatusCode::NO_CONTENT).into_response()
+}
+
+async fn mcp_challenge(
+    State(state): State<HttpState>,
+    Path(nonce): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if !scribe_hook_protocol::valid_nonce(&nonce) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    if headers.get_all("x-scribe-proof").iter().count() != 1
+        || !scribe_hook_protocol::verify(
+            &state.hook_key,
+            &[b"mcp-challenge-request", nonce.as_bytes()],
+            headers
+                .get("x-scribe-proof")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or(""),
+        )
+    {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if !within_rate(&state.challenge_rate, 256) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    let Ok(mut challenges) = state.mcp_challenges.lock() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    challenges.retain(|_, (_, at)| at.elapsed() < Duration::from_secs(2));
+    if challenges.len() >= 256 || challenges.contains_key(&nonce) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
+    let server_nonce = format!("{:032x}", rand::random::<u128>());
+    challenges.insert(nonce.clone(), (server_nonce.clone(), Instant::now()));
+    let proof = scribe_hook_protocol::sign(
+        &state.hook_key,
+        &[b"mcp-challenge", nonce.as_bytes(), server_nonce.as_bytes()],
+    );
+    (
+        [
+            ("x-scribe-server-nonce", server_nonce),
+            ("x-scribe-proof", proof),
+        ],
+        StatusCode::NO_CONTENT,
+    )
+        .into_response()
 }
 
 async fn health() -> Json<serde_json::Value> {

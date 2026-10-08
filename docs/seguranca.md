@@ -11,13 +11,26 @@ O servidor escuta em 127.0.0.1. Host deve corresponder à porta vinculada; qualq
 Origin é rejeitado, inclusive vazio. A webview não faz HTTP direto: usa comandos
 Tauri restritos à janela e origem locais. CSP e navegação bloqueiam conteúdo remoto.
 
-MCP e health exigem Bearer. Rotas de estado, eventos e decisões exigem também uma
+Health exige Bearer. Rotas de estado, eventos e decisões exigem também uma
 credencial efêmera privada, mantida no bridge Rust. Um hook não resolve um cartão.
 Seu canal usa chave HMAC independente do Bearer: o helper comprova o servidor
 antes de enviar o input, e pedido e resposta são assinados com domínio, nonce,
 evento e, na resposta, status e corpo. Nenhuma dessas chaves vai em argv ou nos
 pedidos do helper. O connection.json é a raiz de confiança e tem permissão
-restrita ao usuário. O onboarding envia o Bearer ao CLI oficial apenas por stdin.
+restrita ao usuário. O onboarding envia somente o caminho do helper à CLI;
+nem Bearer nem chave HMAC fazem parte da configuração nova do plugin.
+
+O MCP externo usa o helper em stdio. Inicialização e descoberta de ferramentas
+funcionam mesmo com o app fechado; uma chamada indisponível retorna erro, sem
+inventar resposta ou consentimento. O endpoint interno `/mcp` exige assinatura,
+não aceita mais somente Bearer, e usa domínios HMAC exclusivos do MCP. O helper
+verifica a prova do servidor e seu nonce fresco antes de enviar o corpo da
+ferramenta, pelo mesmo socket HTTP estabelecido, sem pool ou reconexão. O nonce
+do servidor é consumido uma vez e liga corpo, pedido e resposta; reproduzir um
+GET não recria a autorização do POST anterior. Cancelamento aborta o socket.
+App, helper e plugin devem ser atualizados juntos; o plugin HTTP da beta.1 é
+incompatível. O modo `--mcp-check` identifica a capacidade do helper, sem
+comprovar que o app está aberto ou atualizado.
 
 O GET do desafio exige uma prova HMAC no header `x-scribe-proof`, sobre os campos
 `challenge-request` e nonce. Ela não contém chave, Bearer nem input. Só provas

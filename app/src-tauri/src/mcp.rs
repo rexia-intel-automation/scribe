@@ -119,3 +119,19 @@ impl ServerHandler for ScribeMcp {
             .with_server_info(Implementation::new("scribe", env!("CARGO_PKG_VERSION")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_helper_tool_schema_matches_app() {
+        let expected: serde_json::Value =
+            serde_json::from_str(scribe_hook_protocol::MCP_TOOLS).unwrap();
+        let actual = serde_json::to_value(ScribeMcp::tool_router().list_all()).unwrap();
+        assert_eq!(
+            actual, expected,
+            "Update the paired native helper tool definitions"
+        );
+    }
+}

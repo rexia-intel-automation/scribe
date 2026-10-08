@@ -9,6 +9,20 @@ pela equipe de TI. Ainda não é a release final. Perguntas nativas e aprovaçã
 planos precisam de teste em uma sessão interativa nova do Claude Code. Veja
 [a verificação das decisões](docs/fase-4.md) para evidências e limites pendentes.
 
+**Candidato de migração MCP ainda não publicado:** o manifesto do plugin nesta
+fonte agora é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper. O
+plugin publicado em `v0.1.0-beta.1` usa HTTP/Bearer e é incompatível com este
+candidato. Atualize app/helper e plugin juntos. Esta mudança não faz parte do
+download beta.1, e a verificação de capacidade não confirma que o app desktop
+está em execução nem valida chamadas MCP. Se o app for atualizado primeiro, o
+plugin antigo pode mostrar “MCP server failed” após receber HTTP 401; atualize o
+plugin para 0.1.1 e execute novamente o script de configuração.
+
+O app/helper candidato ainda informa versão de pacote `0.1.0`, também usada na
+beta.1. Identifique o candidato compatível por `source_sha` nos metadados do build
+e pela capacidade `attested-stdio-v1` conferida pelo script. A tag mínima
+compatível será indicada quando a release correspondente for publicada.
+
 Este repositório é o marketplace `rexia-scribe`; o plugin de configuração está
 em `plugins/scribe`. O instalador inclui o cliente Rust de hooks, sem exigir uma
 instalação separada do Node para o Scribe.
@@ -38,9 +52,9 @@ arquivo. Se faltar uma entrada ou um hash for diferente, pare e fale com a TI.
 Não execute os arquivos antes de confirmar os hashes.
 
 Instale o executável para o usuário atual. Abra o **Scribe** pelo atalho do menu
-Iniciar do Windows e deixe o app aberto. Em uma
-janela normal do PowerShell 5.1 ou 7, sem elevação, execute o script na pasta em
-que foi baixado:
+Iniciar do Windows uma vez para criar o arquivo de conexão. Em uma janela normal
+do PowerShell 5.1 ou 7, sem elevação, execute o script na pasta em que foi
+baixado:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
@@ -53,10 +67,24 @@ pwsh -NoProfile -File .\configure-claude-plugin.ps1
 ```
 
 O script não recebe parâmetros. Ele exige o executável nativo `claude.exe` no
-`PATH` e o app Scribe aberto. A configuração do plugin vale para seu usuário;
-você não precisa copiar nem colar um token. Se o script falhar, anote a etapa e
-o código de saída para a TI. Por segurança, ele não mostra a saída da CLI do
-Claude.
+`PATH`, o `scribe-hook.exe` instalado e um arquivo de conexão atual do Scribe.
+A configuração do plugin vale para seu usuário; você não precisa copiar nem
+colar um token. A configuração do plugin inicia o helper configurado por stdio;
+o helper instalado precisa vir de uma versão compatível do Scribe e oferecer
+`--mcp`. O script não faz requisição HTTP de health e a janela do Scribe não
+precisa permanecer aberta durante a configuração. Chamadas que registram ou
+perguntam sobre uma sessão ainda exigem que o app desktop esteja em execução. Se
+o script informar que a chave do helper MCP está ausente ou desatualizada,
+atualize o app e o helper do Scribe juntos antes de configurar o plugin. Se
+houver falha, anote a etapa e o código de saída para a TI. Por segurança, o
+script não mostra a saída da CLI do Claude.
+
+O plugin MCP deixou de armazenar ou enviar o token Bearer da conexão pelo
+`userConfig` do Claude Code. Um token salvo por uma configuração antiga do
+plugin deixa de ser usado por este candidato; o arquivo de conexão continua
+privado ao Scribe. O script não inspeciona nem limpa as configurações salvas do
+Claude Code. Atualize app/helper e plugin juntos para manter as versões
+compatíveis.
 
 O script não é assinado. `Restricted` bloqueia scripts; `RemoteSigned` pode
 bloquear este arquivo baixado. Só depois de aprovar o arquivo e seu SHA-256,
@@ -87,7 +115,8 @@ O upgrade verificado preservou histórico e credenciais. Desinstale em
 `%APPDATA%\com.rexia.scribe`. Para remover também o histórico pessoal, feche o
 app e exclua esse perfil explicitamente. Reinstalar depois de excluir
 `connection.json` gera credenciais novas: execute o script de configuração
-novamente.
+novamente. Depois de atualizar o Scribe, execute o script outra vez para
+atualizar o caminho do helper salvo pelo plugin.
 
 ### Solução de problemas
 
