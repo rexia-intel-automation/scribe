@@ -9,6 +9,20 @@ team. It is not a final release. Native questions and plan approval still need
 testing in a fresh interactive Claude Code session. See
 [decision verification](docs/fase-4.md) for evidence and remaining limits.
 
+**Unreleased MCP migration candidate:** the source plugin manifest is now
+`0.1.1` and requires helper capability `attested-stdio-v1`. The published
+`v0.1.0-beta.1` plugin uses HTTP/Bearer and is incompatible with this candidate.
+Upgrade the app/helper and plugin together. This source change is not part of
+the beta.1 download, and the capability check does not prove the desktop app is
+running or validate an MCP tool call. If the app is upgraded first, the old
+plugin can report “MCP server failed” after an HTTP 401; update the plugin to
+0.1.1 and rerun its configuration script.
+
+The candidate app/helper still report package version `0.1.0`, also used by
+beta.1. Identify the compatible candidate by its `source_sha` in build metadata
+and the `attested-stdio-v1` capability checked by the setup script. A minimum
+compatible release tag will be listed when that release is published.
+
 This repository is the `rexia-scribe` marketplace; its configuration-only plugin
 is in `plugins/scribe`. The installer includes the Rust hook client, so Scribe
 does not require a separate Node installation.
@@ -38,9 +52,9 @@ Stop and ask IT if an entry is missing or a hash differs. Do not run the files
 until the hashes match.
 
 Install the setup executable for the current user. Open **Scribe** from the
-Windows Start menu shortcut and leave it
-running. In a normal, non-elevated PowerShell 5.1 or 7 window, run the setup
-script from the directory where you downloaded it:
+Windows Start menu shortcut once so it creates its connection file. In a normal,
+non-elevated PowerShell 5.1 or 7 window, run the setup script from the directory
+where you downloaded it:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
@@ -53,10 +67,22 @@ pwsh -NoProfile -File .\configure-claude-plugin.ps1
 ```
 
 The script takes no parameters. It requires the native `claude.exe` to be on
-`PATH` and the Scribe app to be open. It configures the plugin for your user; it
-does not require you to copy or paste a token. If the script reports a failure,
-record its stage and exit status for IT. It deliberately withholds Claude CLI
-output.
+`PATH`, the installed `scribe-hook.exe`, and a current Scribe connection file.
+It configures the plugin for your user; it does not require you to copy or paste
+a token. The plugin definition launches the configured helper over stdio; the
+installed helper must be from a matching Scribe build and support `--mcp`.
+Configuration does not make an HTTP health request and the Scribe window need
+not remain open while it runs. Calls that need to record or ask about a session
+still require the desktop app to be running. If the script reports that the MCP
+helper key is missing or outdated, update the Scribe app and helper together
+before configuring the plugin. If it reports a failure, record its stage and
+exit status for IT. It deliberately withholds Claude CLI output.
+
+The MCP plugin no longer stores or sends the connection Bearer token through
+Claude Code `userConfig`. Any token saved by an older plugin configuration is
+unused by this candidate; the connection file remains private to Scribe. The
+script does not inspect or clean stored Claude Code settings. Update the
+app/helper and plugin together so their versions match.
 
 The script is unsigned. `Restricted` blocks scripts; `RemoteSigned` can block
 this downloaded file. Only after IT approves the file and its SHA-256, IT can
@@ -86,7 +112,9 @@ upgrade preserved the history and credentials. Uninstall through **Settings →
 Apps → Scribe**; this removes the app while keeping its profile in
 `%APPDATA%\com.rexia.scribe`. To remove personal history too, close the app and
 remove that profile explicitly. Reinstalling after removing `connection.json`
-creates new credentials: run the configuration script again.
+creates new credentials: run the configuration script again. After updating
+Scribe, run the configuration script again to refresh the helper path stored by
+the plugin.
 
 ### Troubleshooting
 

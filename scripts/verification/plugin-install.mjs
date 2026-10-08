@@ -7,6 +7,9 @@ import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { anonymize, validProbeHeaders, redact } from './lib.mjs';
 
+// LEGACY: this installer probe configures the old HTTP port/token contract and
+// synthetic Bearer-only server. It is incompatible with the stdio plugin and
+// must be migrated before it can validate the production --mcp helper.
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror');
 const runId = `plugin-${Date.now()}`;
 const root = resolve('.verification', runId);

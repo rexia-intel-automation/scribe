@@ -11,6 +11,7 @@ import { collectReleaseArtifacts, validateReleaseTag } from '../prepare-release.
 
 const sourceSha = '0123456789abcdef0123456789abcdef01234567';
 const version = JSON.parse(readFileSync(new URL('../../app/src-tauri/tauri.conf.json', import.meta.url), 'utf8')).version;
+const pluginVersion = JSON.parse(readFileSync(new URL('../../plugins/scribe/.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
 const tag = `v${version}`;
 const versionParts = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
 const differentValidTag = `v${versionParts[1]}.${versionParts[2]}.${Number(versionParts[3]) + 1}`;
@@ -58,18 +59,26 @@ function collect(paths, overrides = {}) {
   });
 }
 
-test('release tag validation accepts stable and prerelease SemVer but requires exact package versions', () => {
+test('release tag pins app and desktop versions and records independently versioned plugin', () => {
   const versions = { app: '0.1.0-beta.1', desktop: '0.1.0-beta.1', plugin: '0.1.0-beta.1' };
   assert.deepEqual(validateReleaseTag('v0.1.0-beta.1', versions), {
-    tag: 'v0.1.0-beta.1', version: '0.1.0-beta.1', prerelease: true,
+    tag: 'v0.1.0-beta.1', version: '0.1.0-beta.1', pluginVersion: '0.1.0-beta.1', prerelease: true,
   });
   assert.deepEqual(validateReleaseTag('v1.2.3', { app: '1.2.3', desktop: '1.2.3', plugin: '1.2.3' }), {
-    tag: 'v1.2.3', version: '1.2.3', prerelease: false,
+    tag: 'v1.2.3', version: '1.2.3', pluginVersion: '1.2.3', prerelease: false,
+  });
+  assert.deepEqual(validateReleaseTag('v0.1.0', { app: '0.1.0', desktop: '0.1.0', plugin: '0.1.1' }), {
+    tag: 'v0.1.0', version: '0.1.0', pluginVersion: '0.1.1', prerelease: false,
   });
   for (const tag of ['0.1.0', 'v01.2.3', 'v1.02.3', 'v1.2.3+build.1', 'v1.2', 'v1.2.3-01']) {
     assert.throws(() => validateReleaseTag(tag, versions), /tag/);
   }
-  assert.throws(() => validateReleaseTag('v0.1.0-beta.1', { ...versions, plugin: '0.1.0' }), /exactly match/);
+  for (const name of ['app', 'desktop']) {
+    assert.throws(() => validateReleaseTag('v0.1.0-beta.1', { ...versions, [name]: '0.1.0' }), /exactly match/);
+  }
+  for (const plugin of [undefined, '', '0.1', '0.1.1\n', '0.1.1+local', '0.1.1-01']) {
+    assert.throws(() => validateReleaseTag('v0.1.0-beta.1', { ...versions, plugin }), /plugin/);
+  }
   const newlineVersions = { app: '0.1.0\n', desktop: '0.1.0\n', plugin: '0.1.0\n' };
   assert.throws(() => validateReleaseTag('v0.1.0\n', newlineVersions), /supported SemVer/);
   const tabVersions = { app: '0.1.0\t', desktop: '0.1.0\t', plugin: '0.1.0\t' };
@@ -80,7 +89,8 @@ test('validate-tag CLI reports the checked version, prerelease, and normalized s
   const script = fileURLToPath(new URL('../prepare-release.mjs', import.meta.url));
   const output = execFileSync(process.execPath, [script, 'validate-tag', '--tag', tag, '--source-sha', sourceSha.toUpperCase()], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(output), {
-    tag, version, prerelease: version.includes('-'), sourceSha,
+    tag, version, pluginVersion,
+    prerelease: version.includes('-'), sourceSha,
   });
   assert.throws(() => execFileSync(process.execPath, [script, 'validate-tag', '--tag', differentValidTag, '--source-sha', sourceSha], { encoding: 'utf8', stdio: 'pipe' }));
 });
@@ -108,7 +118,9 @@ test('collect validates all three platform manifests, copies only release inputs
   const metadata = readFileSync(join(paths.outputDir, 'BUILD-METADATA.txt'), 'utf8');
   assert.ok(metadata.split('\n').includes(`tag=${tag}`));
   assert.match(metadata, /^status=unsigned$/m);
+  assert.ok(metadata.split('\n').includes(`plugin_version=${pluginVersion}`));
   const notes = readFileSync(join(paths.outputDir, 'RELEASE-NOTES.md'), 'utf8');
+  assert.ok(notes.includes(`Claude Code plugin version: \`${pluginVersion}\``));
   assert.match(notes, /unsigned and have not been notarized/);
   assert.match(notes, /does not claim human acceptance/);
   assert.ok(notes.includes(`https://github.com/rexia-intel-automation/scribe/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent('SHA256SUMS.txt')}`));

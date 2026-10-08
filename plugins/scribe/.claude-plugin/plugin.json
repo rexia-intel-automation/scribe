@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "scribe",
   "displayName": "Scribe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sessões e decisões do Claude Code em um app local. Sem telemetria.",
   "author": { "name": "RexIA", "url": "https://rexia.com.br" },
   "homepage": "https://rexia-intel-automation.github.io/scribe/",
@@ -15,21 +15,6 @@
       "title": "Cliente nativo Scribe",
       "description": "Caminho absoluto do executável scribe-hook incluído no app. Não use scripts ou comandos de shell.",
       "required": true
-    },
-    "port": {
-      "type": "number",
-      "title": "Porta local",
-      "description": "Porta exibida pelo app Scribe. O host é sempre 127.0.0.1.",
-      "default": 7717,
-      "min": 1024,
-      "max": 65535
-    },
-    "token": {
-      "type": "string",
-      "title": "Token local Scribe",
-      "description": "Token gerado pelo app para a conexão MCP. Nunca envie em mensagens ou linhas de comando.",
-      "required": true,
-      "sensitive": true
     }
   }
 }
