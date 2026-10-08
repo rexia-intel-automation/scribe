@@ -129,7 +129,8 @@ com perfil limpo e desinstalação no Windows, também com revisão e CI verdes.
 Em 2026-10-08, a
 [v0.1.0-beta.1](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1)
 foi publicada como prerelease Windows para avaliação pela TI, sem ser a release
-final. Os arquivos publicados e seus hashes permanecem imutáveis. Perguntas
+final. Por política do projeto, os arquivos publicados e seus hashes não devem
+ser alterados; uma correção exige nova versão. Perguntas
 nativas, aprovação de planos, notificações, sessões simultâneas e os demais
 gates de entrega continuam sujeitos aos ensaios e aceites registrados.
 

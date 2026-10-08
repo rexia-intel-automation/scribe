@@ -14,6 +14,6 @@ The plugin observes these Claude Code hook events: `SessionStart`, `UserPromptSu
 | Split | One or more subagents are active. |
 | Seal | The session ended. |
 
-The empty app uses a separate dot. A new session’s respingo transitions to a drop; state is a compact status cue, not a transcript or a safety rating.
+The empty app uses a separate dot. A new session’s splash transitions to a drop; state is a compact status cue, not a transcript or a safety rating.
 
 The beta includes human permission decisions and the `scribe_ask` plugin question flow. Native Claude Code questions and plan approval remain subject to interactive-session acceptance; see the beta status on the [home page](/).
