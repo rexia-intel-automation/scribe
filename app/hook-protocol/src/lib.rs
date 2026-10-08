@@ -5,6 +5,8 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 mod permission_update;
 pub use permission_update::valid_permission_update;
+mod profile;
+pub use profile::{trusted_profile_dirs, ProfileDirs};
 
 /// Offline tool discovery; the app tests this against its generated schemas.
 pub const MCP_TOOLS: &str = include_str!("../mcp-tools.json");

@@ -1,4 +1,4 @@
-//! Paired helper + real app server, temporary profile, no installed GUI or credentials.
+//! Paired release fixture helper + real app server, temporary profile, no installed GUI or credentials.
 use scribe_core::{Core, LocalServer};
 use serde_json::{json, Value};
 use std::{path::Path, process::Stdio, time::Duration};
@@ -19,7 +19,7 @@ struct Helper {
 impl Helper {
     fn start(config: &Path) -> Self {
         let exe = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../hook-client/target/release")
+            .join("../hook-client/target/fixture/release")
             .join(if cfg!(windows) {
                 "scribe-hook.exe"
             } else {
@@ -27,7 +27,7 @@ impl Helper {
             });
         assert!(
             exe.is_file(),
-            "Build the paired helper before running this integration test"
+            "Build the release fixture hook client with the test-fixture feature before this isolated integration fixture"
         );
         let mut command = Command::new(exe);
         command

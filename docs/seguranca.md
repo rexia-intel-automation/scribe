@@ -22,6 +22,21 @@ pedidos do helper. O connection.json é a raiz de confiança e tem permissão
 restrita ao usuário. O onboarding envia somente o caminho do helper à CLI;
 nem Bearer nem chave HMAC fazem parte da configuração nova do plugin.
 
+No build de produção, app e helper resolvem essa raiz pela identidade da conta
+do sistema operacional. No Windows, consultam o Known Folder Roaming com o token
+explícito do processo, preservando o redirecionamento configurado para a conta.
+No Unix, obtêm o home do cadastro do UID, exigindo UID real e efetivo iguais.
+`SCRIBE_CONNECTION_FILE`, `SCRIBE_DATA_DIR`, `HOME`, `USERPROFILE`, `APPDATA`,
+`LOCALAPPDATA` e `XDG_CONFIG_HOME`/`XDG_DATA_HOME` não escolhem a raiz de produção.
+Assim, um ambiente herdado de configuração de projeto não substitui o arquivo
+de confiança. Overrides Scribe existem somente com a feature explícita
+`test-fixture`; builds debug comuns não a habilitam automaticamente. A feature é
+usada em artefatos release separados sob `target/fixture`.
+Builds release de produção não incluem essa feature e ignoram os overrides;
+artefatos com `test-fixture` não devem ser distribuídos.
+Configurações Linux com XDG personalizado e instalações portáteis com overrides
+precisam usar os diretórios fixos documentados; não há fallback para esses valores.
+
 O MCP externo usa o helper em stdio. Inicialização e descoberta de ferramentas
 funcionam mesmo com o app fechado; uma chamada indisponível retorna erro, sem
 inventar resposta ou consentimento. O endpoint interno `/mcp` exige assinatura,
@@ -110,6 +125,7 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Alteração de evento, status ou corpo da resposta | Nenhum stdout de decisão | Mesmo teste de processo |
 | Questions ou plan alterados, mesmo com HMAC válido | Nenhum stdout de decisão | Mesmo teste de processo |
 | Redirect ou proxy de ambiente | Não seguir nem enviar conteúdo ao destino | Mesmo teste de processo |
+| Ambiente aponta para outro perfil existente ou inexistente | Resolver a mesma raiz da conta, sem ler conexão de teste | hook-protocol/src/profile.rs, account_paths_ignore_project_environment; hook-client/src/main.rs, release_configuration_ignores_project_environment (release) |
 | Payload grande, JSON malformado ou stdin sem fim | Encerrar helper sem decisão | Mesmo teste de processo |
 | Flood de challenges/provas falsas | Não ocupar desafios nem consumir quota legítima de hooks/MCP/health | unauthenticated_challenge_flood_cannot_block_a_native_hook e teste bearer_only_hooks |
 | Prova do desafio com chave/nonce errado, duplicada ou refletida | Nenhum desafio reservado; nenhum payload enviado ao servidor falso | challenge_proof_binds_the_nonce_and_cannot_reflect_the_server_proof e native-client.test.mjs |
@@ -118,7 +134,8 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Clique tardio, repetido, sem armar ou antes de um segundo | Não permitir novamente | tests/decisions.rs e tests/interactive.rs |
 | Desconexão, SessionEnd, reinício ou timeout | Cancelar sem inventar resposta | Mesmos testes de decisões |
 
-Paths dos testes Rust são relativos a app/src-tauri. O CI exige >=85% de linhas
+Paths dos testes Rust são relativos a app/src-tauri, exceto as referências
+explícitas a hook-protocol e hook-client. O CI exige >=85% de linhas
 do núcleo, incluindo testes de perguntas nativas e títulos, sem excluir código
 de produção novo. Tests/desktop exercitam origem/IPC e permissões privadas;
 Vitest/axe e Playwright exercitam foco, ações explícitas e texto inerte.
@@ -151,7 +168,10 @@ Nenhuma proteção do CI ou alerta é contornada para publicar.
 ## Como verificar e reportar
 
 Execute os testes com lockfiles, como no CI, e os testes Node de processo contra
-o helper release atual. No espelho D: use SCRIBE_TEST_FIXTURES_ROOT apontando aos
+o helper release de fixture, compilado com `test-fixture` em
+`app/hook-client/target/fixture`; não use esse artefato como produção. O resolver
+do helper release de produção deve ser verificado sem a feature, e a descoberta
+real no Claude Code usa o release de produção. No espelho D: use SCRIBE_TEST_FIXTURES_ROOT apontando aos
 46 fixtures versionados da fonte OneDrive; fixtures locais extras não pertencem
 à suíte pública. Vereditos são ligados ao SHA. A release depende da revisão
 independente, CI das três plataformas, cobertura e ensaio da instalação real.

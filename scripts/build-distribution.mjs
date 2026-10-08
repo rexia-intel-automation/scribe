@@ -81,7 +81,7 @@ function hostTriple() {
 
 function buildHook(triple) {
   run('cargo', [
-    'build', '--locked', '--release', '--manifest-path', hookManifest,
+    'build', '--locked', '--release', '--no-default-features', '--manifest-path', hookManifest,
     '--target', triple, '--target-dir', hookTargetRoot,
   ]);
   const executable = process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook';

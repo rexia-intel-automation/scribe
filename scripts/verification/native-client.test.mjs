@@ -10,7 +10,16 @@ import { performance } from 'node:perf_hooks';
 import { EVENTS } from './lib.mjs';
 
 if (/OneDrive/i.test(process.cwd())) throw new Error('Run in the D: runtime mirror');
-const binary = resolve('app/hook-client/target/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+const binary = resolve('app/hook-client/target/fixture/release', process.platform === 'win32' ? 'scribe-hook.exe' : 'scribe-hook');
+test('Windows production and fixture helpers both use the GUI subsystem', { skip: process.platform !== 'win32' }, async () => {
+  for (const executable of [binary, resolve('app/hook-client/target/release/scribe-hook.exe')]) {
+    const bytes = await readFile(executable);
+    assert.equal(bytes.readUInt16LE(0), 0x5a4d);
+    const pe = bytes.readUInt32LE(0x3c);
+    assert.equal(bytes.readUInt32LE(pe), 0x4550);
+    assert.equal(bytes.readUInt16LE(pe + 24 + 68), 2, 'release helper must use IMAGE_SUBSYSTEM_WINDOWS_GUI');
+  }
+});
 const token = 'PUBLIC_SYNTHETIC_TOKEN_WITH_32_CHARACTERS';
 const hookKey = 'PUBLIC_INDEPENDENT_HOOK_KEY_32_CHARACTERS';
 function sign(key, fields) {

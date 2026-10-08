@@ -25,6 +25,13 @@ This repository is the `rexia-scribe` marketplace; its configuration-only plugin
 is in `plugins/scribe`. The installer includes the Rust hook client, so Scribe
 does not require a separate Node installation.
 
+Production app and helper use the OS account profile and ignore environment
+overrides. On Linux, the connection lives in `~/.config/com.rexia.scribe` and
+history in `~/.local/share/com.rexia.scribe`, using the account database's home.
+Users with custom `XDG_CONFIG_HOME` or `XDG_DATA_HOME` will see a new profile at
+these fixed paths. Existing data is neither imported nor deleted; preserve it
+before upgrading.
+
 ## Windows candidate test
 
 There is no published download for the MCP stdio candidate yet. When IT provides
