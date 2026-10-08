@@ -10,6 +10,11 @@ static RISK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse)").unwrap()
 });
 
+fn ambiguous_text(text: &str) -> bool {
+    static FORMAT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Cf}").unwrap());
+    text.chars().any(char::is_control) || FORMAT.is_match(text)
+}
+
 /// Sanitized display data. Original tool inputs and tool results are excluded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,13 +101,53 @@ impl Core {
         ]
         .iter()
         .find_map(|key| hook.tool_input.get(key).and_then(Value::as_str));
-        let raw_target = target.unwrap_or("Ferramenta sem alvo informado");
-        let display_target = sanitize::redact(raw_target);
+        let allowed_fields: &[&str] = match hook.tool_name.as_deref() {
+            Some("Bash") => &["command", "description", "timeout", "run_in_background"],
+            Some("Read") => &["file_path", "offset", "limit", "pages"],
+            Some("Glob") => &["pattern", "path"],
+            Some("Grep") => &[
+                "pattern",
+                "path",
+                "glob",
+                "output_mode",
+                "-B",
+                "-A",
+                "-C",
+                "-n",
+                "-i",
+                "type",
+                "head_limit",
+                "offset",
+                "multiline",
+            ],
+            _ => &[],
+        };
+        // Only known metadata-only schemas can be approved here. Write/Edit and
+        // arbitrary MCP inputs stay in the terminal: their omitted content may
+        // determine the action. Never persist that content just to enable approval.
+        let complete = hook.tool_input.as_object().is_some_and(|fields| {
+            !fields.is_empty()
+                && fields.iter().all(|(key, value)| {
+                    allowed_fields.contains(&key.as_str())
+                        && (value.is_string() || value.is_number() || value.is_boolean())
+                        && value.as_str().is_none_or(|s| !ambiguous_text(s))
+                })
+        });
+        let raw_target = if complete && hook.tool_input.as_object().unwrap().len() > 1 {
+            serde_json::to_string_pretty(&hook.tool_input)?
+        } else {
+            target.unwrap_or("Ferramenta sem alvo informado").to_owned()
+        };
+        let redacted = sanitize::redact(&raw_target);
+        let mut display_target: String = redacted.chars().take(8000).collect();
+        if redacted.chars().count() > 8000 {
+            display_target.push('…');
+        }
         // A hidden or unknown action must be answered in the terminal, where
         // Claude displays the original. Never weaken secret redaction to allow it.
-        let can_allow = target.is_some()
-            && display_target == raw_target
-            && !raw_target.chars().any(char::is_control);
+        let can_allow = complete
+            && target.is_some_and(|s| !s.is_empty() && !ambiguous_text(s))
+            && display_target == raw_target;
         let tool_key = tool_key(hook.tool_name.as_deref(), &hook.tool_input);
         let view = Decision {
             id: format!("{:032x}", rand::random::<u128>()),
@@ -113,7 +158,7 @@ impl Core {
             target: display_target,
             question: None,
             options: vec![],
-            risk: !can_allow || RISK.is_match(raw_target),
+            risk: !can_allow || RISK.is_match(&raw_target),
             can_allow,
             armed: false,
             status: "pending".into(),
@@ -149,10 +194,10 @@ impl Core {
             return Err("Invalid question".into());
         }
         if sanitize::redact(question) != question
-            || question.chars().any(char::is_control)
+            || ambiguous_text(question)
             || options
                 .iter()
-                .any(|s| sanitize::redact(s) != *s || s.chars().any(char::is_control))
+                .any(|s| sanitize::redact(s) != *s || ambiguous_text(s))
             || options
                 .iter()
                 .enumerate()

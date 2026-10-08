@@ -124,3 +124,29 @@ constituem aprovação da fase, prova física de arraste nem ensaio da nova inst
 O session_id MCP ainda depende do chamador autenticado: sessões que compartilham
 Bearer não têm isolamento criptográfico. A [pesquisa de Mods](claude-mods.md)
 propõe integração posterior; nenhum mod foi implementado para fechar esse limite.
+
+## Correções da segunda revisão adversarial
+
+A rodada 2 confirmou o protocolo contra impostor/reflexão/troca da decisão,
+mas devolveu o lote por alvo visualmente truncado e campos da operação omitidos.
+O [relatório independente](reviews/fase-4-rodada-2.md) preserva o veredito.
+
+O alvo agora ocupa todas as linhas necessárias, sem ellipsis nem nowrap.
+Aprovar exige uma ferramenta conhecida com todos os campos dentro do esquema
+de metadados verificado (Bash, Read, Glob ou Grep). Vários campos são exibidos
+integralmente em JSON e entram juntos na análise de risco. Campo desconhecido,
+conteúdo de Write/Edit, ferramenta MCP arbitrária, texto redigido/truncado ou
+caractere de controle/formatação Unicode exige resposta no terminal. Não se
+persiste conteúdo omitido apenas para habilitar aprovação.
+
+POST de hooks aceita exclusivamente challenge/HMAC; Bearer permanece no MCP
+e health, mas não cria nem cancela cartões. Challenges/provas inválidas usam
+quota separada da quota autenticada. No Unix, SO_REUSEADDR restaura o reinício
+após TIME_WAIT; SO_REUSEPORT continua desativado e o Windows mantém bind
+exclusivo. O CI macOS passou para essa correção isolada em `9c02948`.
+
+Checks locais: 43 testes Rust desktop/core/decisões/políticas, 40 de UI,
+lint/format e uma regressão Playwright de alvo longo. O teste de hooks também
+confere que Bearer isolado não cancela uma decisão real e que flood de
+challenges/provas ruins não consome a quota MCP/health. Estes resultados
+aguardam nova revisão e CI das três plataformas; não aprovam a fase.

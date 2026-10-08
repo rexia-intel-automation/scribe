@@ -2,7 +2,8 @@
 import { chromium } from "@playwright/test";
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { resolve, join } from "node:path";
 import assert from "node:assert/strict";
 
@@ -19,6 +20,24 @@ const app = installed
   ? join(process.env.LOCALAPPDATA, "Scribe/scribe.exe")
   : resolve("src-tauri/target/release/scribe.exe");
 const connection = JSON.parse(await readFile(configPath, "utf8"));
+function proof(...fields) {
+  const hmac = createHmac("sha256", connection.hook_key).update(
+    "scribe-hook-v1",
+  );
+  for (const field of fields) {
+    const bytes = Buffer.from(field);
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hmac.update(length).update(bytes);
+  }
+  return hmac.digest("base64url");
+}
+function verify(expected, actual) {
+  if (!actual) return false;
+  const a = Buffer.from(expected, "base64url");
+  const b = Buffer.from(actual, "base64url");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 const browser = await chromium.connectOverCDP("http://127.0.0.1:9224", {
   noDefaults: true,
 });
@@ -57,26 +76,45 @@ function childProcess(exe, args, input = "") {
   return { child, finished };
 }
 async function focus() {
-  spawn(app, ["--show"], { windowsHide: true, stdio: "ignore" }).unref();
+  spawn(app, ["--open"], { windowsHide: true, stdio: "ignore" }).unref();
   await page.bringToFront();
   await page.waitForTimeout(300);
 }
 async function hook(event, session, input = {}) {
+  const nonce = randomUUID().replaceAll("-", "");
+  const challenge = await fetch(
+    `http://127.0.0.1:${connection.port}/v1/hooks/challenge/${nonce}`,
+  );
+  assert.equal(challenge.status, 204);
+  assert(
+    verify(proof("challenge", nonce), challenge.headers.get("x-scribe-proof")),
+    "Hook challenge proof must match",
+  );
+  const body = JSON.stringify({
+    hook_event_name: event,
+    session_id: session,
+    cwd: workspace,
+    ...input,
+  });
   const response = await fetch(
     `http://127.0.0.1:${connection.port}/v1/hooks/${event}`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${connection.token}`,
         "Content-Type": "application/json",
+        "x-scribe-nonce": nonce,
+        "x-scribe-proof": proof("request", nonce, event, body),
       },
-      body: JSON.stringify({
-        hook_event_name: event,
-        session_id: session,
-        cwd: workspace,
-        ...input,
-      }),
+      body,
     },
+  );
+  const responseBody = await response.text();
+  assert(
+    verify(
+      proof("response", nonce, event, String(response.status), responseBody),
+      response.headers.get("x-scribe-proof"),
+    ),
+    "Hook response proof must match",
   );
   assert.equal(response.status, 204);
 }

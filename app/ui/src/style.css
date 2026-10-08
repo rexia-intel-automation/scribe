@@ -208,9 +208,8 @@ a {
 .decision-target {
   display: block;
   width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   text-align: left;
   font-family: monospace;
 }

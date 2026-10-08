@@ -5,6 +5,47 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const evidence = path.resolve("../.artifacts/phase-3-browser");
 
+test("a long permission exposes its final operation without expanding the target", async ({
+  page,
+}) => {
+  const target = `echo ${"public_argument_".repeat(100)}; rm -rf public-project`;
+  await page.setViewportSize({ width: 372, height: 700 });
+  await page.route("**/src/bridge.ts", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `
+      export const desktop = false;
+      export const defaults = {language:'pt-BR',theme:'light',shortcut:'Control+Shift+Space',notifications:true,retentionDays:14,completedMinutes:10,permissionSeconds:120,port:7717,collapsed:false,side:'right',y:null,monitor:null};
+      export const initial = {at:Date.now(),revision:1,sessions:[],preferences:defaults,error:null,decisions:[{id:'long',sessionId:'public',project:'public-project',kind:'permission',tool:'Bash',target:${JSON.stringify(target)},question:null,options:[],risk:true,canAllow:true,armed:false,status:'pending',createdAt:Date.now(),expiresAt:Date.now()+120000,resolvedAt:null}]};
+      export async function observe(receive) { receive(initial); return () => {}; }
+      export async function resolveDecision() { throw new Error('This check never authorizes a tool'); }
+      export async function savePreferences() { return initial; }
+      export async function clearHistory() { return initial; }
+      export async function toggle() { return initial; }
+      export async function move() { return initial; }
+      export async function drag() {}
+      export async function openHelp() {}
+    `,
+    }),
+  );
+  await page.goto("/");
+  const operation = page.locator(".decision-target");
+  await expect(operation).toHaveText(target);
+  await expect(operation).toHaveAttribute("aria-expanded", "false");
+  const layout = await operation.evaluate((element) => ({
+    width: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    height: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    fontSize: parseFloat(getComputedStyle(element).fontSize),
+  }));
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1);
+  expect(layout.scrollHeight).toBeLessThanOrEqual(layout.height + 1);
+  expect(layout.height).toBeGreaterThan(layout.fontSize * 3);
+  await operation.scrollIntoViewIfNeeded();
+  await expect(operation).toHaveCSS("white-space", "pre-wrap");
+});
+
 test("moving canvases respect frame limits and reduced motion stops all draws", async ({
   page,
 }) => {

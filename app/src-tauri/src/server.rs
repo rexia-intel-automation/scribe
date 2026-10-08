@@ -42,6 +42,7 @@ struct HttpState {
     challenges: Arc<Mutex<HashMap<String, Instant>>>,
     ui_token: String,
     rate: Arc<Mutex<Rate>>,
+    challenge_rate: Arc<Mutex<Rate>>,
     cancel: CancellationToken,
 }
 
@@ -108,6 +109,10 @@ impl LocalServer {
             challenges: Arc::new(Mutex::new(HashMap::new())),
             ui_token: ui_token.clone(),
             rate: Arc::new(Mutex::new(Rate {
+                since: Instant::now(),
+                count: 0,
+            })),
+            challenge_rate: Arc::new(Mutex::new(Rate {
                 since: Instant::now(),
                 count: 0,
             })),
@@ -205,6 +210,21 @@ fn matches_secret(actual: Option<&str>, expected: &str) -> bool {
     actual.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes())))
 }
 
+fn within_rate(rate: &Mutex<Rate>, limit: u16) -> bool {
+    let Ok(mut rate) = rate.lock() else {
+        return false;
+    };
+    if rate.since.elapsed() >= Duration::from_secs(1) {
+        rate.since = Instant::now();
+        rate.count = 0;
+    }
+    if rate.count >= limit {
+        return false;
+    }
+    rate.count += 1;
+    true
+}
+
 async fn defend(State(state): State<HttpState>, request: Request, next: Next) -> Response {
     let headers = request.headers();
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
@@ -226,9 +246,13 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
     }
     let challenge_request = request.method() == axum::http::Method::GET
         && request.uri().path().starts_with("/v1/hooks/challenge/");
-    let signed_hook = request.method() == axum::http::Method::POST
+    let hook_request = request.method() == axum::http::Method::POST
         && request.uri().path().starts_with("/v1/hooks/")
-        && headers.contains_key("x-scribe-nonce");
+        && !request.uri().path().starts_with("/v1/hooks/challenge/");
+    let signed_hook = hook_request;
+    if challenge_request && !within_rate(&state.challenge_rate, 256) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
+    }
     let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
@@ -249,19 +273,6 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             ))
     {
         return StatusCode::FORBIDDEN.into_response();
-    }
-    {
-        let Ok(mut rate) = state.rate.lock() else {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        };
-        if rate.since.elapsed() >= Duration::from_secs(1) {
-            rate.since = Instant::now();
-            rate.count = 0;
-        }
-        if rate.count >= 50 {
-            return StatusCode::TOO_MANY_REQUESTS.into_response();
-        }
-        rate.count += 1;
     }
     let (parts, body) = request.into_parts();
     let bytes =
@@ -291,6 +302,9 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
                 proof,
             )
         {
+            if !within_rate(&state.challenge_rate, 256) {
+                return StatusCode::TOO_MANY_REQUESTS.into_response();
+            }
             return StatusCode::UNAUTHORIZED.into_response();
         }
         let valid = state
@@ -300,7 +314,13 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             .and_then(|mut c| c.remove(nonce))
             .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
         if !valid {
+            if !within_rate(&state.challenge_rate, 256) {
+                return StatusCode::TOO_MANY_REQUESTS.into_response();
+            }
             return StatusCode::UNAUTHORIZED.into_response();
+        }
+        if !within_rate(&state.rate, 50) {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
         }
         let nonce = nonce.to_owned();
         let event = event.to_owned();
@@ -326,6 +346,9 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
             .headers
             .insert("x-scribe-proof", proof.parse().expect("base64url header"));
         return Response::from_parts(parts, Body::from(bytes));
+    }
+    if !challenge_request && !within_rate(&state.rate, 50) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
     next.run(Request::from_parts(parts, Body::from(bytes)))
         .await

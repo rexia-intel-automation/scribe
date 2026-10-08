@@ -785,6 +785,47 @@ async fn request(
     extra: &str,
     body: &str,
 ) -> Reply {
+    let mut extra = extra.to_owned();
+    if method == "POST"
+        && path.starts_with("/v1/hooks/")
+        && token == TOKEN
+        && !extra.to_ascii_lowercase().contains("x-scribe-nonce:")
+    {
+        let nonce = format!("{:032x}", rand::random::<u128>());
+        let challenge = raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            "",
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204, "test hook challenge must succeed");
+        let proof = scribe_hook_protocol::sign(
+            HOOK_KEY,
+            &[
+                b"request",
+                nonce.as_bytes(),
+                path.trim_start_matches("/v1/hooks/").as_bytes(),
+                body.as_bytes(),
+            ],
+        );
+        extra.push_str(&format!(
+            "x-scribe-nonce: {nonce}\r\nx-scribe-proof: {proof}\r\n"
+        ));
+    }
+    raw_request(port, token, method, path, &extra, body).await
+}
+
+async fn raw_request(
+    port: u16,
+    token: &str,
+    method: &str,
+    path: &str,
+    extra: &str,
+    body: &str,
+) -> Reply {
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
     let data = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}", body.len());
     socket.write_all(data.as_bytes()).await.unwrap();
@@ -1292,5 +1333,128 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
     assert!(LocalServer::start(core, 0, TOKEN.into(), TOKEN.into())
         .await
         .is_err());
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_quota() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+
+    let bare_hook = raw_request(
+        port,
+        TOKEN,
+        "POST",
+        "/v1/hooks/PermissionRequest",
+        "",
+        &json!({
+            "hook_event_name":"PermissionRequest",
+            "session_id":"bearer-only",
+            "cwd":"/public/project",
+            "tool_name":"Bash",
+            "tool_input":{"command":"echo must-not-create-card"}
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(bare_hook.code, 401);
+    let snapshot = core.snapshot(scribe_core::now_ms()).unwrap();
+    assert!(snapshot.sessions.is_empty());
+    assert!(snapshot.decisions.is_empty());
+
+    core.hook(
+        "SessionStart",
+        payload("SessionStart").to_string().as_bytes(),
+        scribe_core::now_ms(),
+    )
+    .unwrap();
+    let pending = core
+        .permission(
+            &serde_json::to_vec(&json!({
+                "hook_event_name":"PermissionRequest", "session_id":"public-session",
+                "cwd":"/public/project", "tool_name":"Bash", "tool_use_id":"public-call",
+                "tool_input":{"command":"echo public"}
+            }))
+            .unwrap(),
+            120,
+        )
+        .unwrap();
+    let decision_id = core.snapshot(scribe_core::now_ms()).unwrap().decisions[0]
+        .id
+        .clone();
+    assert_eq!(
+        raw_request(
+            port,
+            TOKEN,
+            "POST",
+            "/v1/hooks/PostToolUse",
+            "",
+            &json!({"hook_event_name":"PostToolUse", "session_id":"public-session",
+        "cwd":"/public/project", "tool_name":"Bash", "tool_use_id":"public-call",
+        "tool_input":{"command":"echo public"}})
+            .to_string()
+        )
+        .await
+        .code,
+        401
+    );
+    assert_eq!(
+        core.snapshot(scribe_core::now_ms())
+            .unwrap()
+            .decisions
+            .iter()
+            .find(|d| d.id == decision_id)
+            .unwrap()
+            .status,
+        "pending"
+    );
+    drop(pending);
+
+    for index in 0..60 {
+        let nonce = format!("{index:032x}");
+        let challenge = request(
+            port,
+            "invalid",
+            "GET",
+            &format!("/v1/hooks/challenge/{nonce}"),
+            "",
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204);
+    }
+    for index in 100..160 {
+        let nonce = format!("{index:032x}");
+        assert_eq!(
+            request(
+                port,
+                TOKEN,
+                "POST",
+                "/v1/hooks/SessionStart",
+                &format!("x-scribe-nonce: {nonce}\r\n"),
+                &payload("SessionStart").to_string(),
+            )
+            .await
+            .code,
+            401
+        );
+    }
+
+    assert_eq!(
+        request(port, TOKEN, "GET", "/v1/health", "", "").await.code,
+        200
+    );
+    let initialize = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"challenge-flood-test","version":"1"}}}).to_string();
+    assert_eq!(
+        request(port, TOKEN, "POST", "/mcp", "", &initialize)
+            .await
+            .code,
+        200
+    );
     server.stop().await.unwrap();
 }

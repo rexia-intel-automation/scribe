@@ -14,7 +14,7 @@ fn start(core: &Core, id: &str) {
     .unwrap();
 }
 fn permission(id: &str, command: &str) -> Vec<u8> {
-    serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest","session_id":id,"cwd":"/public/project","tool_name":"Bash","tool_use_id":"public-call","tool_input":{"command":command,"content":"PUBLIC_PRIVATE_CONTENT"}})).unwrap()
+    serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest","session_id":id,"cwd":"/public/project","tool_name":"Bash","tool_use_id":"public-call","tool_input":{"command":command}})).unwrap()
 }
 fn input(value: Value) -> DecisionInput {
     serde_json::from_value(value).unwrap()
@@ -385,6 +385,79 @@ fn ambiguous_question_options_and_private_text_are_rejected() {
         )
         .is_err());
     assert!(core.snapshot(now_ms()).unwrap().decisions.is_empty());
+}
+
+#[tokio::test]
+async fn approval_requires_complete_visible_known_metadata() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "one");
+    for (tool, fields) in [
+        (
+            "Bash",
+            json!({"command":"echo public", "file_path":"rm -rf /production"}),
+        ),
+        (
+            "Bash",
+            json!({"command":"echo public", "content":"PUBLIC_PRIVATE_CONTENT"}),
+        ),
+        (
+            "Write",
+            json!({"file_path":"public.txt", "content":"PUBLIC_PRIVATE_CONTENT"}),
+        ),
+        ("mcp__unknown__execute", json!({"command":"echo public"})),
+        (
+            "Bash",
+            json!({"command":"echo public\u{202e}rm -rf /production"}),
+        ),
+        (
+            "Bash",
+            json!({"command":"echo public", "description":"public\u{200b}hidden"}),
+        ),
+        ("Bash", json!({"command":"x".repeat(8001)})),
+    ] {
+        let body = serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest",
+            "session_id":"one", "cwd":"/public/project", "tool_name":tool,
+            "tool_input":fields}))
+        .unwrap();
+        let wait = core.permission(&body, 120).unwrap();
+        let card = core
+            .snapshot(now_ms())
+            .unwrap()
+            .decisions
+            .into_iter()
+            .find(|d| d.id == id(&core, "one"))
+            .unwrap();
+        assert!(!card.can_allow, "{tool}: {fields}");
+        assert!(!card.target.contains("PUBLIC_PRIVATE_CONTENT"));
+        for action in ["arm", "allow"] {
+            assert!(core
+                .resolve_decision(&card.id, input(json!({"action":action})))
+                .is_err());
+        }
+        drop(wait);
+    }
+    let fields = json!({"command":"echo public", "description":"public operation", "timeout":1000});
+    let body = serde_json::to_vec(&json!({"hook_event_name":"PermissionRequest",
+        "session_id":"one", "cwd":"/public/project", "tool_name":"Bash",
+        "tool_input":fields}))
+    .unwrap();
+    let wait = core.permission(&body, 120).unwrap();
+    let card = core
+        .snapshot(now_ms())
+        .unwrap()
+        .decisions
+        .into_iter()
+        .find(|d| d.id == id(&core, "one"))
+        .unwrap();
+    assert!(card.can_allow);
+    assert_eq!(serde_json::from_str::<Value>(&card.target).unwrap(), fields);
+    core.resolve_decision(&card.id, input(json!({"action":"allow"})))
+        .unwrap();
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
 }
 
 #[tokio::test]
