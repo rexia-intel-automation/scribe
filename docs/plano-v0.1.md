@@ -8,6 +8,10 @@ no Claude Code. A v0.2 e a v0.3 ficam fora deste ciclo.
 - Revisões continuam até aprovação, mantendo mínimos e contexto independente.
 - Repositório: rexia-intel-automation/scribe. Marketplace: rexia-scribe.
 - Referências: scribe-conceito.html e ZIPs/vídeos locais. Gota em argila.
+- Em 2026-10-07, o humano autorizou instalar a compilação local e adiou a parte
+  visual, priorizando o lançamento. Instalação e desenvolvimento das decisões
+  podem prosseguir sem esse aceite; a nota G8 e os limites funcionais registrados
+  não são convertidos em aprovação. Ver ADR 0009.
 - Certificados Windows/Apple e GitHub Pages: pergunta agrupada enviada; respostas
   restantes ainda pendentes. Assinatura é opcional conforme seção 11 do prompt.
 
@@ -88,5 +92,9 @@ aprovou a Fase 2 em 2026-10-06: A9 B9 C9 D9 E8 F9 I8 J8, 33 regressões
 e nove tentativas novas passaram. Ambos os CIs do commit final passaram
 em três plataformas. Falhas temporais anteriores do Windows foram registradas
 e corrigidas na execução dos testes, mantendo limites e concorrência interna.
-A Fase 3 pode começar, usando as referências locais e a gota em argila.
-O app de produção ainda não existe e nenhuma versão está publicada.
+A Fase 3 está em verificação, usando as referências locais e a gota em argila.
+Janela Windows de produção abre e recebe fixtures públicas pelo núcleo real;
+13 testes de UI, quatro Playwright e testes de políticas/origem passaram.
+Latência nativa p95 17,46 ms; recursos e avisos GTK estão documentados em
+docs/fase-3.md para avaliação independente. A Fase 3 ainda não passou a catraca.
+Nenhuma versão está publicada; decisões e instalação limpa seguem pendentes.

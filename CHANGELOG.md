@@ -6,6 +6,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Instalação local de desenvolvimento autorizada: app/cliente no perfil do
+  usuário e plug-in configurado pelo CLI oficial, com conexão MCP privada.
+  Não é release; aceite visual foi adiado para priorizar o fluxo de decisões.
 - Núcleo da Fase 2 em implementação: HTTP local autenticado, onze contratos,
   estados, SSE, MCP oficial e persistência SQLite de metadados higienizados.
   Aprovado na quinta revisão independente; não é um app publicado.
@@ -24,6 +27,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Abertura do app pelo cliente não mantém os canais do comando chamador:
+  stdio separado e herança dos handles padrão removida no Windows. Regressão
+  confirma aplicativo vivo, EOF de stdin e ausência de saída capturada.
 - Correções da quarta revisão da Fase 2: caminhos junto a flags de compilador
   são encurtados; retenção elimina sessões e passos vencidos sem depender de
   novos hooks. Servidor ocioso limpa o banco a cada minuto. Política e limpeza
@@ -63,3 +69,35 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   removido o teto de rodadas; relatórios anteriores preservados.
 - Tipos de enums, IDs e caminhos validados antes da recursão; números e booleanos
   limitados a campos tipados de metadados. Regressões de callback e auditoria.
+- Fase 3 em verificação: janela nativa Tauri, painel de sessões, modo recolhido,
+  bandeja e atalho global; traduções pt-BR/en, temas e dez formas Canvas2D com
+  movimento reduzido. Fontes OFL locais e catálogo de 24/40/96 px.
+- Testes de interface, teclado e contraste; observação da janela Windows com
+  inputs públicos no servidor isolado. Decisões humanas ainda pertencem à Fase 4.
+- Correções da segunda revisão da Fase 3: falhas anunciadas na gota recolhida,
+  recuperação por captura/atalho e dica de conexão após sessões restauradas.
+  Tinta interna separada do texto geral mantém contraste dos glifos nos dois
+  temas; 22 testes Vitest e seis Playwright passam. Revisão ainda pendente.
+- Correções da terceira revisão da Fase 3: foco acompanha a troca painel/gota,
+  formas sem olhos mantêm repouso após o prazo de piscada e npm audit bloqueia
+  vulnerabilidades no CI. 28 Vitest e sete Playwright passaram; recheck dos
+  11 casos adversariais da rodada 3 passou, sem alterar a reprovação histórica.
+- Correção da quarta revisão da Fase 3: fechar Configurações após recolher e
+  reabrir devolve o foco ao botão atual. 29 Vitest, sete Playwright e recheck
+  R4 com 38/38 passaram; reprodução Chromium do defeito também passou.
+- Correção da quinta revisão da Fase 3: abrir/cancelar a confirmação do
+  histórico mantém foco no controle atual. 31 Vitest e oito Playwright passaram,
+  incluindo três ciclos pelo teclado sem apagar dados. Aceites humanos pendentes.
+- Correção da sexta revisão da Fase 3: limpeza/salvamento recuperam foco perdido
+  após falha assíncrona, preservando navegação posterior e controles desmontados.
+  Regressões falham no candidato anterior; 32 Vitest e dez Playwright passam.
+- Correção da sétima revisão da Fase 3: salvamento de modal fechado não encerra
+  o novo editor nem descarta seu rascunho. Regressões falham antes da correção;
+  33 Vitest e onze Playwright passam. Cobertura Rust no CI passa a executar
+  testes serialmente, mantendo os limites de latência e cobertura.
+- Rodada 8 da Fase 3 não confirmou defeitos novos: H9 e demais áreas8;
+  G9 ainda depende dos aceites visual/arraste. Release Windows atual recompilado
+  e observado sem alertas/violações axe A/AA; a fase não foi aprovada.
+- Preferências de histórico e limpeza são gravadas na mesma transação; falhas
+  não aplicam só parte da política. Token fica no Rust; IPC e navegação ficam
+  restritos ao conteúdo local. Link de ajuda abre somente a URL fixa no navegador.

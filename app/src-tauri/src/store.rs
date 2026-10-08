@@ -115,6 +115,22 @@ impl Store {
         Ok(())
     }
 
+    pub(crate) fn set_policies(
+        &self,
+        days: u16,
+        minutes: u16,
+        before: u64,
+        at: u64,
+    ) -> Result<Vec<Session>> {
+        let transaction = self.0.unchecked_transaction()?;
+        transaction.execute(SET_POLICY, params!["retention_days", days])?;
+        transaction.execute(SET_POLICY, params!["completed_minutes", minutes])?;
+        Self::prune_records(&transaction, before)?;
+        let sessions = self.load(at, minutes)?;
+        transaction.commit()?;
+        Ok(sessions)
+    }
+
     pub(crate) fn clear(&self) -> Result<()> {
         self.0.execute_batch("DELETE FROM sessions; VACUUM;")?;
         Ok(())

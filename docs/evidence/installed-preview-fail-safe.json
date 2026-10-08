@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "appClosedLifecycle": {
+    "code": 0,
+    "elapsedMs": 2558,
+    "stdoutEmpty": true,
+    "stderrEmpty": true
+  },
+  "nativeOpen": {
+    "code": 0,
+    "elapsedMs": 48,
+    "stdoutEmpty": true,
+    "stderrEmpty": true
+  },
+  "healthAfterReopen": true,
+  "connectionPreserved": true,
+  "limitations": [
+    "Installed-plugin startup/end tested with app closed; no model or human permission interaction in this check."
+  ]
+}

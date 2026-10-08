@@ -1,0 +1,89 @@
+{
+  "passed": true,
+  "claudeVersion": "2.1.289",
+  "transport": "production native executable with per-process hooks copied from production manifest",
+  "reusedOpenTerminal": false,
+  "runs": [
+    {
+      "label": "real-claude-lifecycle",
+      "code": 0,
+      "elapsedMs": 682,
+      "stderrEmpty": true,
+      "modelSuccess": null,
+      "publicReplyMatched": null,
+      "sessions": [
+        {
+          "state": "selo",
+          "steps": 2,
+          "ended": true,
+          "readRecorded": false,
+          "projectMatches": true,
+          "visibleInNativeUI": true
+        }
+      ],
+      "observations": [
+        {
+          "alias": 0,
+          "state": "selo",
+          "steps": 2,
+          "projectVisible": true,
+          "ended": true
+        }
+      ]
+    },
+    {
+      "label": "real-claude-read-auto",
+      "code": 0,
+      "elapsedMs": 4955,
+      "stderrEmpty": true,
+      "modelSuccess": true,
+      "publicReplyMatched": true,
+      "sessions": [
+        {
+          "state": "selo",
+          "steps": 6,
+          "ended": true,
+          "readRecorded": true,
+          "projectMatches": true,
+          "visibleInNativeUI": true
+        }
+      ],
+      "observations": [
+        {
+          "alias": 0,
+          "state": "respingo",
+          "steps": 1,
+          "projectVisible": true,
+          "ended": false
+        },
+        {
+          "alias": 0,
+          "state": "orbita",
+          "steps": 2,
+          "projectVisible": true,
+          "ended": false
+        },
+        {
+          "alias": 0,
+          "state": "orbita",
+          "steps": 4,
+          "projectVisible": true,
+          "ended": false
+        },
+        {
+          "alias": 0,
+          "state": "gota",
+          "steps": 5,
+          "projectVisible": true,
+          "ended": false
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Read-only conversation in a separate Claude CLI process; interactive terminal was not controlled.",
+    "No installed-plugin or permission-decision claim.",
+    "Polling is observational; no end-to-end p95 claim.",
+    "Human visual acceptance and physical dragging remain pending."
+  ]
+}

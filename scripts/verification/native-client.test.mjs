@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, rm, copyFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdtemp, writeFile, readFile, rm, copyFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { EVENTS } from './lib.mjs';
@@ -93,4 +93,55 @@ test('native client rejects oversized/malformed input and terminates with unfini
     const badConfig = await launch(binary, config, 'Stop', '{}');
     assert.equal(badConfig.code, 0); assert.equal(badConfig.stdout, ''); assert.equal(badConfig.stderr, '');
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('native open detaches the app from captured command streams', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scribe open test '));
+  assert.equal(dirname(resolve(root)), resolve(tmpdir()));
+  const app = join(root, process.platform === 'win32' ? 'public-app.exe' : 'public-app');
+  const marker = join(root, 'started.pid');
+  const config = join(root, 'connection.json');
+  let child, timer, compiler, compilerTimer;
+  try {
+    compiler = spawn('rustc', ['--edition=2021', resolve('scripts/verification/fixtures/open-fixture.rs'), '-o', app],
+      { windowsHide: true, stdio: 'inherit' });
+    compilerTimer = setTimeout(() => compiler.kill(), 30000);
+    assert.equal(await new Promise((ok, fail) => { compiler.once('error', fail); compiler.once('close', ok); }), 0);
+    clearTimeout(compilerTimer);
+    await writeFile(config, JSON.stringify({ port: 21517, token, app_path: app }));
+    child = spawn(binary, ['--open'], { windowsHide: true,
+      env: { ...process.env, SCRIBE_CONNECTION_FILE: config, SCRIBE_OPEN_TEST_MARKER: marker },
+      stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdin.on('error', () => {}); // Intentionally left open: the app must not inherit it.
+    child.stdin.write('PUBLIC STDIN SENTINEL\n');
+    let stdout = '', stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const result = await Promise.race([
+      new Promise((ok, fail) => { child.once('error', fail); child.once('close', code => ok({ closed: true, code })); }),
+      new Promise(ok => { timer = setTimeout(() => ok({ closed: false }), 1000); }),
+    ]);
+    clearTimeout(timer);
+    for (let tries = 0; tries < 50; tries++) {
+      try { await readFile(marker); break; } catch { await new Promise(ok => setTimeout(ok, 20)); }
+    }
+    assert.equal(await readFile(join(root, 'started.args'), 'utf8'), '--open');
+    const pid = Number(await readFile(marker, 'utf8'));
+    assert.ok(Number.isSafeInteger(pid) && pid > 0);
+    assert.doesNotThrow(() => process.kill(pid, 0), 'App must remain running after the command returns');
+    const stdinMarker = join(root, 'started.stdin');
+    for (let tries = 0; tries < 50; tries++) {
+      try { await readFile(stdinMarker); break; } catch { await new Promise(ok => setTimeout(ok, 20)); }
+    }
+    assert.equal(await readFile(stdinMarker, 'utf8'), 'EOF');
+    assert.deepEqual(result, { closed: true, code: 0 });
+    assert.equal(stdout, ''); assert.equal(stderr, '');
+  } finally {
+    clearTimeout(timer);
+    clearTimeout(compilerTimer);
+    if (compiler?.exitCode === null) compiler.kill();
+    try { const pid = Number(await readFile(marker, 'utf8')); if (Number.isSafeInteger(pid) && pid > 0) process.kill(pid); } catch {}
+    if (child?.exitCode === null) child.kill();
+    await rm(root, { recursive: true, force: true });
+  }
 });

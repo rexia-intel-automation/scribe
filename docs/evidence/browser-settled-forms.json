@@ -1,0 +1,81 @@
+{
+  "intervalMs": 1100,
+  "afterLongestBlink": true,
+  "samples": [
+    {
+      "form": "Respingo",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Gota",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Pena",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Interrogação",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Interrogação",
+      "size": 40,
+      "redraws": 0
+    },
+    {
+      "form": "Interrogação",
+      "size": 96,
+      "redraws": 0
+    },
+    {
+      "form": "Mancha",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Ampulheta",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Divisão",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Selo",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Selo",
+      "size": 40,
+      "redraws": 0
+    },
+    {
+      "form": "Selo",
+      "size": 96,
+      "redraws": 0
+    },
+    {
+      "form": "Ponto final",
+      "size": 24,
+      "redraws": 0
+    },
+    {
+      "form": "Ponto final",
+      "size": 40,
+      "redraws": 0
+    },
+    {
+      "form": "Ponto final",
+      "size": 96,
+      "redraws": 0
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "claudeVersion": "2.1.289",
+  "installedPlugin": true,
+  "userScope": true,
+  "temporaryHookConfiguration": false,
+  "testIsolation": "Other user customizations excluded; installed registry, saved Scribe options and secure option storage retained.",
+  "defaultAppProfile": true,
+  "runs": [
+    {
+      "label": "installed-plugin-lifecycle",
+      "code": 0,
+      "elapsedMs": 701,
+      "stderrEmpty": true,
+      "modelSuccess": null,
+      "replyMatched": null,
+      "subtype": null,
+      "totalCostUsd": null,
+      "errorSignals": [],
+      "mcpToolCalled": false,
+      "sessions": [
+        {
+          "state": "selo",
+          "ended": true,
+          "steps": 2,
+          "readRecorded": false,
+          "publicReportRecorded": false
+        }
+      ]
+    },
+    {
+      "label": "installed-plugin-read",
+      "code": 0,
+      "elapsedMs": 14470,
+      "stderrEmpty": true,
+      "modelSuccess": true,
+      "replyMatched": true,
+      "subtype": "success",
+      "totalCostUsd": 1.7888860000000002,
+      "errorSignals": [],
+      "mcpToolCalled": false,
+      "sessions": [
+        {
+          "state": "selo",
+          "ended": true,
+          "steps": 6,
+          "readRecorded": true,
+          "publicReportRecorded": false
+        }
+      ]
+    }
+  ]
+}

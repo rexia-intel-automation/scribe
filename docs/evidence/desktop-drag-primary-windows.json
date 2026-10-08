@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-08T00:22:35.0892966-03:00",
+  "sha256": "35C2DC65E1FD847C0863E6EA70FEEE0BC2EEEC4B3706A770FBD9BCEC21438664",
+  "identifierGuard": "com.rexia.scribe.dragtest",
+  "windowSizeBefore": {
+    "width": 56,
+    "height": 56
+  },
+  "beforeScreenRect": {
+    "left": 1480,
+    "top": 408,
+    "right": 1536,
+    "bottom": 464
+  },
+  "afterScreenRect": {
+    "left": 1498,
+    "top": 520,
+    "right": 1554,
+    "bottom": 576
+  },
+  "deltaScreenPixels": {
+    "x": 18,
+    "y": 112
+  },
+  "input": "Win32 SendInput mouse primary-button sequence delivered to the foreground window owned by this test process; no SetWindowPos used.",
+  "physicalHardware": false,
+  "verified": true,
+  "sourceCommit": "9c02948e4738686b5522dad1342eec899207949a",
+  "dragPatchCommit": "d4d69d0a393c4c81bc60a929a24ea40abda495a0"
+}

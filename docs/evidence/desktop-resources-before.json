@@ -1,0 +1,61 @@
+{
+  "rootId": 28572,
+  "sampleSeconds": 15.0196262,
+  "logicalProcessors": 8,
+  "rootWorkingSetMiB": 45.55,
+  "totalWorkingSetMiB": 424.9,
+  "totalPrivateWorkingSetMiB": 108.49000000000001,
+  "totalCPUOneCorePercent": 21.846,
+  "totalCPUMachinePercent": 2.73075,
+  "processes": [
+    {
+      "pid": 28572,
+      "name": "scribe",
+      "workingSetMiB": 45.55,
+      "privateWorkingSetMiB": 6.7,
+      "cpuOneCorePercent": 0.416
+    },
+    {
+      "pid": 13100,
+      "name": "msedgewebview2",
+      "workingSetMiB": 126.98,
+      "privateWorkingSetMiB": 28.1,
+      "cpuOneCorePercent": 0.416
+    },
+    {
+      "pid": 24752,
+      "name": "msedgewebview2",
+      "workingSetMiB": 12.89,
+      "privateWorkingSetMiB": 1.79,
+      "cpuOneCorePercent": 0.0
+    },
+    {
+      "pid": 20516,
+      "name": "msedgewebview2",
+      "workingSetMiB": 94.09,
+      "privateWorkingSetMiB": 31.26,
+      "cpuOneCorePercent": 12.588
+    },
+    {
+      "pid": 6668,
+      "name": "msedgewebview2",
+      "workingSetMiB": 39.14,
+      "privateWorkingSetMiB": 6.14,
+      "cpuOneCorePercent": 0.0
+    },
+    {
+      "pid": 25348,
+      "name": "msedgewebview2",
+      "workingSetMiB": 19.32,
+      "privateWorkingSetMiB": 2.74,
+      "cpuOneCorePercent": 0.0
+    },
+    {
+      "pid": 24184,
+      "name": "msedgewebview2",
+      "workingSetMiB": 86.93,
+      "privateWorkingSetMiB": 31.76,
+      "cpuOneCorePercent": 8.426
+    }
+  ]
+}
