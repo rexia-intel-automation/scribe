@@ -28,6 +28,10 @@ pub struct Decision {
     pub native_questions: Vec<crate::interactive::NativeQuestion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_file_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permission_updates: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub armed_update: Option<usize>,
     pub risk: bool,
     #[serde(default)]
     pub can_allow: bool,
@@ -154,6 +158,25 @@ impl Core {
             && target.is_some_and(|s| !s.is_empty() && !ambiguous_text(s))
             && display_target == raw_target;
         let tool_key = tool_key(hook.tool_name.as_deref(), &hook.tool_input);
+        let permission_updates =
+            if can_allow && serde_json::to_vec(&hook.permission_suggestions)?.len() <= 8000 {
+                hook.permission_suggestions
+                    .as_array()
+                    .filter(|a| a.len() <= 8)
+                    .map(|a| {
+                        a.iter()
+                            .filter(|update| {
+                                scribe_hook_protocol::valid_permission_update(update)
+                                    && serde_json::to_string(update)
+                                        .is_ok_and(|s| sanitize::redact(&s) == s)
+                            })
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
         let view = Decision {
             id: format!("{:032x}", rand::random::<u128>()),
             session_id: hook.session_id,
@@ -165,6 +188,8 @@ impl Core {
             options: vec![],
             native_questions: vec![],
             plan_file_path: None,
+            permission_updates,
+            armed_update: None,
             risk: !can_allow || RISK.is_match(&raw_target) || self.custom_risk(&raw_target)?,
             can_allow,
             armed: false,
@@ -226,6 +251,8 @@ impl Core {
                 options: options.iter().map(|s| sanitize::redact(s)).collect(),
                 native_questions: vec![],
                 plan_file_path: None,
+                permission_updates: vec![],
+                armed_update: None,
                 risk: false,
                 can_allow: false,
                 armed: false,
@@ -274,6 +301,8 @@ impl Core {
                 options: vec![],
                 native_questions,
                 plan_file_path,
+                permission_updates: vec![],
+                armed_update: None,
                 risk: kind == "plan",
                 can_allow: true,
                 armed: false,
@@ -379,17 +408,22 @@ impl Core {
             return Ok(());
         }
         if input.action.as_deref() == Some("arm") {
+            let update = view.kind == "permission"
+                && input
+                    .option
+                    .is_some_and(|i| view.permission_updates.get(i).is_some());
             if !matches!(view.kind.as_str(), "permission" | "plan")
                 || !view.can_allow
-                || !view.risk
+                || !(view.risk || update)
                 || view.armed
-                || input.option.is_some()
+                || input.option.is_some() && !update
                 || input.message.is_some()
                 || input.answers.is_some()
             {
                 return Err("Invalid confirmation step".into());
             }
             view.armed = true;
+            view.armed_update = input.option;
             data.store.save_decision(&view)?;
             let pending = data.decisions.get_mut(id).unwrap();
             pending.view = view.clone();
@@ -426,18 +460,31 @@ impl Core {
             if input.answers.is_some() {
                 return Err("Invalid permission answers".into());
             }
-            if input.option.is_some() {
+            if input
+                .option
+                .is_some_and(|i| view.permission_updates.get(i).is_none())
+            {
                 return Err("Invalid permission choice".into());
             }
-            if input.action.as_deref() == Some("terminal") && input.message.is_none() {
+            if input.action.as_deref() == Some("allow")
+                && view.armed
+                && view.armed_update != input.option
+            {
+                return Err("Confirmation must match the armed choice".into());
+            }
+            if input.action.as_deref() == Some("terminal")
+                && input.message.is_none()
+                && input.option.is_none()
+            {
                 self.expire_locked(&mut data, id);
                 return Ok(());
             }
             match input.action.as_deref() {
                 Some("allow")
                     if view.can_allow
-                        && (!view.risk
+                        && (!(view.risk || input.option.is_some())
                             || view.armed
+                                && input.option == view.armed_update
                                 && pending
                                     .armed_at
                                     .is_some_and(|at| at.elapsed() >= Duration::from_secs(1))) =>
@@ -446,9 +493,16 @@ impl Core {
                         return Err("Invalid permission message".into());
                     }
                     view.status = "allowed".into();
-                    json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}})
+                    let mut decision = json!({"behavior":"allow"});
+                    if let Some(index) = input.option {
+                        decision["updatedPermissions"] = json!([view.permission_updates[index]]);
+                    }
+                    json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":decision}})
                 }
                 Some("deny") => {
+                    if input.option.is_some() {
+                        return Err("Denial cannot update permissions".into());
+                    }
                     if input
                         .message
                         .as_ref()

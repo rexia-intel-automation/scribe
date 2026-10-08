@@ -68,6 +68,8 @@ export interface Decision {
   options: string[];
   risk: boolean;
   canAllow?: boolean;
+  permissionUpdates?: Record<string, unknown>[];
+  armedUpdate?: number | null;
   nativeQuestions?: {
     question: string;
     header: string;

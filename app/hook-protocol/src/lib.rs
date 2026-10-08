@@ -3,6 +3,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+mod permission_update;
+pub use permission_update::valid_permission_update;
 
 fn mac(key: &str, fields: &[&[u8]]) -> Hmac<Sha256> {
     let mut mac =

@@ -9,6 +9,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 - Paleta da gota nas configurações: terracota (padrão), azul, verde, vinho e
   ocre, persistida no perfil local e aplicada também à bandeja. A forma indica
   o estado; a cor permanece a escolhida pelo usuário. Ainda fora da beta.1.
+- Sugestões documentadas de permissões do Claude: alcance e mudança visíveis,
+  escolha explícita e confirmação vinculada antes de ecoar `updatedPermissions`.
+  Sem escrita direta de regras pelo app; fora da beta.1 e com ensaio interativo
+  ainda pendente.
 
 - Respostas pela janela: permissões por hook nativo, perguntas pelo MCP,
   confirmação separada para ações de risco, decisões concorrentes e prazos.

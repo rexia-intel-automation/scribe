@@ -212,6 +212,82 @@ test('native client forwards eleven events, returns only supported human decisio
   }
 });
 
+test('native PermissionRequest echoes only one exact original permission suggestion', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'scribe permission update '));
+  const config = join(root, 'connection.json');
+  const update = {
+    type: 'addRules',
+    rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
+    behavior: 'allow',
+    destination: 'projectSettings',
+  };
+  const scenarios = [
+    ['changed-destination', (value) => { value.destination = 'userSettings'; }],
+    ['broadened-rule', (value) => { value.rules[0].ruleContent = 'Bash'; }],
+    ['removed-rule-content', (value) => { delete value.rules[0].ruleContent; }],
+    ['unknown-field', (value) => { value.unrecognized = true; }],
+    ['wrong-field-type', (value) => { value.destination = 7; }],
+    ['deny-with-updates', (_value, decision) => { decision.behavior = 'deny'; }],
+    ['two-entries', (_value, decision) => { decision.updatedPermissions.push(update); }],
+    ['empty-array', (_value, decision) => { decision.updatedPermissions = []; }],
+    ['object-not-array', (_value, decision) => { decision.updatedPermissions = update; }],
+    ['wrong-entry-type', (_value, decision) => { decision.updatedPermissions = ['not-an-update']; }],
+  ];
+  let scenario = 'valid';
+  const server = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    assert.equal(req.headers.authorization, undefined);
+    if (req.url.startsWith('/v1/hooks/challenge/')) {
+      const nonce = req.url.split('/').at(-1);
+      res.writeHead(204, { 'x-scribe-proof': sign(hookKey, ['challenge', nonce]) }).end();
+      return;
+    }
+    assert.equal(req.url, '/v1/hooks/PermissionRequest');
+    const payload = JSON.parse(body);
+    const nonce = req.headers['x-scribe-nonce'];
+    assert.equal(req.headers['x-scribe-proof'], sign(hookKey, ['request', nonce, 'PermissionRequest', body]));
+    assert.deepEqual(payload.permission_suggestions, [update]);
+    const echoed = structuredClone(update);
+    const decision = { behavior: 'allow', updatedPermissions: [echoed] };
+    const selected = scenarios.find(([name]) => name === scenario);
+    if (selected) selected[1](echoed, decision);
+    const reply = JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PermissionRequest', decision,
+    } });
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'x-scribe-proof': sign(hookKey, ['response', nonce, 'PermissionRequest', '200', reply]),
+    }).end(reply);
+  });
+  await new Promise(ok => server.listen(0, '127.0.0.1', ok));
+  await writeFile(config, JSON.stringify({ port: server.address().port, token, hook_key: hookKey }));
+  try {
+    const input = JSON.stringify({
+      hook_event_name: 'PermissionRequest', session_id: 'synthetic-session', cwd: '/synthetic/project',
+      permission_suggestions: [update],
+    });
+    const accepted = await launch(binary, config, 'PermissionRequest', input);
+    assert.equal(accepted.code, 0);
+    assert.equal(accepted.stderr, '');
+    assert.deepEqual(JSON.parse(accepted.stdout), { hookSpecificOutput: {
+      hookEventName: 'PermissionRequest',
+      decision: { behavior: 'allow', updatedPermissions: [update] },
+    } });
+
+    for (const [name] of scenarios) {
+      scenario = name;
+      const rejected = await launch(binary, config, 'PermissionRequest', input);
+      assert.equal(rejected.code, 0, name);
+      assert.equal(rejected.stdout, '', `${name} must not emit a decision`);
+      assert.equal(rejected.stderr, '', name);
+    }
+  } finally {
+    server.closeAllConnections();
+    await new Promise(ok => server.close(ok));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('native client rejects oversized/malformed input and terminates with unfinished stdin', async () => {
   const root = await mkdtemp(join(tmpdir(), 'scribe-client-input-'));
   const config = join(root, 'connection.json');

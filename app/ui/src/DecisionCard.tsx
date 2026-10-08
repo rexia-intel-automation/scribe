@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { decisionText, t, type Language } from "./i18n";
+import { decisionText, t, type Language, type Message } from "./i18n";
 import type { Decision, DecisionInput, View } from "./types";
 import * as bridge from "./bridge";
 
@@ -23,6 +23,30 @@ const emptyNativeAnswer = (): NativeAnswerDraft => ({
   text: "",
 });
 
+const permissionUpdateActions: Record<string, Message> = {
+  addRules: "permissionUpdateAddRules",
+  replaceRules: "permissionUpdateReplaceRules",
+  removeRules: "permissionUpdateRemoveRules",
+  setMode: "permissionUpdateSetMode",
+  addDirectories: "permissionUpdateAddDirectories",
+  removeDirectories: "permissionUpdateRemoveDirectories",
+};
+
+const permissionUpdateScopes: Record<string, Message> = {
+  session: "permissionUpdateSession",
+  localSettings: "permissionUpdateLocalSettings",
+  projectSettings: "permissionUpdateProjectSettings",
+  userSettings: "permissionUpdateUserSettings",
+};
+
+function permissionUpdateActionKey(action: string): Message {
+  return permissionUpdateActions[action] ?? "permissionUpdateRaw";
+}
+
+function permissionUpdateScopeKey(scope: string): Message {
+  return permissionUpdateScopes[scope] ?? "permissionUpdateScopeRaw";
+}
+
 export function DecisionCard(props: DecisionCardProps) {
   return <DecisionCardContent key={props.decision.id} {...props} />;
 }
@@ -38,10 +62,19 @@ function DecisionCardContent({
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [confirmReady, setConfirmReady] = useState(false);
+  const [selectedUpdate, setSelectedUpdate] = useState<number | null>(null);
   const [nativeAnswers, setNativeAnswers] = useState<NativeAnswerDraft[]>([]);
   const [planFeedback, setPlanFeedback] = useState("");
   const controlId = useId();
   const canAllow = decision.canAllow !== false;
+  const permissionUpdates = Array.isArray(decision.permissionUpdates)
+    ? decision.permissionUpdates
+    : [];
+  useEffect(() => {
+    if (decision.armedUpdate !== undefined && decision.armedUpdate !== null) {
+      setSelectedUpdate(decision.armedUpdate);
+    }
+  }, [decision.armedUpdate]);
   useEffect(() => {
     setConfirmReady(false);
     if (
@@ -53,6 +86,9 @@ function DecisionCardContent({
     return () => window.clearTimeout(timer);
   }, [decision.id, decision.armed, decision.kind]);
   const pending = decision.status === "pending" && now < decision.expiresAt;
+  useEffect(() => {
+    if (!pending) setSelectedUpdate(null);
+  }, [pending]);
   const nativeQuestions =
     decision.kind === "nativeQuestion" &&
     Array.isArray(decision.nativeQuestions)
@@ -173,7 +209,13 @@ function DecisionCardContent({
           event.preventDefault();
           void choose({ action: "deny" });
         }
-        if (event.key.toLowerCase() === "a" && canAllow && !decision.risk) {
+        if (
+          event.key.toLowerCase() === "a" &&
+          canAllow &&
+          !decision.risk &&
+          selectedUpdate === null &&
+          !decision.armed
+        ) {
           event.preventDefault();
           void choose({ action: "allow" });
         }
@@ -204,6 +246,98 @@ function DecisionCardContent({
             </p>
           )}
           {!canAllow && <p role="note">{t(language, "hiddenTarget")}</p>}
+          {canAllow && permissionUpdates.length > 0 && (
+            <section
+              className="permission-updates"
+              aria-label={t(language, "permissionUpdatesTitle")}
+            >
+              <p>{t(language, "permissionUpdatesTitle")}</p>
+              <fieldset disabled={busy || !pending || decision.armed}>
+                <legend>{t(language, "permissionUpdateChoice")}</legend>
+                <label className="permission-update-choice">
+                  <input
+                    type="radio"
+                    name={`permission-update-${decision.id}`}
+                    checked={selectedUpdate === null}
+                    onChange={() => setSelectedUpdate(null)}
+                  />
+                  <span>{t(language, "permissionUpdateOnce")}</span>
+                </label>
+                {permissionUpdates.map((update, index) => {
+                  const action =
+                    typeof update.type === "string" ? update.type : "";
+                  const destination =
+                    typeof update.destination === "string"
+                      ? update.destination
+                      : "";
+                  const isRuleUpdate = [
+                    "addRules",
+                    "replaceRules",
+                    "removeRules",
+                  ].includes(action);
+                  const rules = Array.isArray(update.rules) ? update.rules : [];
+                  const missingRuleContent =
+                    isRuleUpdate &&
+                    rules.some(
+                      (rule) =>
+                        !rule ||
+                        typeof rule !== "object" ||
+                        typeof rule.ruleContent !== "string" ||
+                        rule.ruleContent.length === 0,
+                    );
+                  return (
+                    <div className="permission-update" key={index}>
+                      <label className="permission-update-choice">
+                        <input
+                          type="radio"
+                          name={`permission-update-${decision.id}`}
+                          checked={selectedUpdate === index}
+                          onChange={() => setSelectedUpdate(index)}
+                        />
+                        <span>
+                          {t(language, permissionUpdateActionKey(action), {
+                            value: action,
+                          })}
+                          {destination && (
+                            <>
+                              {" "}
+                              ·{" "}
+                              {t(
+                                language,
+                                permissionUpdateScopeKey(destination),
+                                { value: destination },
+                              )}
+                            </>
+                          )}
+                        </span>
+                      </label>
+                      {selectedUpdate === index && (
+                        <>
+                          <pre className="permission-update-json">
+                            {JSON.stringify(update, null, 2)}
+                          </pre>
+                          {missingRuleContent && (
+                            <p className="risk-warning" role="note">
+                              {t(language, "permissionUpdateMissingRule")}
+                            </p>
+                          )}
+                          {action === "setMode" &&
+                            update.mode === "bypassPermissions" && (
+                              <p className="risk-warning" role="note">
+                                {t(language, "permissionUpdateBypass")}
+                              </p>
+                            )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </fieldset>
+              <p className="risk-warning" role="note">
+                {t(language, "permissionUpdateWarning")}
+              </p>
+            </section>
+          )}
         </>
       ) : decision.kind === "plan" ? (
         <section
@@ -393,10 +527,16 @@ function DecisionCardContent({
                 disabled={busy || !canAllow || decision.armed}
                 onClick={(event) => {
                   if (event.detail > 1) return;
-                  void choose({ action: decision.risk ? "arm" : "allow" });
+                  if (selectedUpdate !== null) {
+                    void choose({ action: "arm", option: selectedUpdate });
+                  } else {
+                    void choose({ action: decision.risk ? "arm" : "allow" });
+                  }
                 }}
               >
-                {t(language, "allowOnce")}
+                {selectedUpdate === null
+                  ? t(language, "allowOnce")
+                  : t(language, "permissionUpdateReview")}
               </button>
               {!canAllow && (
                 <button
@@ -406,18 +546,26 @@ function DecisionCardContent({
                   {t(language, "answerInTerminal")}
                 </button>
               )}
-              {canAllow && decision.risk && decision.armed && (
-                <button
-                  className="confirm-decision"
-                  disabled={busy || !confirmReady}
-                  onClick={(event) => {
-                    if (event.detail > 1) return;
-                    void choose({ action: "allow" });
-                  }}
-                >
-                  {t(language, "confirmAllow")}
-                </button>
-              )}
+              {canAllow &&
+                decision.armed &&
+                (decision.risk || decision.armedUpdate !== undefined) && (
+                  <button
+                    className="confirm-decision"
+                    disabled={busy || !confirmReady}
+                    onClick={(event) => {
+                      if (event.detail > 1) return;
+                      void choose({
+                        action: "allow",
+                        ...(decision.armedUpdate !== undefined &&
+                        decision.armedUpdate !== null
+                          ? { option: decision.armedUpdate }
+                          : {}),
+                      });
+                    }}
+                  >
+                    {t(language, "confirmAllow")}
+                  </button>
+                )}
               <button
                 disabled={busy}
                 onClick={() => void choose({ action: "deny" })}

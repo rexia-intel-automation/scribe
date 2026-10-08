@@ -241,6 +241,37 @@ a {
   overflow: auto;
   font-size: 12px;
 }
+.permission-updates {
+  margin-top: 10px;
+  text-align: left;
+}
+.permission-updates > p:first-child {
+  font-weight: 700;
+}
+.permission-updates fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--linha);
+  border-radius: 9px;
+}
+.permission-update-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.permission-update-choice input {
+  margin-top: 3px;
+}
+.permission-update-json {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
 .decision-plan-title {
   margin: 10px 0 6px;
   font-weight: 700;
