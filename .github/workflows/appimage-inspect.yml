@@ -51,3 +51,9 @@ jobs:
             readelf -d squashfs-root/AppRun | sed -n '/NEEDED/p'
           fi
           grep -nE 'libwebkit|fuse|AppRun' extraction.log | head -40 || true
+          sudo apt-get install -y libegl1
+          LD_LIBRARY_PATH="$PWD/squashfs-root/usr/lib:$PWD/squashfs-root/usr/lib/x86_64-linux-gnu" ldd squashfs-root/usr/bin/scribe | tee dependencies-after-egl.log
+          if grep -q 'not found' dependencies-after-egl.log; then
+            echo 'AppImage still has an unresolved runtime library.'
+            exit 1
+          fi
