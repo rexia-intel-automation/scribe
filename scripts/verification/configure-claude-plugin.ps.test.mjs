@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -142,6 +142,80 @@ function runSetup(fixture, extraEnv = {}) {
   return runPowerShell(fixture, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', fixture.scriptPath], extraEnv, 15000);
 }
 
+function runPowerShellDiagnosticAsync(fixture, args, extraEnv = {}, timeout = 90000) {
+  const started = Date.now();
+  const child = spawn(fixture.powershell, args, {
+    cwd: process.cwd(),
+    env: { ...fixture.env, ...extraEnv },
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const outputLimit = 12000;
+  const captured = { stdout: '', stderr: '' };
+  const pending = { stdout: '', stderr: '' };
+  let processError = null;
+  let timedOut = false;
+  let settled = false;
+  let killTimer;
+  let hardKillTimer;
+
+  const appendTail = (key, text) => {
+    captured[key] += text;
+    if (captured[key].length > outputLimit) {
+      captured[key] = `[earlier output truncated]\n${captured[key].slice(-outputLimit)}`;
+    }
+  };
+  const consume = (key, chunk) => {
+    pending[key] += chunk;
+    const lines = pending[key].split(/\r?\n/);
+    pending[key] = lines.pop();
+    for (const line of lines) {
+      appendTail(key, `[+${Date.now() - started}ms ${key}] ${line}\n`);
+    }
+    if (pending[key].length > outputLimit) {
+      const excess = pending[key].length - outputLimit;
+      appendTail(key, `[+${Date.now() - started}ms ${key}] [unterminated output truncated]\n`);
+      pending[key] = pending[key].slice(excess);
+    }
+  };
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', chunk => consume('stdout', chunk));
+  child.stderr.on('data', chunk => consume('stderr', chunk));
+
+  return new Promise(resolve => {
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      clearTimeout(killTimer);
+      clearTimeout(hardKillTimer);
+      for (const key of ['stdout', 'stderr']) {
+        if (pending[key]) appendTail(key, `[+${Date.now() - started}ms ${key}] ${pending[key]} [trailing partial line]\n`);
+      }
+      resolve({
+        status: timedOut ? null : child.exitCode,
+        signal: child.signalCode,
+        error: processError,
+        stdout: captured.stdout,
+        stderr: captured.stderr,
+        elapsedMs: Date.now() - started,
+        timedOut,
+      });
+    };
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 1000);
+      hardKillTimer = setTimeout(finish, 2000);
+    }, timeout);
+    child.on('error', error => {
+      processError = error;
+    });
+    child.on('close', finish);
+  });
+}
+
 function diagnostic(result, fixture, { maxOutput = 1200, tail = false } = {}) {
   const redactPath = (value, path, replacement) => path
     ? value.replace(new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), replacement)
@@ -165,6 +239,7 @@ function diagnostic(result, fixture, { maxOutput = 1200, tail = false } = {}) {
     status: result.status,
     signal: result.signal,
     elapsedMs: result.elapsedMs,
+    timedOut: Boolean(result.timedOut),
     error: result.error ? { code: result.error.code, syscall: result.error.syscall, message: scrub(result.error.message) } : null,
     stdout: limit(result.stdout),
     stderr: limit(result.stderr),
@@ -197,7 +272,7 @@ async function runPowerShellDiagnostic() {
   const trace = await makeFixture('5.1');
   try {
     const scriptLiteral = trace.scriptPath.replaceAll("'", "''");
-    const result = runPowerShell(trace, [
+    const result = await runPowerShellDiagnosticAsync(trace, [
       '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-Command', `Set-PSDebug -Trace 1; & '${scriptLiteral}'`,
     ], { SCRIBE_TEST_HELPER_MODE: 'old' }, 90000);
