@@ -169,9 +169,63 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  install-smoke:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [validate, bundles, verify]
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bundle: nsis
+            runner: windows-latest
+          - bundle: msi
+            runner: windows-latest
+          - bundle: dmg
+            runner: macos-latest
+          - bundle: deb
+            runner: ubuntu-22.04
+          - bundle: appimage
+            runner: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: release-*
+          path: .artifacts/install-input
+      - name: Install Linux virtual display dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb dbus-x11
+      - name: Install AppImage FUSE dependency
+        if: matrix.bundle == 'appimage'
+        run: sudo apt-get install -y libfuse2
+      - name: Test installed app and helper on Windows or macOS
+        if: runner.os != 'Linux'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          BUNDLE: ${{ matrix.bundle }}
+        run: node scripts/verification/installed-package-smoke.mjs --input-root .artifacts/install-input --bundle "$BUNDLE" --source-sha "$SOURCE_SHA" --tag "$RELEASE_TAG"
+      - name: Test installed app and helper on Linux
+        if: runner.os == 'Linux'
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          BUNDLE: ${{ matrix.bundle }}
+        run: xvfb-run --auto-servernum dbus-run-session -- node scripts/verification/installed-package-smoke.mjs --input-root .artifacts/install-input --bundle "$BUNDLE" --source-sha "$SOURCE_SHA" --tag "$RELEASE_TAG"
+
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [validate, bundles, verify]
+    needs: [validate, bundles, verify, install-smoke]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
