@@ -1151,7 +1151,9 @@ async fn raw_request_with_timeout(
     let mut bytes = vec![];
     tokio::time::timeout(read_timeout, socket.read_to_end(&mut bytes))
         .await
-        .unwrap()
+        .unwrap_or_else(|_| {
+            panic!("HTTP {method} {path}: response did not complete within {read_timeout:?}")
+        })
         .unwrap();
     let text = String::from_utf8(bytes).unwrap();
     let (headers, body) = text.split_once("\r\n\r\n").unwrap();
@@ -1160,6 +1162,126 @@ async fn raw_request_with_timeout(
         headers: headers.into(),
         body: body.into(),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn incomplete_headers_are_closed_without_stopping_the_listener() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    socket
+        .write_all(b"GET /v1/health HTTP/1.1\r\nHost: ")
+        .await
+        .unwrap();
+    let mut response = [0u8; 512];
+    let closed = tokio::time::timeout(Duration::from_secs(3), socket.read(&mut response))
+        .await
+        .expect("incomplete headers must not retain a connection beyond the 2-second deadline");
+    assert!(
+        matches!(closed, Ok(0)) || closed.is_err(),
+        "no request was completed"
+    );
+    assert_eq!(
+        raw_request(port, TOKEN, "GET", "/v1/health", "", "")
+            .await
+            .code,
+        200
+    );
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_foreign_hosts_authorities_and_browser_origins_are_rejected_on_every_surface() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let port = server.port();
+    let paths = [
+        "/v1/health",
+        "/v1/state",
+        "/v1/events",
+        "/v1/decisions/public-id",
+        "/v1/hooks/SessionStart",
+        "/v1/hooks/challenge/0123456789abcdef0123456789abcdef",
+        "/v1/mcp/challenge/0123456789abcdef0123456789abcdef",
+        "/mcp",
+    ];
+    for path in paths {
+        // Exactly one foreign Host: the helper normally adds a valid Host.
+        let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        socket.write_all(format!(
+            "GET {path} HTTP/1.1\r\nHost: foreign.invalid\r\nAuthorization: Bearer {TOKEN}\r\nConnection: close\r\n\r\n"
+        ).as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        let response = String::from_utf8(response).unwrap();
+        assert!(
+            response.starts_with("HTTP/1.1 403"),
+            "foreign Host on {path}: {response}"
+        );
+        assert!(!response.to_ascii_lowercase().contains("access-control-"));
+
+        let absolute = format!("http://foreign.invalid{path}");
+        let reply = raw_request(port, TOKEN, "GET", &absolute, "", "").await;
+        assert_eq!(reply.code, 403, "foreign authority on {path}");
+        assert!(!reply
+            .headers
+            .to_ascii_lowercase()
+            .contains("access-control-"));
+        for method in ["GET", "POST", "DELETE", "OPTIONS"] {
+            for origin in ["https://foreign.invalid", "null", ""] {
+                let reply = raw_request(
+                    port,
+                    TOKEN,
+                    method,
+                    path,
+                    &format!("Origin: {origin}\r\nAccess-Control-Request-Method: POST\r\n"),
+                    "",
+                )
+                .await;
+                assert_eq!(reply.code, 403, "{method} {path} Origin={origin}");
+                assert!(!reply
+                    .headers
+                    .to_ascii_lowercase()
+                    .contains("access-control-"));
+            }
+        }
+    }
+    for path in &paths[4..] {
+        let method = if path.contains("/challenge/") {
+            "GET"
+        } else {
+            "POST"
+        };
+        let reply = raw_request(port, TOKEN, method, &format!("{path}?q=public"), "", "").await;
+        assert_eq!(reply.code, 401, "query on signed endpoint {path}");
+        assert!(!reply
+            .headers
+            .to_ascii_lowercase()
+            .contains("access-control-"));
+    }
+    for method in ["GET", "DELETE", "OPTIONS"] {
+        assert_eq!(
+            raw_request(port, TOKEN, method, "/mcp", "", "").await.code,
+            401
+        );
+    }
+    assert_eq!(
+        raw_request(port, TOKEN, "GET", "/v1/health", "", "")
+            .await
+            .code,
+        200
+    );
+    server.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -46,8 +46,14 @@ e são consumidos atomicamente somente depois de conferir a assinatura do pedido
 Um GET pendente duplicado é recusado; depois do consumo, reemitir o GET gera
 outro nonce do servidor, que não autoriza o POST capturado. Um POST antigo ou
 inválido não consome o par novo. Pedidos sem par reservado são recusados antes
-de coletar o corpo. Essa guarda não é um limite global de conexões ou um timeout
-curto de cabeçalhos; disponibilidade sob sobrecarga permanece uma limitação.
+de coletar o corpo. O driver limita a 32 conexões ativas antes do parsing HTTP,
+com até 32 cabeçalhos, buffer de 16 KiB e prazo de 2 segundos para completar
+cada conjunto de cabeçalhos. Conexões excedentes são fechadas antes do parsing;
+o prazo não limita respostas SSE/MCP em andamento nem troca o socket entre o
+desafio e o POST. O corpo continua limitado a 1 MiB e 500 ms. Esses limites
+reduzem o consumo por entradas incompletas; não garantem disponibilidade diante
+de ocupação contínua das vagas por processos locais. Não há prova de carga
+concorrente neste lote.
 Há limite de corpo de 1 MiB, quota autenticada e capacidade
 de cartões. Windows usa bind exclusivo; Unix usa SO_REUSEADDR sem SO_REUSEPORT.
 
@@ -86,8 +92,9 @@ de segurança, e os testes não representam todos os ataques possíveis.
 
 | Tentativa | Resultado esperado | Evidência automatizada |
 | --- | --- | --- |
-| Host falso, duplicado ou URI com autoridade divergente | Rejeitar antes da rota | tests/core.rs, http_boundaries_auth_body_rate_mcp_and_protected_decision_route |
-| Origin de página, inclusive vazio | Rejeitar sem CORS | Mesmo teste HTTP |
+| Host único estrangeiro ou URI com autoridade divergente, em todas as rotas | 403 antes da rota, sem cabeçalhos CORS | tests/core.rs, http_foreign_hosts_authorities_and_browser_origins_are_rejected_on_every_surface |
+| Host duplicado | Rejeitar antes da rota | tests/core.rs, http_boundaries_auth_body_rate_mcp_and_protected_decision_route |
+| Origin de página, null ou vazio; GET, POST, DELETE e preflight OPTIONS em todas as rotas | 403 sem cabeçalhos CORS | http_foreign_hosts_authorities_and_browser_origins_are_rejected_on_every_surface |
 | Bearer ausente ou incorreto | Não ler estado nem resolver | Mesmo teste HTTP |
 | Bearer válido sem credencial privada de UI | Não resolver cartão | Mesmo teste e signed_native_hooks_wait_for_private_ui_and_terminal_returns_no_decision |
 | Bearer usado diretamente como autorização de hook | Não criar/cancelar cartão | bearer_only_hooks_are_rejected_and_challenge_flood_does_not_spend_auth_quota |
@@ -98,6 +105,8 @@ de segurança, e os testes não representam todos os ataques possíveis.
 | Duas cópias concorrentes do mesmo pedido válido | Exatamente uma aceita | Mesmo teste de hooks |
 | Par ausente com corpo ainda não enviado | 401 antes da leitura do corpo | Mesmo teste de hooks |
 | Socket fechado depois de um desafio válido | Sem reconexão nem envio de conteúdo | scripts/verification/native-client.test.mjs |
+| Cabeçalhos incompletos | Encerrar a conexão após 2 segundos, mantendo o listener utilizável | tests/core.rs, incomplete_headers_are_closed_without_stopping_the_listener |
+| Segunda conexão quando uma única vaga de teste está ocupada | Fechar antes de parsing e liberar a vaga ao encerrar a primeira | server.rs, one_reserved_connection_rejects_an_excess_socket_and_releases_on_close |
 | Alteração de evento, status ou corpo da resposta | Nenhum stdout de decisão | Mesmo teste de processo |
 | Questions ou plan alterados, mesmo com HMAC válido | Nenhum stdout de decisão | Mesmo teste de processo |
 | Redirect ou proxy de ambiente | Não seguir nem enviar conteúdo ao destino | Mesmo teste de processo |
