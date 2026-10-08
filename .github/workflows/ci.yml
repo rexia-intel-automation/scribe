@@ -8,6 +8,16 @@ permissions:
   contents: read
 
 jobs:
+  windows-onboarding:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Check PowerShell onboarding with isolated executable fixtures
+        run: node --test scripts/verification/configure-claude-plugin.ps.test.mjs
   dependency-audit:
     runs-on: ubuntu-22.04
     steps:
