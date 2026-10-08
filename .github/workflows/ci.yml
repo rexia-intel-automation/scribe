@@ -101,5 +101,8 @@ jobs:
       - name: Smoke-test isolated Claude MCP discovery
         if: matrix.os == 'windows-latest'
         run: node scripts/verification/claude-mcp-discovery-smoke.mjs
+      - name: Smoke-test isolated Claude MCP tool call with local synthetic provider
+        if: matrix.os == 'windows-latest'
+        run: node scripts/verification/claude-mcp-call-smoke.mjs
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/scribe

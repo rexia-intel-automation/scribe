@@ -1,5 +1,18 @@
 # ADR 0010 — MCP por stdio com chamadas locais atestadas
 
+O protocolo negociado entre o Claude e o helper é independente do salto
+privado helper → app. Nesse salto, o header `mcp-protocol-version` é sempre
+`2025-11-25`: o RMCP já consumiu os metadados inline do cliente ao montar o
+contexto. Isso permite chamadas modernas (`2026-07-28`, sem `initialize`) sem
+enviar ao app um corpo legado acompanhado de um header que exige `_meta`.
+Na resposta, o helper repõe `resultType: "complete"`, exigido pelo cliente
+moderno e omitido pelo salto legado; conteúdo, erro e dados estruturados são
+preservados. O RMCP remove esse discriminador ao responder a um cliente legado.
+Os testes Node verificam o header e a prova; a integração Rust verifica
+relatório persistido, recuperação offline e pergunta concorrente no app real.
+O smoke da CLI real continua cobrindo descoberta; o ensaio do Claude cobre
+chamadas reais, e essas evidências são registradas separadamente.
+
 Status: implementado no candidato; revisão cruzada, CI e ensaios reais pendentes.
 
 ## Contexto
