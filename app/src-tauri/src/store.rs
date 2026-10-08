@@ -217,6 +217,32 @@ mod benchmarks {
         );
     }
 
+    fn checkpoint(store: &Store, path: &Path, operation: &str, action: &str, block: usize) {
+        let before = std::fs::metadata(path).unwrap().len();
+        let auto_pages: i64 = store
+            .0
+            .pragma_query_value(None, "wal_autocheckpoint", |r| r.get(0))
+            .unwrap();
+        let started = Instant::now();
+        let result: (i64, i64, i64) = store
+            .0
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        let elapsed = started.elapsed().as_micros();
+        let after = std::fs::metadata(path).unwrap().len();
+        assert_eq!(result.0, 0, "checkpoint must complete without a reader");
+        assert_eq!(after, 0, "checkpoint must truncate the public WAL");
+        eprintln!(
+            "SCRIBE_STORAGE_CHECKPOINT {}",
+            json!({"mode":"WAL","operation":operation,
+            "action":action,"block":block,"block_samples":32,"elapsed_us":elapsed,
+            "wal_before_bytes":before,"wal_after_bytes":after,"automatic_checkpoint_pages":auto_pages,
+            "busy":result.0,"log_frames":result.1,"checkpointed_frames":result.2})
+        );
+    }
+
     // An explicit diagnostic, never a replacement for the signed HTTP SLA gate.
     #[tokio::test]
     #[ignore = "explicit same-runner storage comparison; creates only temporary public databases"]
@@ -294,6 +320,24 @@ mod benchmarks {
                         action
                     );
                     commits[index].push(commit.unwrap_or_else(measure_commit));
+                }
+                if (sample + 1) % 32 == 0 {
+                    let (core, store) = &probes[2];
+                    let block = (sample + 1) / 32;
+                    checkpoint(
+                        store,
+                        &temp.path().join("commit-WAL.db-wal"),
+                        "save_decision",
+                        action,
+                        block,
+                    );
+                    checkpoint(
+                        &core.data.lock().unwrap().store,
+                        &temp.path().join("choice-WAL.db-wal"),
+                        "core_choice",
+                        action,
+                        block,
+                    );
                 }
             }
             for (index, mode) in MODES.iter().enumerate() {

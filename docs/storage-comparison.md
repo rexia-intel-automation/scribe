@@ -13,6 +13,15 @@ temporários independentes: um para `Store::save_decision`, outro para
 ciclo; a ordem commit/escolha também alterna. Os logs incluem todas as
 amostras em microssegundos, p50, p95 nearest rank e máximo.
 
+A cada bloco de 32 amostras, o WAL de cada banco tem um checkpoint TRUNCATE
+medido separadamente. O log registra tempo, tamanho do WAL antes/depois,
+limite de auto-checkpoint e resposta do SQLite; exige sucesso e tamanho final
+zero. Não se soma esse tempo aos percentis das escolhas. Essa política de
+checkpoint explícito muda o padrão de I/O do diagnóstico: não representa uma
+política já adotada pelo produto nem prova sua durabilidade ou remoção segura
+de todos os bytes. Um número de commits não determina quantas páginas foram
+gravadas; sem rastreamento não afirmamos se um auto-checkpoint ocorreu.
+
 ```powershell
 cargo test --manifest-path app/src-tauri/Cargo.toml --locked --lib storage_mode_round_robin -- --ignored --nocapture --test-threads=1
 ```
