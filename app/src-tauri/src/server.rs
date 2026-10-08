@@ -259,6 +259,9 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         && request.uri().path().starts_with("/v1/hooks/")
         && !request.uri().path().starts_with("/v1/hooks/challenge/");
     let signed_hook = hook_request;
+    if (challenge_request || signed_hook) && request.uri().query().is_some() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     let authorization = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())

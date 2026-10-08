@@ -1741,6 +1741,20 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
     let port = server.port();
     let nonce = "0123456789abcdef0123456789abcdef";
     let challenge_path = format!("/v1/hooks/challenge/{nonce}");
+    assert_eq!(
+        raw_request(
+            port,
+            "invalid",
+            "GET",
+            &format!("{challenge_path}?unsigned=1"),
+            &challenge_headers(nonce),
+            ""
+        )
+        .await
+        .code,
+        401,
+        "unsigned query data must not reserve a challenge"
+    );
     let challenge1 = request(port, "invalid", "GET", &challenge_path, "", "").await;
     assert_eq!(challenge1.code, 204);
     let server_nonce1 = reply_header(&challenge1, "x-scribe-server-nonce");
@@ -1775,6 +1789,20 @@ async fn native_hooks_authenticate_both_peers_and_reject_replay() {
         "a pending client nonce cannot replace a challenge used by an in-flight POST"
     );
     let first_headers = hook_request_headers(nonce, &server_nonce1, path, body);
+    assert_eq!(
+        raw_request(
+            port,
+            "invalid",
+            "POST",
+            &format!("{path}?unsigned=1"),
+            &first_headers,
+            body
+        )
+        .await
+        .code,
+        401,
+        "unsigned query data must not consume the reserved challenge"
+    );
     let first_reply = request(port, "invalid", "POST", path, &first_headers, body).await;
     assert_eq!(first_reply.code, 204);
     assert!(verify(

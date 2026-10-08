@@ -31,6 +31,21 @@ O desafio hook permanece em `GET /v1/hooks/challenge/<client_nonce>`:
   nonces, caminho exato `/v1/hooks/<event>` e corpo exato.
 - Resposta: prova sobre `hook-response`, os dois nonces, caminho, status e corpo.
 
+Campos em ordem para `scribe_hook_protocol::sign` e `verify`:
+
+| Prova | Campos |
+|---|---|
+| Pedido do desafio | `[hook-challenge-request, client_nonce]` |
+| Resposta do desafio | `[hook-challenge, client_nonce, server_nonce]` |
+| Pedido hook | `[hook-request, client_nonce, server_nonce, path, body]` |
+| Resposta hook | `[hook-response, client_nonce, server_nonce, path, status, body]` |
+
+Cada campo usa seus bytes UTF-8; corpo usa os bytes recebidos e status é decimal
+ASCII. O módulo compartilhado aplica a separação de campos pelo comprimento.
+Query strings são recusadas em desafios e hooks: não existe conteúdo extra
+fora desses campos. As notas da próxima release devem exigir app e helper do
+mesmo pacote; misturar executáveis da beta.1 com este protocolo não funciona.
+
 O mapa tem TTL monotônico de dois segundos e capacidade 256. Desafios pendentes
 duplicados são recusados. A presença do par é verificada antes de ler o corpo;
 o par só é consumido atomicamente depois da assinatura válida. Um pedido antigo
