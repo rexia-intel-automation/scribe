@@ -118,6 +118,11 @@ ou marcadores de limpeza pendentes, o app inicia um histórico vazio e exibe um
 aviso; artefatos parciais ou inválidos continuam interrompendo a recuperação.
 Para apagar dados pessoais, feche o app e o harness e remova tanto a pasta Local
 quanto a Roaming do Scribe, incluindo os artefatos de migração e conflitos.
+Apagar apenas a pasta Local pode restaurar um histórico antigo se ainda houver
+um tombstone íntegro de limpeza em Roaming. A recuperação desse tombstone usa
+rename sem substituição; se Local e Roaming estiverem em volumes diferentes,
+ela falha preservando a cópia e mostra armazenamento indisponível. A TI pode
+então orientar a recuperação ou a remoção das duas pastas, conforme a intenção.
 
 Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
 corporativo, backups ou bytes remanescentes em SSD ou HD. O histórico é por
