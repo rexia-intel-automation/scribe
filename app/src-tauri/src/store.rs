@@ -263,6 +263,8 @@ mod benchmarks {
                         .find(|d| d.status == "pending")
                         .unwrap();
                     assert!(view.can_allow && !view.risk);
+                    // Prepare the pending row outside timing, matching a resolved decision update.
+                    store.save_decision(&view).unwrap();
                     let mut committed = view.clone();
                     committed.status = if action == "allow" {
                         "allowed"
