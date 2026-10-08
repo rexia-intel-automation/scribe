@@ -270,6 +270,8 @@ function DecisionCardContent({
                     typeof update.destination === "string"
                       ? update.destination
                       : "";
+                  const behavior =
+                    typeof update.behavior === "string" ? update.behavior : "";
                   const isRuleUpdate = [
                     "addRules",
                     "replaceRules",
@@ -319,6 +321,20 @@ function DecisionCardContent({
                           {missingRuleContent && (
                             <p className="risk-warning" role="note">
                               {t(language, "permissionUpdateMissingRule")}
+                            </p>
+                          )}
+                          {action === "replaceRules" && (
+                            <p className="risk-warning" role="note">
+                              {t(language, "permissionUpdateReplaceWarning", {
+                                behavior,
+                              })}
+                            </p>
+                          )}
+                          {action === "removeRules" && (
+                            <p className="risk-warning" role="note">
+                              {t(language, "permissionUpdateRemoveWarning", {
+                                behavior,
+                              })}
                             </p>
                           )}
                           {action === "setMode" &&

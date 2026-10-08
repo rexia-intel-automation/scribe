@@ -14,15 +14,17 @@ não comprova que cada diálogo da versão local ofereça a mesma sugestão.
 
 ## Decisão
 
-Oferecer apenas entradas originais reconhecidas e integralmente visíveis.
+Oferecer apenas entradas originais reconhecidas e sem truncamento no JSON
+exibido. O painel pode exigir rolagem para ler a entrada completa.
 “Somente esta chamada” continua sendo a escolha inicial. A pessoa seleciona
 uma sugestão, vê seu JSON completo, efeito e alcance, arma a escolha e confirma
 em outro botão depois de um segundo. O índice armado vincula a confirmação;
 trocar a escolha não reaproveita o gesto. Atalhos não aplicam sugestões.
 
 O backend aceita os seis tipos documentados de atualização. Campos desconhecidos,
-texto ambíguo, segredos, entradas incompletas e limites excedidos não são
-oferecidos. Limites: até oito sugestões/8.000 bytes no pedido; cada atualização
+caracteres de controle (Cc) ou de formatação (Cf), segredos, entradas incompletas
+e limites excedidos não são oferecidos. Limites: até oito sugestões/8.000 bytes
+no pedido; cada atualização
 até 2.048 bytes e oito regras/pastas, com nomes até 128 bytes e conteúdo até
 1.024 bytes. Se o próprio alvo não puder ser aprovado com segurança, as
 sugestões também ficam no terminal.
@@ -39,6 +41,11 @@ do Claude pelo Scribe. Negar, expirar e responder no terminal nunca aplicam
 `projectSettings` é configuração compartilhada do projeto; `userSettings` vale
 para os projetos do usuário. Um `setMode` não vira um botão “Sempre neste projeto”.
 Uma regra sem `ruleContent` cobre a ferramenta inteira e recebe aviso explícito.
+`replaceRules` substitui todas as regras do comportamento indicado no destino,
+inclusive as que não aparecem na sugestão. `removeRules` remove as regras
+correspondentes desse comportamento. O cartão avisa sobre ambos os efeitos
+antes de armar; substituir ou remover regras `deny`/`ask` pode retirar bloqueios
+ou perguntas existentes.
 
 Sugestões não são uma cópia das opções de cada diálogo. O Claude aplica suas
 políticas e regras deny/ask; alguns modos podem resultar em nenhuma mudança.
