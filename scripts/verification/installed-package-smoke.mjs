@@ -235,6 +235,22 @@ async function runInstalled(paths, version) {
     await waitForHealth(config.port, config.token, app, deadline);
     const event = JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'installed-package-smoke', cwd: process.env.RUNNER_TEMP });
     await run(paths.helper, ['--hook', 'SessionStart'], { input: event, capture: false });
+    const sessionDeadline = Date.now() + 5000;
+    let sessionReady = false;
+    while (Date.now() < sessionDeadline) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${config.port}/v1/state`, {
+          headers: { authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(1000),
+        });
+        if (response.ok) {
+          const state = await response.json();
+          sessionReady = state.sessions?.some((session) => session.id === 'installed-package-smoke' && session.endedAt == null) === true;
+          if (sessionReady) break;
+        }
+      } catch { /* A hook is observational; require its state instead of trusting exit zero. */ }
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    if (!sessionReady) throw new Error('Installed helper SessionStart did not create a live session.');
     const { child, lines } = await helperProcess(paths.helper); helper = { child, lines };
     await runMcpSmoke(child, (id, limit) => waitForLine(child, id, limit));
   } finally {
