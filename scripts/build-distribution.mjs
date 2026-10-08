@@ -110,7 +110,7 @@ export function prepareSidecar(platform) {
   if (platform === 'macos') {
     const sidecar = join(binariesDir, plan.stagedSidecar);
     run('lipo', ['-create', ...built, '-output', sidecar]);
-    run('lipo', ['-verify_arch', 'arm64', 'x86_64', sidecar]);
+    run('lipo', [sidecar, '-verify_arch', 'arm64', 'x86_64']);
     staged = join(binariesDir, plan.stagedSidecar);
   } else {
     staged = join(binariesDir, plan.stagedSidecar);
@@ -140,7 +140,7 @@ export function verifyUniversalMacApp(bundleRoot, invoke = run) {
     }
   }
   for (const executable of executables) {
-    invoke('lipo', ['-verify_arch', 'arm64', 'x86_64', executable]);
+    invoke('lipo', [executable, '-verify_arch', 'arm64', 'x86_64']);
   }
   return executables;
 }

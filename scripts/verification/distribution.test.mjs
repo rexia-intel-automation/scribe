@@ -125,8 +125,8 @@ test('finalize requires both Windows installers and validates universal app path
     invoke: (command, args) => lipoCalls.push([command, args]),
   }).artifacts, ['Scribe_0.1.0_universal.dmg']);
   assert.deepEqual(lipoCalls, [
-    ['lipo', ['-verify_arch', 'arm64', 'x86_64', join(macosDir, 'scribe')]],
-    ['lipo', ['-verify_arch', 'arm64', 'x86_64', join(macosDir, 'scribe-hook')]],
+    ['lipo', [join(macosDir, 'scribe'), '-verify_arch', 'arm64', 'x86_64']],
+    ['lipo', [join(macosDir, 'scribe-hook'), '-verify_arch', 'arm64', 'x86_64']],
   ]);
 });
 
@@ -142,8 +142,8 @@ test('macOS verifier calls lipo for the app and sidecar and rejects missing file
   const calls = [];
   assert.deepEqual(verifyUniversalMacApp(root, (command, args) => calls.push([command, args])), [app, hook]);
   assert.deepEqual(calls, [
-    ['lipo', ['-verify_arch', 'arm64', 'x86_64', app]],
-    ['lipo', ['-verify_arch', 'arm64', 'x86_64', hook]],
+    ['lipo', [app, '-verify_arch', 'arm64', 'x86_64']],
+    ['lipo', [hook, '-verify_arch', 'arm64', 'x86_64']],
   ]);
 
   rmSync(hook);

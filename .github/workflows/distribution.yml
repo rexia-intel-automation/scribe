@@ -66,10 +66,16 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          $feature = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -ErrorAction SilentlyContinue
-          if (-not $feature) { throw 'Windows runner does not expose the VBSCRIPT optional feature required for MSI.' }
-          if ($feature.State -ne 'Enabled') {
-            Enable-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -All -NoRestart | Out-Null
+          $capability = Get-WindowsCapability -Online -Name 'VBSCRIPT*' -ErrorAction Stop |
+            Where-Object { $_.Name -like 'VBSCRIPT~~~~*' } |
+            Select-Object -First 1
+          if (-not $capability) { throw 'Windows runner does not expose the VBScript capability required for MSI.' }
+          if ($capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop | Out-Null
+          }
+          $capability = Get-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop
+          if ($capability.State -ne 'Installed' -or -not (Test-Path (Join-Path $env:WINDIR 'System32\vbscript.dll'))) {
+            throw 'VBScript capability is not installed and available for the Windows MSI build.'
           }
       - name: Install locked frontend dependencies
         working-directory: app
