@@ -99,8 +99,16 @@ impl Session {
             .rsplit('/')
             .next()
             .unwrap_or("?");
-        self.project = summary(project, 80);
-        self.cwd = shorten_path(cwd);
+        self.project = if crate::sanitize::ambiguous_text(project) {
+            "?".into()
+        } else {
+            summary(project, 80)
+        };
+        self.cwd = if crate::sanitize::ambiguous_text(cwd) {
+            "?".into()
+        } else {
+            shorten_path(cwd)
+        };
     }
 
     pub(crate) fn visible(&self, now: u64, completed_minutes: u16) -> bool {

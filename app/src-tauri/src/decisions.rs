@@ -8,7 +8,7 @@ use std::{sync::LazyLock, time::Duration};
 use tokio::sync::oneshot;
 
 static RISK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b)|git\s+reset\s+--hard|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-Recurse|\b(Format-Volume|Stop-Computer|Restart-Computer|Set-ExecutionPolicy|iex|Invoke-Expression)\b|\bStart-Process\b[^\n]*-Verb\b[^\n]*\bRunAs\b)").unwrap()
+    Regex::new(r"(?i)(\brm\s+[^\n]*(--recursive|--force|-[a-z]*[rf])|\b(rd|rmdir|del)\s+[^\n]*/[sq]|sudo\b|git\s+push\b[^\n]*(--force|-f\b|\s\+\S+)|git\s+reset\s+--hard|git\s+clean\b[^\n]*(--force|-\w*f)|\bfind\b[^\n]*\s-delete\b|\bcurl\b[^\n]*\s(?:(?:-d|--data|--data-binary)(?:\s+|=)?@|(?:-T|--upload-file)(?:\s+|=))|\b(curl|wget|iwr|Invoke-WebRequest)\b[^\n]*\|\s*(sh|bash|python[23]?|iex|Invoke-Expression)\b|chmod\s+-R\s+777|dd\s+if=|mkfs\b|drop\s+table|--prod\b|production|kubectl\s+delete|terraform\s+apply|npm\s+publish|Remove-Item\b[^\n]*-(Recurse|Force)\b|\b(Format-Volume|Stop-Computer|Restart-Computer|Set-ExecutionPolicy|iex|Invoke-Expression)\b|\bStart-Process\b[^\n]*-Verb\b[^\n]*\bRunAs\b)").unwrap()
 });
 
 /// Safe display data. Native question/plan text is retained only after validating

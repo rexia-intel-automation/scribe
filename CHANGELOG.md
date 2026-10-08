@@ -6,6 +6,13 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Adicionado
 
+- Candidato de migração do MCP para stdio nativo: plugin `0.1.1` inicia o helper
+  Rust sem servidor HTTP MCP. `initialize` e `tools/list` continuam disponíveis
+  com o app fechado; `tools/call` informa indisponibilidade nesse estado e pode
+  voltar a funcionar na mesma sessão depois de reabrir o app. O número do
+  pacote app/helper continua `0.1.0`; compatibilidade é identificada pelo
+  metadado `source_sha` e pela capacidade `attested-stdio-v1`. Este candidato
+  ainda aguarda CI e ensaio externo; não é uma release publicada ou aceita.
 - Paleta da gota nas configurações: terracota (padrão), azul, verde, vinho e
   ocre, persistida no perfil local e aplicada também à bandeja. A forma indica
   o estado; a cor permanece a escolhida pelo usuário. Ainda fora da beta.1.
@@ -41,6 +48,16 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Segurança
 
+- Projetos/caminhos com texto invisível recebem rótulo neutro; relatórios com
+  apresentação ambígua são recusados. Alertas de risco incluem refspec Git
+  forçado, limpeza forçada, `find -delete`, upload de arquivo pelo curl e
+  `Remove-Item -Force`. Dependabot acompanha também os dois projetos npm.
+- MCP stdio e hooks usam nonce novo por troca autenticada e mantêm desafio e
+  requisição no mesmo socket. O token privado da conexão não vai para o
+  `userConfig` do Claude Code. EOF e cancelamento encerram o fluxo stdio sem
+  reutilizar uma resposta anterior. Regressões verificam replay, cancelamento e
+  enquadramento JSON por linha UTF-8. Testes inspecionam os bytes do banco e dos
+  arquivos auxiliares após limpar o histórico ou eliminar sessões vencidas.
 - Abertura do app pelo cliente não mantém os canais do comando chamador:
   stdio separado e herança dos handles padrão removida no Windows. Regressão
   confirma aplicativo vivo, EOF de stdin e ausência de saída capturada.
