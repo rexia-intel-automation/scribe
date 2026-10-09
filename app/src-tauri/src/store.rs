@@ -143,8 +143,9 @@ impl Store {
     }
 
     pub(crate) fn clear(&self) -> Result<()> {
-        self.0
-            .execute_batch("BEGIN; DELETE FROM sessions; DELETE FROM decisions; COMMIT; VACUUM;")?;
+        let transaction = self.0.unchecked_transaction()?;
+        transaction.execute_batch("DELETE FROM sessions; DELETE FROM decisions;")?;
+        transaction.commit()?;
         Ok(())
     }
 

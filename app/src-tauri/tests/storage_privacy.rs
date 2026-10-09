@@ -59,7 +59,7 @@ async fn clear_history_removes_session_and_decision_bytes() {
         )
         .unwrap();
 
-    let before = fs::read(&path).unwrap();
+    let before = files_for_database(&path);
     assert!(contains_marker(&before, session_marker));
     assert!(contains_marker(&before, decision_marker));
 
@@ -102,12 +102,17 @@ fn retention_prunes_old_session_and_decision_bytes_but_keeps_current_session() {
     start(&core, "active-session", future);
     report(&core, "active-session", current_session_marker, future);
 
-    let before = fs::read(&path).unwrap();
+    let before = files_for_database(&path);
     for marker in [old_session_marker, decision_marker, current_session_marker] {
         assert!(contains_marker(&before, marker));
     }
 
     core.set_retention_days(1, future).unwrap();
+    let live_files = files_for_database(&path);
+    for marker in [old_session_marker, decision_marker] {
+        assert!(!contains_marker(&live_files, marker));
+    }
+    assert!(contains_marker(&live_files, current_session_marker));
     drop(core);
 
     let after = files_for_database(&path);
@@ -121,4 +126,57 @@ fn retention_prunes_old_session_and_decision_bytes_but_keeps_current_session() {
     assert_eq!(snapshot.sessions.len(), 1);
     assert_eq!(snapshot.sessions[0].id, "active-session");
     assert!(snapshot.decisions.is_empty());
+}
+
+#[test]
+fn failed_clear_rolls_back_deletions_and_leaves_later_writes_durable() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, now_ms()).unwrap();
+    start(&core, "clear-failure-session", now_ms());
+    let waiting = core
+        .question(
+            "clear-failure-session",
+            "public question",
+            &["Option A".into(), "Option B".into()],
+            60,
+        )
+        .unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    #[cfg(windows)]
+    db.execute_batch("PRAGMA journal_mode=TRUNCATE;").unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER fail_clear_decisions BEFORE DELETE ON decisions
+         BEGIN SELECT RAISE(ABORT, 'PUBLIC_CLEAR_FAILURE'); END;",
+    )
+    .unwrap();
+    drop(db);
+
+    assert!(core.clear_history().is_err());
+    let unchanged = core.snapshot(now_ms()).unwrap();
+    assert_eq!(unchanged.sessions.len(), 1);
+    assert_eq!(unchanged.decisions.len(), 1);
+    drop(waiting);
+    report(
+        &core,
+        "clear-failure-session",
+        "after failed clear",
+        now_ms(),
+    );
+    drop(core);
+
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let saved_action: String = db
+        .query_row(
+            "SELECT json_extract(data, '$.action') FROM sessions WHERE id=?1",
+            ["clear-failure-session"],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(saved_action, "after failed clear");
+    drop(db);
+    let reopened = Core::open(&path, now_ms()).unwrap();
+    let snapshot = reopened.snapshot(now_ms()).unwrap();
+    assert_eq!(snapshot.sessions.len(), 1);
+    assert_eq!(snapshot.decisions.len(), 1);
 }

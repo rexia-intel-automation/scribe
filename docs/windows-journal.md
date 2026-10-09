@@ -42,3 +42,16 @@ Não fizemos ensaio de queda de energia, não contamos chamadas fsync e não
 garantimos eliminação forense de blocos ou backups. Novos resultados do SLA
 assinado nas três plataformas e revisão independente são necessários antes
 de integrar; nenhuma instalação ou perfil real foi alterado para este lote.
+
+O teste Windows `windows_journal_recovery` usa um banco temporário e um único
+processo filho. O filho grava uma transação não confirmada com spill para o
+arquivo e termina sem executar destrutores. Antes de chamar `Core::open`, o
+pai exige um journal maior que 512 bytes e o cabeçalho válido do SQLite.
+Nesse banco temporário, consulta também as ACLs do diretório, do banco e do
+journal hot: cada um deve conceder acesso somente ao usuário do processo;
+diretório e banco devem bloquear herança externa. Não registra identidades.
+Depois da recuperação, verifica a política anterior, ausência da decisão
+incompleta, journal limpo e `integrity_check=ok`. Isso testa uma interrupção
+de processo com journal hot; não simula queda de energia nem garante
+durabilidade em qualquer hardware. Veja o
+[procedimento de recuperação do SQLite](https://www.sqlite.org/lockingv3.html#hot_journals).

@@ -13,6 +13,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- Apagar histórico usa uma transação que faz rollback se qualquer exclusão
+  falhar, sem deixar gravações posteriores presas numa transação não confirmada.
+  A limpeza mantém secure_delete e não executa VACUUM após o commit.
 - Agendamento da animação da gota em repouso por timer, sem manter uma callback
   de desenho contínua; padrões de risco reconhecem caminhos absolutos de
   ferramentas e interpretadores, e metadados de planos são higienizados.
