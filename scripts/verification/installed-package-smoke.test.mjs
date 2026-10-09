@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertTrustedRunner, helperProcess, parseAttestation, parseReportResult, runMcpSmoke, waitForLine } from './installed-package-smoke.mjs';
+import { assertTrustedRunner, helperProcess, parseAttestation, parseReportResult, runMcpSmoke, startupFailure, waitForLine } from './installed-package-smoke.mjs';
 
 const trusted = {
   GITHUB_ACTIONS: 'true', CI: 'true', GITHUB_REF: 'refs/heads/main',
@@ -16,6 +16,26 @@ const successfulReplies = [
   (id) => success(id, { tools: [{ name: 'scribe_report' }] }),
   (id) => success(id, { resultType: 'complete', structuredContent: { ok: true }, isError: false }),
 ];
+
+test('startup failures report a bounded category and never echo stderr or credentials', () => {
+  const secret = 'PUBLIC_SECRET_MARKER';
+  for (const [message, category] of [
+    [`fuse: device not found ${secret}`, 'FUSE unavailable'],
+    [`error while loading shared libraries: libexample.so ${secret}`, 'shared library unavailable'],
+    [`Gtk cannot open display ${secret}`, 'display unavailable'],
+    [`bwrap sandbox failure ${secret}`, 'sandbox startup failed'],
+    [`unrecognized failure ${secret}`, 'unclassified startup failure'],
+    [`Connection refused ${secret}`, 'unclassified startup failure'],
+  ]) {
+    const error = startupFailure(message, 1, null);
+    assert.ok(error.message.includes(category));
+    assert.ok(error.message.includes('exit=1'));
+    assert.equal(error.message.includes(secret), false);
+  }
+  const signaled = startupFailure(secret, null, 'SIGTERM');
+  assert.ok(signaled.message.includes('signal=SIGTERM'));
+  assert.equal(startupFailure(secret, secret, secret).message.includes(secret), false);
+});
 
 test('runner guard accepts main and v tags, rejects local, pull request, and non-v refs', () => {
   assert.doesNotThrow(() => assertTrustedRunner(trusted));
