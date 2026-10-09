@@ -190,8 +190,19 @@ impl Store {
     }
 
     pub(crate) fn save_decision(&self, decision: &crate::Decision) -> Result<()> {
+        #[cfg(feature = "decision-timing")]
+        let serializing = std::time::Instant::now();
+        let serialized = serde_json::to_string(decision)?;
+        #[cfg(feature = "decision-timing")]
+        let executing = std::time::Instant::now();
         self.0.execute("INSERT INTO decisions(id,created_at,data) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
-            params![decision.id, i64::try_from(decision.created_at)?, serde_json::to_string(decision)?])?;
+            params![decision.id, i64::try_from(decision.created_at)?, serialized])?;
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_STORAGE_TIMING json_us={} sqlite_us={}",
+            executing.duration_since(serializing).as_micros(),
+            executing.elapsed().as_micros(),
+        );
         Ok(())
     }
 

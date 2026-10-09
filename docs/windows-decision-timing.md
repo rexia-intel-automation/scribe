@@ -22,6 +22,10 @@ exemplos por grupo, pacing, quotas, commit e critério estrito. A feature
   o commit SQLite. Não separa chamadas de flush do sistema.
 - `send_us`: atualização de memória e entrega do sinal após o commit.
 - `wait_us`: intervalo entre agendar o trabalho HTTP e entrar no worker.
+- `json_us` e `sqlite_us`: separação da serialização de uma decisão e da
+  operação SQL, que inclui preparar/executar a consulta e seu commit. Não
+  separam flushes, espera de I/O ou preempção do sistema operacional. São
+  impressos também ao criar a decisão, não só ao resolver.
 
 No Windows, o teste também observa somente tamanho do WAL, `mxFrame` e
 `nBackfill` do WAL-index antes da escolha e depois da entrega. Lê apenas os
@@ -45,3 +49,25 @@ cache e agendamento. Esses dados localizam etapas;
 não fecham o SLA e não substituem o CI normal sem feature. A instrumentação
 é exclusiva de debug: compilar release com a feature falha explicitamente.
 A branch e o workflow são temporários e não devem entrar no produto.
+
+## Contexto completo do Core
+
+O trace focado do head `9b11e1b` passou com p95 7/7/6/6 ms, zero amostras
+acima de 100 ms. Observou um checkpoint na escolha Core/permitir (frames
+999 para 1000, backfill 0 para 1000, total 27,231 ms) e um reset do WAL na
+escolha HTTP/negar (12,943 ms). Não reproduziu a rajada original.
+
+Os dois CI normais do mesmo head falharam no Windows: o pull atingiu p95
+244 ms em HTTP/negar, e o push 143 ms em HTTP/permitir. Os grupos restantes
+ficaram abaixo de 100 ms; essas reprovações continuam registradas.
+Uma inspeção somente leitura do lifecycle não encontrou tarefa, processo ou
+banco deixado vivo pelos testes anteriores, mas não identifica a causa.
+
+A próxima rodada prepara o mesmo helper de fixture isolado do CI e executa
+todos os 32 testes existentes de `core.rs` com a feature de diagnóstico,
+na mesma ordem padrão e `--test-threads=1`. Assim, as observações são feitas
+depois dos outros testes do Core, em vez de apenas num teste focado. Não
+reproduz toda a preparação e carga de compilação do job CI; esta diferença
+também limita a comparação. Não acrescenta testes, carga ou probe e mantém
+as 512 escolhas assinadas, pacing, quotas e critério estrito. A rodada
+instrumentada continua sem substituir o CI normal nem apagar falhas prévias.

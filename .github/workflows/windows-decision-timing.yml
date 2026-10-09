@@ -25,5 +25,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run build
-      - name: Trace the existing paced signed decision test with public temporary data
-        run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked --features desktop,decision-timing --test core permission_choices_deliver_signed_hook_responses_under_100ms_p95 -- --exact --test-threads=1 --nocapture
+      - name: Build the same isolated helper fixture as the native CI
+        run: cargo build --manifest-path app/hook-client/Cargo.toml --release --features test-fixture --target-dir app/hook-client/target/fixture --locked
+      - name: Trace the complete existing Core suite with public temporary data
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked --features desktop,decision-timing --test core -- --test-threads=1 --nocapture
