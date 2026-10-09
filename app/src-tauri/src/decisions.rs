@@ -443,6 +443,7 @@ impl Core {
     pub fn resolve_decision(&self, id: &str, input: DecisionInput) -> Result<()> {
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
         let pending = data.decisions.get(id).ok_or("Unknown decision")?;
+        let deadline = pending.deadline;
         let mut view = pending.view.clone();
         if view.status != "pending"
             || now_ms() >= view.expires_at
@@ -479,6 +480,12 @@ impl Core {
             view.armed = true;
             view.armed_update = input.option;
             data.store.save_decision(&view)?;
+            if now_ms() >= view.expires_at
+                || deadline.is_none_or(|at| tokio::time::Instant::now() >= at)
+            {
+                self.expire_locked(&mut data, id);
+                return Err("Decision expired during persistence".into());
+            }
             let pending = data.decisions.get_mut(id).unwrap();
             pending.view = view.clone();
             pending.armed_at = Some(tokio::time::Instant::now());
@@ -584,6 +591,14 @@ impl Core {
         };
         view.resolved_at = Some(now_ms());
         data.store.save_decision(&view)?;
+        // A durable write can outlive the transport deadline. Never publish its
+        // answer or resolved state until the deadline has been checked again.
+        if now_ms() >= view.expires_at
+            || deadline.is_none_or(|at| tokio::time::Instant::now() >= at)
+        {
+            self.expire_locked(&mut data, id);
+            return Err("Decision expired during persistence".into());
+        }
         let pending = data.decisions.get_mut(id).unwrap();
         pending.view = view.clone();
         pending.original_input = None;

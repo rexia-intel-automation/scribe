@@ -981,3 +981,20 @@ async fn unconsumed_transport_deadline_rejects_late_click_without_wait_poll() {
         .is_err());
     assert_eq!(wait.receive().await["answer"], Value::Null);
 }
+
+#[tokio::test]
+async fn decision_committed_in_time_survives_late_receiver_poll() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), now_ms()).unwrap();
+    start(&core, "one");
+    let wait = core
+        .permission(&permission("one", "echo public"), 1)
+        .unwrap();
+    core.resolve_decision(&id(&core, "one"), input(json!({"action":"allow"})))
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1010)).await;
+    assert_eq!(
+        wait.receive().await["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+}
