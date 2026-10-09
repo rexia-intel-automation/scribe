@@ -35,7 +35,7 @@ jobs:
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
       - run: cargo audit --file app/hook-protocol/Cargo.lock --deny warnings
-      # GTK3 upstream exceptions with reachability rationale in docs/dependencias-desktop.md.
+      # GTK3 maintenance exception and source backport rationale: docs/dependencias-desktop.md.
       - run: cargo audit --file app/src-tauri/Cargo.lock --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429
   native-and-plugin:
     strategy:
@@ -48,6 +48,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
+      - name: Verify vendored GLib security backport and license resources
+        run: node scripts/verification/verify-glib-backport.mjs
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
         with:
           components: rustfmt, clippy
@@ -86,13 +88,19 @@ jobs:
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
+      - name: Test GLib variant iterators with release optimizations
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --release --locked --test glib_variant -- --nocapture
       - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --no-default-features --features desktop,tauri/custom-protocol --locked --bin scribe
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'
         run: |
           rustup component add llvm-tools-preview
           cargo install cargo-llvm-cov --locked --version 0.9.1
-          cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --locked --test core --test decisions --test interactive --test session_title --test policies --ignore-filename-regex '/tests/' --fail-under-lines 85 -- --test-threads=1
+          # The full native suite above enforces NFR-02. Coverage instrumentation
+          # measures functional coverage, not latency of the uninstrumented app.
+          cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --locked --test core --test decisions --test interactive --test session_title --test policies --ignore-filename-regex '/tests/' --fail-under-lines 85 -- --test-threads=1 --skip permission_choices_deliver_signed_hook_responses_under_100ms_p95
       - run: node --test scripts/verification/*.test.mjs
       - run: node scripts/verification/check-fixtures.mjs
       - run: node scripts/verification/audit-evidence.mjs

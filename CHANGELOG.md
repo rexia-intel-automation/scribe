@@ -4,8 +4,37 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ## [Não lançado]
 
+### Alterado
+
+- SQLite no Windows usa WAL/FULL nas gravações e muda para rollback journal
+  com lock exclusivo antes de apagar dados ou aplicar retenção, mantendo
+  secure_delete e commit antes da resposta ao Claude. Leitores que impedem
+  essa transição fazem a limpeza falhar sem mudar dados ou preferências.
+  Linux/macOS mantêm DELETE. O SLA continua exigido pelo teste nativo.
+
 ### Corrigido
 
+- A transição entre formas pinta a geometria final mesmo quando o próximo frame
+  chega depois dos 450 ms; depois a forma parada volta a dormir. Os READMEs
+  também usam uma pasta exclusiva por extração AppImage.
+- A gota reabre os olhos mesmo quando um frame atrasado pula o fim da piscada;
+  a animação volta a dormir depois de repintar. O guia AppImage cria uma pasta
+  persistente única por extração para evitar selecionar o helper antigo.
+- Apagar histórico usa uma transação que faz rollback se qualquer exclusão
+  falhar, sem deixar gravações posteriores presas numa transação não confirmada.
+  A limpeza mantém secure_delete e não executa VACUUM após o commit.
+- Agendamento da animação da gota em repouso por timer, sem manter uma callback
+  de desenho contínua; padrões de risco reconhecem caminhos sob `/bin` e
+  `/usr/bin` de ferramentas e interpretadores Unix, e metadados de planos
+  são higienizados. Os padrões continuam sendo heurísticas.
+- Pré-requisitos do AppImage no Ubuntu 22.04 incluem FUSE 2 e EGL, também
+  instalados no smoke de release. Falhas de inicialização registram categoria,
+  código de saída e sinal sem imprimir o stderr privado do app.
+
+- Fonte GLib 0.18.5 inclui o backport oficial de `VariantStrIter`, preservando
+  a API GTK3. O CI verifica os hashes e executa os iteradores com otimizações
+  no Linux; avisos baseados na versão e a revisão de segurança continuam
+  documentados. Licença e autoria gtk-rs acompanham os recursos dos pacotes.
 - Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
   estado compartilhado, impedindo envios posteriores ao encerramento. No
   timeout, uma resposta válida já enviada antes do fechamento é preservada.

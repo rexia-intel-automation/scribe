@@ -204,9 +204,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb dbus-x11
-      - name: Install AppImage FUSE dependency
+      - name: Install documented AppImage host dependencies
         if: matrix.bundle == 'appimage'
-        run: sudo apt-get install -y libfuse2
+        run: sudo apt-get install -y libfuse2 libegl1
       - name: Test installed app and helper on Windows or macOS
         if: runner.os != 'Linux'
         shell: bash

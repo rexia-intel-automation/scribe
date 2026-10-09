@@ -61,7 +61,9 @@ grava política e limpeza na mesma transação; falhas preservam ambas. Uma
 consulta inicial evita transações de escrita quando não há dados vencidos.
 Visibilidade
 de concluídas de dez minutos configurável entre 1 e 1440. Apagar histórico
-remove registros, compacta o banco e publica snapshot vazio. Alterar a janela
+remove registros numa única transação e publica snapshot vazio após o commit.
+`secure_delete=ON` sobrescreve as células apagadas; o banco pode conservar o
+espaço alocado para reutilizar nas próximas gravações. Alterar a janela
 de concluídas recarrega imediatamente os registros visíveis do banco, com até
 256 sessões e prioridade para as vivas. O setter recebe o horário atual como
 o setter de retenção, conserva o estado em memória das vivas e seus subagentes,

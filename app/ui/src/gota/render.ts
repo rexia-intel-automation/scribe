@@ -45,6 +45,7 @@ function shape(form: Form, angle: number): Point {
 }
 const renderers = new Set<Renderer>();
 let frame = 0;
+let wake: ReturnType<typeof setTimeout> | undefined;
 let resolution = matchMedia(
   `(resolution: ${window.devicePixelRatio || 1}dppx)`,
 );
@@ -63,8 +64,17 @@ new MutationObserver(() => {
   attributeFilter: ["data-theme", "data-drop-color"],
 });
 function schedule() {
-  if (!frame && [...renderers].some((r) => r.active()))
-    frame = requestAnimationFrame(drawAll);
+  clearTimeout(wake);
+  wake = undefined;
+  const now = performance.now();
+  const delay = Math.min(...[...renderers].map((r) => r.frameDelay(now)));
+  if (delay === 0) {
+    if (!frame) frame = requestAnimationFrame(drawAll);
+  } else {
+    cancelAnimationFrame(frame);
+    frame = 0;
+    if (Number.isFinite(delay)) wake = setTimeout(schedule, delay);
+  }
 }
 function drawAll(now: number) {
   frame = 0;
@@ -75,6 +85,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     cancelAnimationFrame(frame);
     frame = 0;
+    clearTimeout(wake);
+    wake = undefined;
   } else {
     for (const renderer of renderers) renderer.refreshScale();
     schedule();
@@ -113,8 +125,8 @@ export class Renderer {
       this.visible = entries[0].isIntersecting;
       if (this.visible) {
         this.draw(performance.now(), true);
-        schedule();
       }
+      schedule();
     });
     this.observer.observe(canvas);
     this.system.addEventListener("change", this.motion);
@@ -179,6 +191,24 @@ export class Renderer {
   active() {
     return this.visible && !document.hidden && !this.reduced;
   }
+  private hasEyes() {
+    return (
+      this.size * 0.32 > 9 &&
+      !["interrogacao", "selo", "ponto"].includes(this.form)
+    );
+  }
+  /** Sleep between blinks; only morphs, moving orbits and blink transitions need RAF. */
+  frameDelay(now: number) {
+    if (!this.active()) return Infinity;
+    if (
+      this.form === "orbita" ||
+      this.body === null ||
+      now - this.changed < 450 ||
+      (this.hasEyes() && this.blink > 0)
+    )
+      return 0;
+    return this.hasEyes() ? Math.max(0, this.nextBlink - now) : Infinity;
+  }
   private geometry(now: number) {
     const blend = this.reduced ? 1 : Math.min(1, (now - this.changed) / 450);
     if (blend >= 1) return this.target;
@@ -199,16 +229,14 @@ export class Renderer {
     )
       return;
     this.last = now;
-    const hasEyes =
-      this.size * 0.32 > 9 &&
-      !["interrogacao", "selo", "ponto"].includes(this.form);
+    const hasEyes = this.hasEyes();
     // Stationary forms only repaint for morphs or blinking; orbit keeps moving.
     if (
       !force &&
       this.form !== "orbita" &&
+      this.body !== null &&
       now - this.changed >= 450 &&
-      (!hasEyes ||
-        (now < this.nextBlink && !(this.blink > 0 && now - this.blink < 150)))
+      (!hasEyes || (now < this.nextBlink && this.blink === 0))
     )
       return;
     const ctx = this.context;
@@ -321,7 +349,9 @@ export class Renderer {
         this.blink = now;
         this.nextBlink = now + 2500 + Math.random() * 3500;
       }
-      const closed = !this.reduced && now - this.blink < 120;
+      const closed = !this.reduced && this.blink > 0 && now - this.blink < 120;
+      // Keep the blink active until an open-eye frame is actually painted.
+      if (!closed) this.blink = 0;
       ctx.fillStyle = this.ink;
       for (const x of [-0.3, 0.3]) {
         ctx.beginPath();
@@ -343,9 +373,6 @@ export class Renderer {
     this.observer.disconnect();
     this.system.removeEventListener("change", this.motion);
     renderers.delete(this);
-    if (!renderers.size) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-    }
+    schedule();
   }
 }

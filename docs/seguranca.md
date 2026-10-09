@@ -118,6 +118,11 @@ ou marcadores de limpeza pendentes, o app inicia um histórico vazio e exibe um
 aviso; artefatos parciais ou inválidos continuam interrompendo a recuperação.
 Para apagar dados pessoais, feche o app e o harness e remova tanto a pasta Local
 quanto a Roaming do Scribe, incluindo os artefatos de migração e conflitos.
+Apagar apenas a pasta Local pode restaurar um histórico antigo se ainda houver
+um tombstone íntegro de limpeza em Roaming. A recuperação desse tombstone usa
+rename sem substituição; se Local e Roaming estiverem em volumes diferentes,
+ela falha preservando a cópia e mostra armazenamento indisponível. A TI pode
+então orientar a recuperação ou a remoção das duas pastas, conforme a intenção.
 
 Isso retira o histórico ativo de Roaming; não apaga cópias anteriores no servidor
 corporativo, backups ou bytes remanescentes em SSD ou HD. O histórico é por
@@ -189,7 +194,9 @@ O ensaio Claude Code 2.1.293 em -p não ofereceu AskUserQuestion; suporte nativo
 headless não está validado. Um ensaio interativo real permanece necessário.
 
 As exceções GTK estão documentadas em dependencias-desktop.md. A inferência de
-não alcance de VariantStrIter não corrige glib nem constitui prova formal.
+não alcance de VariantStrIter não constitui prova formal. Esta branch usa o
+backport oficial de duas linhas na fonte local glib 0.18.5, com origem e
+integridade em vendor/README.md; revisão e CI atuais ainda são necessários.
 Instaladores sem certificado não estão assinados. Conferir SHA-256 detecta
 alteração em relação ao checksum confiável; não estabelece sozinho a autoria.
 Nenhuma proteção do CI ou alerta é contornada para publicar.
