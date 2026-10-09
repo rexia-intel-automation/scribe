@@ -6,6 +6,8 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
+  estado compartilhado, impedindo envios posteriores ao encerramento.
 - Listagem de ferramentas MCP por stdio e HTTP inclui `ttlMs: 0` e
   `cacheScope: "private"`, evitando a rejeição de `tools/list` observada no
   Claude Code 2.1.294. Mantém a negociação `2025-11-25` e as definições de

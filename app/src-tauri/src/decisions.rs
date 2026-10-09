@@ -109,6 +109,7 @@ impl DecisionWait {
         match tokio::time::timeout_at(self.deadline, &mut self.receiver).await {
             Ok(Ok(value)) => value,
             _ => {
+                self.receiver.close();
                 self.core.expire_decision(&self.id);
                 json!({"answer":null,"reason":"timeout"})
             }
@@ -117,7 +118,96 @@ impl DecisionWait {
 }
 impl Drop for DecisionWait {
     fn drop(&mut self) {
+        // Invalidate sends before expiry can block behind a durable commit.
+        self.receiver.close();
         self.core.expire_decision(&self.id);
+    }
+}
+
+#[cfg(test)]
+mod transport_lifecycle_tests {
+    use super::*;
+    use std::{sync::mpsc, thread, time::Instant};
+    use tempfile::TempDir;
+
+    fn assert_transport_closes_before_expiry_lock(timeout: bool) {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("state.db");
+        let core = Core::open(&path, now_ms()).unwrap();
+        let body = serde_json::to_vec(&json!({
+            "hook_event_name": "PermissionRequest",
+            "session_id": "public-transport",
+            "cwd": "/public/project",
+            "tool_name": "Bash",
+            "tool_use_id": "public-call",
+            "tool_input": {"command": "echo public"}
+        }))
+        .unwrap();
+        let wait = core
+            .permission(&body, if timeout { 1 } else { 120 })
+            .unwrap();
+        let id = wait.id.clone();
+        // A resolver can hold this lock through its durable commit. Ending the
+        // transport must invalidate its sender without waiting for that lock.
+        let data = core.data.lock().unwrap();
+        let sender = data.decisions[&id].sender.as_ref().unwrap();
+        let (started, ready) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            started.send(()).unwrap();
+            if timeout {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .unwrap()
+                    .block_on(wait.receive())
+            } else {
+                drop(wait);
+                Value::Null
+            }
+        });
+        let began = ready.recv_timeout(Duration::from_secs(1)).is_ok();
+        let observation_deadline = Instant::now() + Duration::from_secs(2);
+        while !sender.is_closed() && Instant::now() < observation_deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let closed_while_locked = sender.is_closed();
+        // Always release and join before asserting, including the RED case.
+        drop(data);
+        let response = worker.join().unwrap();
+        assert!(began, "transport worker must start");
+        assert!(
+            closed_while_locked,
+            "abandoned transport stayed open while expiry waited for Core.data"
+        );
+        if timeout {
+            assert_eq!(response, json!({"answer": null, "reason": "timeout"}));
+        }
+        assert!(core
+            .resolve_decision(
+                &id,
+                serde_json::from_value(json!({"action": "allow"})).unwrap()
+            )
+            .is_err());
+        assert_eq!(
+            core.data.lock().unwrap().decisions[&id].view.status,
+            "expired"
+        );
+        drop(core);
+        let reopened = Core::open(&path, now_ms()).unwrap();
+        assert_eq!(
+            reopened.data.lock().unwrap().decisions[&id].view.status,
+            "expired"
+        );
+    }
+
+    #[test]
+    fn disconnected_wait_closes_transport_before_waiting_for_state_lock() {
+        assert_transport_closes_before_expiry_lock(false);
+    }
+
+    #[test]
+    fn timed_out_wait_closes_transport_before_waiting_for_state_lock() {
+        assert_transport_closes_before_expiry_lock(true);
     }
 }
 
