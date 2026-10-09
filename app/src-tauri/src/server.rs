@@ -300,6 +300,8 @@ fn within_rate(rate: &Mutex<Rate>, limit: u16) -> bool {
 }
 
 async fn defend(State(state): State<HttpState>, request: Request, next: Next) -> Response {
+    #[cfg(feature = "decision-timing")]
+    let defending = Instant::now();
     let headers = request.headers();
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
     if headers.get_all(header::HOST).iter().count() != 1
@@ -532,9 +534,17 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         let nonce = nonce.to_owned();
         let server_nonce = server_nonce.to_owned();
         let path = path.to_owned();
+        #[cfg(feature = "decision-timing")]
+        let auth_us = defending.elapsed().as_micros();
+        #[cfg(feature = "decision-timing")]
+        let handling = Instant::now();
         let response = next
             .run(Request::from_parts(parts, Body::from(bytes)))
             .await;
+        #[cfg(feature = "decision-timing")]
+        let handler_us = handling.elapsed().as_micros();
+        #[cfg(feature = "decision-timing")]
+        let proving = Instant::now();
         let (mut parts, body) = response.into_parts();
         let Ok(bytes) = to_bytes(body, 8192).await else {
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -554,6 +564,8 @@ async fn defend(State(state): State<HttpState>, request: Request, next: Next) ->
         parts
             .headers
             .insert("x-scribe-proof", proof.parse().expect("base64url header"));
+        #[cfg(feature = "decision-timing")]
+        eprintln!("SCRIBE_HTTP_HOOK_TIMING auth_us={auth_us} handler_us={handler_us} proof_us={} total_us={}", proving.elapsed().as_micros(), defending.elapsed().as_micros());
         return Response::from_parts(parts, Body::from(bytes));
     }
     if !challenge_request && !within_rate(&state.rate, 50) {
@@ -695,7 +707,28 @@ async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: B
             _ => StatusCode::NO_CONTENT.into_response(),
         };
     }
-    match tokio::task::spawn_blocking(move || state.core.hook(&event, &body, now_ms())).await {
+    #[cfg(feature = "decision-timing")]
+    let dispatching = Instant::now();
+    let result = tokio::task::spawn_blocking(move || {
+        #[cfg(feature = "decision-timing")]
+        let queue_us = dispatching.elapsed().as_micros();
+        #[cfg(feature = "decision-timing")]
+        let working = Instant::now();
+        let result = state.core.hook(&event, &body, now_ms());
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_HTTP_DISPATCH_TIMING kind=hook queue_us={queue_us} core_us={}",
+            working.elapsed().as_micros()
+        );
+        result
+    })
+    .await;
+    #[cfg(feature = "decision-timing")]
+    eprintln!(
+        "SCRIBE_HTTP_JOIN_TIMING kind=hook total_us={}",
+        dispatching.elapsed().as_micros()
+    );
+    match result {
         Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
         _ => StatusCode::BAD_REQUEST.into_response(),
     }
@@ -706,7 +739,28 @@ async fn decision(
     Path(id): Path<String>,
     Json(input): Json<crate::DecisionInput>,
 ) -> StatusCode {
-    match tokio::task::spawn_blocking(move || state.core.resolve_decision(&id, input)).await {
+    #[cfg(feature = "decision-timing")]
+    let dispatching = Instant::now();
+    let result = tokio::task::spawn_blocking(move || {
+        #[cfg(feature = "decision-timing")]
+        let queue_us = dispatching.elapsed().as_micros();
+        #[cfg(feature = "decision-timing")]
+        let working = Instant::now();
+        let result = state.core.resolve_decision(&id, input);
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_HTTP_DISPATCH_TIMING kind=decision queue_us={queue_us} core_us={}",
+            working.elapsed().as_micros()
+        );
+        result
+    })
+    .await;
+    #[cfg(feature = "decision-timing")]
+    eprintln!(
+        "SCRIBE_HTTP_JOIN_TIMING kind=decision total_us={}",
+        dispatching.elapsed().as_micros()
+    );
+    match result {
         Ok(Ok(())) => StatusCode::NO_CONTENT,
         _ => StatusCode::CONFLICT,
     }
