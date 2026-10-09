@@ -6,6 +6,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- O serviço MCP interno fica montado apenas nos dois endpoints autenticados,
+  impedindo que outros caminhos cheguem ao serviço usando apenas Bearer.
+  A política de segurança descreve a autenticação HMAC e o helper em stdio.
 - Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
   estado compartilhado, impedindo envios posteriores ao encerramento. No
   timeout, uma resposta válida já enviada antes do fechamento é preservada.

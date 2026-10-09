@@ -1308,6 +1308,87 @@ async fn mcp_bearer_without_attestation_cannot_call_tools() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_subpaths_cannot_bypass_attestation_with_a_bearer() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let mut replies = Vec::new();
+    for path in [
+        "/mcp/public",
+        "/mcp/public/child",
+        "/mcp//",
+        "/mcp%2Fpublic",
+        "/mcp/%70ublic",
+    ] {
+        let reply = raw_request(
+            server.port(),
+            TOKEN,
+            "POST",
+            path,
+            "",
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+        )
+        .await;
+        replies.push((path, reply.code));
+    }
+    server.stop().await.unwrap();
+    for (path, code) in replies {
+        assert!(
+            matches!(code, 401 | 404),
+            "A Bearer must not reach the MCP service through {path}: HTTP {code}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exact_mcp_endpoints_accept_attested_requests() {
+    let temp = TempDir::new().unwrap();
+    let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
+    let server = LocalServer::start(core, 0, TOKEN.into(), HOOK_KEY.into())
+        .await
+        .unwrap();
+    let nonce = "0123456789abcdef0123456789abcdef";
+    let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+    for path in ["/mcp", "/mcp/"] {
+        let challenge = raw_request(
+            server.port(),
+            "invalid",
+            "GET",
+            &format!("/v1/mcp/challenge/{nonce}"),
+            &mcp_challenge_headers(nonce),
+            "",
+        )
+        .await;
+        assert_eq!(challenge.code, 204);
+        let server_nonce = reply_header(&challenge, "x-scribe-server-nonce");
+        let reply = raw_request(
+            server.port(),
+            "invalid",
+            "POST",
+            path,
+            &mcp_request_headers(nonce, &server_nonce, body),
+            body,
+        )
+        .await;
+        assert_eq!(reply.code, 200, "Authenticated MCP endpoint {path}");
+        assert!(scribe_hook_protocol::verify(
+            HOOK_KEY,
+            &[
+                b"mcp-response",
+                nonce.as_bytes(),
+                server_nonce.as_bytes(),
+                b"200",
+                reply.body.as_bytes(),
+            ],
+            &reply_header(&reply, "x-scribe-proof")
+        ));
+    }
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn mcp_fresh_server_nonce_binds_request_response_and_prevents_reissued_replay() {
     let temp = TempDir::new().unwrap();
     let core = Core::open(&temp.path().join("state.db"), scribe_core::now_ms()).unwrap();
