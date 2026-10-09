@@ -14,6 +14,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- A transição entre formas pinta a geometria final mesmo quando o próximo frame
+  chega depois dos 450 ms; depois a forma parada volta a dormir. Os READMEs
+  também usam uma pasta exclusiva por extração AppImage.
 - A gota reabre os olhos mesmo quando um frame atrasado pula o fim da piscada;
   a animação volta a dormir depois de repintar. O guia AppImage cria uma pasta
   persistente única por extração para evitar selecionar o helper antigo.
@@ -21,8 +24,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   falhar, sem deixar gravações posteriores presas numa transação não confirmada.
   A limpeza mantém secure_delete e não executa VACUUM após o commit.
 - Agendamento da animação da gota em repouso por timer, sem manter uma callback
-  de desenho contínua; padrões de risco reconhecem caminhos absolutos de
-  ferramentas e interpretadores, e metadados de planos são higienizados.
+  de desenho contínua; padrões de risco reconhecem caminhos sob `/bin` e
+  `/usr/bin` de ferramentas e interpretadores Unix, e metadados de planos
+  são higienizados. Os padrões continuam sendo heurísticas.
 - Pré-requisitos do AppImage no Ubuntu 22.04 incluem FUSE 2 e EGL, também
   instalados no smoke de release. Falhas de inicialização registram categoria,
   código de saída e sinal sem imprimir o stderr privado do app.

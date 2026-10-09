@@ -16,6 +16,23 @@ function avatar(size: number) {
   return { canvas, context, renderer };
 }
 describe("canvas scheduling and accessibility", () => {
+  it.each([24, 56, 96])(
+    "paints the final morph geometry at %i px after a delayed frame",
+    (size) => {
+      const moveTo = vi.spyOn(Path2D.prototype, "moveTo");
+      const { renderer, context } = avatar(size);
+      renderer.update("ponto", size, false);
+      vi.mocked(context.clearRect).mockClear();
+      renderer.draw(1400);
+      expect(moveTo.mock.lastCall?.[0]).not.toBe(size * 0.32 * 0.4);
+      renderer.draw(1500);
+      expect(moveTo).toHaveBeenLastCalledWith(size * 0.32 * 0.4, 0);
+      expect(context.clearRect).toHaveBeenCalledTimes(2);
+      expect(renderer.frameDelay(1500)).toBe(Infinity);
+      renderer.draw(1700);
+      expect(context.clearRect).toHaveBeenCalledTimes(2);
+    },
+  );
   it("does not schedule frames for settled eyeless forms, but resumes a morph", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
@@ -169,6 +186,7 @@ describe("canvas scheduling and accessibility", () => {
     (form, size) => {
       const { renderer, context } = avatar(size);
       renderer.update(form, size, false);
+      renderer.draw(1500);
       vi.mocked(context.clearRect).mockClear();
       for (let i = 1; i <= 120; i++) renderer.draw(10000 + (i * 1000) / 120);
       expect(context.clearRect).not.toHaveBeenCalled();

@@ -200,12 +200,17 @@ under a temporary AppImage mount:
 
 ```sh
 chmod +x ./Scribe*.AppImage
-mkdir -p "$HOME/.local/opt/scribe-candidate"
-cd "$HOME/.local/opt/scribe-candidate"
+mkdir -p "$HOME/.local/opt"
+SCRIBE_EXTRACT_DIR="$(mktemp -d "$HOME/.local/opt/scribe-candidate.XXXXXX")"
+cd "$SCRIBE_EXTRACT_DIR"
 /absolute/path/to/Scribe.AppImage --appimage-extract
 mv squashfs-root appimage-root
-find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print
+find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print
 ```
+
+Stop if any command fails. Each extraction gets a new permanent directory;
+do not move `squashfs-root` into an old `appimage-root`. Keep
+`SCRIBE_EXTRACT_DIR` set in the same shell for the following helper command.
 
 Open the original AppImage from your file manager once to create the private
 connection. Keep the extracted directory in place for the helper path.
@@ -217,7 +222,7 @@ directory; see the [official AppImage extraction guide](https://docs.appimage.or
 Set it to the path returned by `find` and confirm it is executable:
 
 ```sh
-SCRIBE_HELPER="$(find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print -quit)"
+SCRIBE_HELPER="$(find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print -quit)"
 test -x "$SCRIBE_HELPER"
 ```
 

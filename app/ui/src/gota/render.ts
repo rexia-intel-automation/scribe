@@ -202,6 +202,7 @@ export class Renderer {
     if (!this.active()) return Infinity;
     if (
       this.form === "orbita" ||
+      this.body === null ||
       now - this.changed < 450 ||
       (this.hasEyes() && this.blink > 0)
     )
@@ -233,6 +234,7 @@ export class Renderer {
     if (
       !force &&
       this.form !== "orbita" &&
+      this.body !== null &&
       now - this.changed >= 450 &&
       (!hasEyes || (now < this.nextBlink && this.blink === 0))
     )

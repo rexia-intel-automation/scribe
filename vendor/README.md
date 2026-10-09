@@ -16,8 +16,10 @@ contém o código anterior; não foi identificada uma publicação 0.18 corrigid
 resolução local pelo Cargo, os recursos de licença e a reversão das duas
 linhas para o SHA-256 original de `variant_iter.rs`:
 `1fd02859333761c45321b32f28b24233446b97d0022a90d3a937ed162585b90e`.
-O restante do pacote foi preservado byte a byte. Isso comprova a origem e o
-delta; não é uma prova de ausência de todos os defeitos na dependência.
+A comparação com o arquivo oficial durante a preparação verificou que os
+outros 120 arquivos foram preservados byte a byte. O guard do CI verifica a
+consistência com o manifesto local; não busca o pacote upstream para conferir
+sua origem nem prova ausência de todos os defeitos na dependência.
 
 O CI Linux executa `tests/glib_variant.rs` do Scribe contra a dependência
 resolvida, com otimizações de release, incluindo percurso pelos dois extremos,
