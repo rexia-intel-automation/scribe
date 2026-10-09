@@ -203,7 +203,7 @@ export class Renderer {
     if (
       this.form === "orbita" ||
       now - this.changed < 450 ||
-      (this.hasEyes() && this.blink > 0 && now - this.blink < 150)
+      (this.hasEyes() && this.blink > 0)
     )
       return 0;
     return this.hasEyes() ? Math.max(0, this.nextBlink - now) : Infinity;
@@ -234,8 +234,7 @@ export class Renderer {
       !force &&
       this.form !== "orbita" &&
       now - this.changed >= 450 &&
-      (!hasEyes ||
-        (now < this.nextBlink && !(this.blink > 0 && now - this.blink < 150)))
+      (!hasEyes || (now < this.nextBlink && this.blink === 0))
     )
       return;
     const ctx = this.context;
@@ -348,7 +347,9 @@ export class Renderer {
         this.blink = now;
         this.nextBlink = now + 2500 + Math.random() * 3500;
       }
-      const closed = !this.reduced && now - this.blink < 120;
+      const closed = !this.reduced && this.blink > 0 && now - this.blink < 120;
+      // Keep the blink active until an open-eye frame is actually painted.
+      if (!closed) this.blink = 0;
       ctx.fillStyle = this.ink;
       for (const x of [-0.3, 0.3]) {
         ctx.beginPath();

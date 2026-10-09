@@ -100,12 +100,18 @@ dentro de uma montagem temporária do AppImage:
 
 ```sh
 chmod +x ./Scribe*.AppImage
-mkdir -p "$HOME/.local/opt/scribe-candidate"
-cd "$HOME/.local/opt/scribe-candidate"
+mkdir -p "$HOME/.local/opt"
+SCRIBE_EXTRACT_DIR="$(mktemp -d "$HOME/.local/opt/scribe-candidate.XXXXXX")"
+cd "$SCRIBE_EXTRACT_DIR"
 /caminho/absoluto/Scribe.AppImage --appimage-extract
 mv squashfs-root appimage-root
-find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print
+find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print
 ```
+
+Pare se algum comando falhar. Cada extração recebe uma nova pasta permanente;
+não reutilize uma extração anterior nem mova `squashfs-root` para dentro do
+`appimage-root` existente. Mantenha `SCRIBE_EXTRACT_DIR` definida para o próximo
+comando.
 
 Abra o AppImage original pelo gerenciador de arquivos uma vez para criar a
 conexão privada. Mantenha a pasta extraída no lugar para o caminho do helper.
@@ -118,7 +124,7 @@ Defina a variável com o caminho retornado por `find` e confirme que o helper é
 executável:
 
 ```sh
-SCRIBE_HELPER="$(find "$HOME/.local/opt/scribe-candidate/appimage-root" -name scribe-hook -print -quit)"
+SCRIBE_HELPER="$(find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print -quit)"
 test -x "$SCRIBE_HELPER"
 ```
 
