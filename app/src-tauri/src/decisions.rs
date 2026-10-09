@@ -110,6 +110,11 @@ impl DecisionWait {
             Ok(Ok(value)) => value,
             _ => {
                 self.receiver.close();
+                // A valid response may have won the race before close, even
+                // when timeout_at observed the receiver pending first.
+                if let Ok(value) = self.receiver.try_recv() {
+                    return value;
+                }
                 self.core.expire_decision(&self.id);
                 json!({"answer":null,"reason":"timeout"})
             }
