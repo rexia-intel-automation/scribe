@@ -2,7 +2,7 @@ use scribe_core::{Core, LocalServer, SessionState, StateEvent};
 use serde_json::{json, Value};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use tempfile::TempDir;
@@ -37,6 +37,22 @@ fn apply(core: &Core, input: Value, at: u64) {
         .unwrap();
 }
 
+fn storage_bytes(path: &Path) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for suffix in ["", "-journal", "-wal", "-shm"] {
+        let file = path.with_file_name(format!(
+            "{}{suffix}",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+        match fs::read(file) {
+            Ok(data) => bytes.extend(data),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("cannot inspect private test storage: {error}"),
+        }
+    }
+    bytes
+}
+
 #[test]
 fn ambiguous_project_labels_and_reports_never_enter_visible_or_stored_metadata() {
     for marker in ['\u{202e}', '\u{2066}', '\u{3164}', '\u{00a0}'] {
@@ -54,7 +70,7 @@ fn ambiguous_project_labels_and_reports_never_enter_visible_or_stored_metadata()
             .is_err());
         let metadata = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
         assert!(!metadata.contains(marker));
-        let stored = String::from_utf8_lossy(&fs::read(&path).unwrap()).into_owned();
+        let stored = String::from_utf8_lossy(&storage_bytes(&path)).into_owned();
         assert!(!stored.contains(marker));
     }
 
@@ -105,7 +121,7 @@ fn quoted_headers_escaped_secret_values_and_lowercase_env_never_enter_state_or_s
         apply(&core, input, 0);
         core.report("public-session", text, 1).unwrap();
         let snapshot = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
-        let stored = String::from_utf8_lossy(&fs::read(path).unwrap()).into_owned();
+        let stored = String::from_utf8_lossy(&storage_bytes(&path)).into_owned();
         assert!(
             !snapshot.contains(marker),
             "State leaked synthetic marker {marker}"
@@ -143,9 +159,7 @@ fn credentials_with_shell_escapes_and_concatenation_never_leave_value_tails() {
         core.report("public-session", text, 1).unwrap();
         let report = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
         assert!(!report.contains("PUBLIC_CREDENTIAL_TAIL"));
-        assert!(
-            !String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_CREDENTIAL_TAIL")
-        );
+        assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_CREDENTIAL_TAIL"));
     }
 }
 
@@ -178,7 +192,7 @@ fn paths_next_to_shell_operators_are_shortened_in_state_and_storage() {
         assert!(!serde_json::to_string(&core.snapshot(1).unwrap())
             .unwrap()
             .contains("PUBLIC_PARENT"));
-        assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_PARENT"));
+        assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_PARENT"));
     }
 }
 
@@ -217,8 +231,9 @@ fn retention_removes_old_steps_from_live_and_archived_sessions() {
             .unwrap(),
         2
     );
+    drop(rows);
     for marker in ["PUBLIC_OLD_STEP", "PUBLIC_ARCHIVED_STEP"] {
-        assert!(!String::from_utf8_lossy(&fs::read(&path).unwrap()).contains(marker));
+        assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains(marker));
         assert!(!serde_json::to_string(&snapshot).unwrap().contains(marker));
     }
     let restored = Core::open(&path, 15 * DAY + 1).unwrap();
@@ -228,13 +243,15 @@ fn retention_removes_old_steps_from_live_and_archived_sessions() {
             .len(),
         3
     );
+    drop(restored);
     assert!(core.snapshot(30 * DAY + 2).unwrap().sessions.is_empty());
+    let rows = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         rows.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
             .unwrap(),
         0
     );
-    assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_RECENT_STEP"));
+    assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_RECENT_STEP"));
 }
 
 #[test]
@@ -248,13 +265,15 @@ fn failed_retention_setting_rolls_back_history_and_policy() {
     let before = serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
     #[cfg(windows)]
-    db.execute_batch("PRAGMA journal_mode=TRUNCATE;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
     db.execute_batch("CREATE TRIGGER refuse_policy BEFORE INSERT ON settings WHEN NEW.key='retention_days' BEGIN SELECT RAISE(FAIL, 'public test failure'); END;").unwrap();
+    drop(db);
     assert!(core.set_retention_days(1, 15 * DAY).is_err());
     assert_eq!(
         serde_json::to_value(core.snapshot(15 * DAY).unwrap()).unwrap(),
         before
     );
+    let db = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         db.query_row(
             "SELECT value FROM settings WHERE key='retention_days'",
@@ -270,8 +289,10 @@ fn failed_retention_setting_rolls_back_history_and_policy() {
         1
     );
     db.execute_batch("DROP TRIGGER refuse_policy;").unwrap();
+    drop(db);
     core.set_retention_days(1, 15 * DAY).unwrap();
     assert!(core.snapshot(15 * DAY).unwrap().sessions.is_empty());
+    let db = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         db.query_row(
             "SELECT value FROM settings WHERE key='retention_days'",
@@ -292,16 +313,15 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
     apply(&core, payload("SessionStart"), old);
     core.report("public-session", "PUBLIC_IDLE_METADATA", old + 1)
         .unwrap();
-    let db = rusqlite::Connection::open(&path).unwrap();
     let server = LocalServer::start(core.clone(), 0, TOKEN.into(), HOOK_KEY.into())
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
-            if matches!(
-                db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0)),
-                Ok(0)
-            ) {
+            let db = rusqlite::Connection::open(&path).unwrap();
+            let count = db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0));
+            drop(db);
+            if matches!(count, Ok(0)) {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -309,7 +329,7 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
     })
     .await
     .unwrap();
-    assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_IDLE_METADATA"));
+    assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_IDLE_METADATA"));
     assert!(core
         .snapshot(scribe_core::now_ms())
         .unwrap()
@@ -346,7 +366,7 @@ fn spaced_and_multiline_env_values_are_omitted_before_persistence() {
         core.report("public-session", text, 1).unwrap();
         let report_state = serde_json::to_string(&core.snapshot(1).unwrap()).unwrap();
         assert!(!report_state.contains("PUBLIC_ENV_TAIL"));
-        assert!(!String::from_utf8_lossy(&fs::read(path).unwrap()).contains("PUBLIC_ENV_TAIL"));
+        assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_ENV_TAIL"));
     }
 }
 
@@ -704,7 +724,7 @@ fn persistence_sanitization_retention_restart_and_clear() {
             1,
         )
         .unwrap();
-        let stored = String::from_utf8_lossy(&fs::read(&path).unwrap()).into_owned();
+        let stored = String::from_utf8_lossy(&storage_bytes(&path)).into_owned();
         for sensitive in [
             "PUBLIC_CREDENTIAL",
             "PUBLIC_TOKEN_VALUE",

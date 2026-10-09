@@ -144,7 +144,7 @@ fn failed_clear_rolls_back_deletions_and_leaves_later_writes_durable() {
         .unwrap();
     let db = rusqlite::Connection::open(&path).unwrap();
     #[cfg(windows)]
-    db.execute_batch("PRAGMA journal_mode=TRUNCATE;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
     db.execute_batch(
         "CREATE TRIGGER fail_clear_decisions BEFORE DELETE ON decisions
          BEGIN SELECT RAISE(ABORT, 'PUBLIC_CLEAR_FAILURE'); END;",

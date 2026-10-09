@@ -26,10 +26,10 @@ impl Store {
         db.busy_timeout(Duration::from_millis(100))?;
         #[cfg(windows)]
         {
-            // Avoid journal deletion on every Windows commit; keep full-sync rollback.
-            let mode: String = db.query_row("PRAGMA journal_mode = TRUNCATE", [], |r| r.get(0))?;
-            if mode != "truncate" {
-                return Err("Private Windows storage requires a truncating journal".into());
+            db.pragma_update(None, "locking_mode", "NORMAL")?;
+            let mode: String = db.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+            if mode != "wal" {
+                return Err("Private Windows storage requires a write-ahead journal".into());
             }
             db.execute_batch("PRAGMA synchronous = FULL;")?;
         }
@@ -95,10 +95,44 @@ impl Store {
         if !expired {
             return Ok(());
         }
-        let transaction = self.0.unchecked_transaction()?;
-        Self::prune_records(&transaction, before)?;
-        transaction.commit()?;
-        Ok(())
+        self.cleanup(|| {
+            let transaction = self.0.unchecked_transaction()?;
+            Self::prune_records(&transaction, before)?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    fn cleanup<T>(&self, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        #[cfg(windows)]
+        {
+            // Retain SQLite's exclusive file lock across the mode change and
+            // transaction; another connection cannot switch back to WAL in between.
+            self.0.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
+            // Finish and remove the WAL BEFORE deleting private data. A blocked
+            // mode change must fail before any rows or preferences are changed.
+            let mode: rusqlite::Result<String> =
+                self.0
+                    .query_row("PRAGMA journal_mode = TRUNCATE", [], |r| r.get(0));
+            if !mode.as_ref().is_ok_and(|mode| mode == "truncate") {
+                self.0.pragma_update(None, "locking_mode", "NORMAL")?;
+                mode?;
+                return Err("Private cleanup requires a truncating journal".into());
+            }
+        }
+        let result = operation();
+        #[cfg(windows)]
+        {
+            // Cleanup already committed or rolled back. Restoring the faster
+            // writer is optional: never report a committed deletion as failed.
+            // If this fails, FULL/secure_delete still protect the rollback writer.
+            // Leave exclusive mode BEFORE entering WAL again.
+            let _ = self.0.pragma_update(None, "locking_mode", "NORMAL");
+            let _: rusqlite::Result<String> =
+                self.0
+                    .query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0));
+        }
+        result
     }
 
     fn prune_records(db: &Connection, before: u64) -> Result<()> {
@@ -119,11 +153,13 @@ impl Store {
     }
 
     pub(crate) fn set_retention(&self, days: u16, before: u64) -> Result<()> {
-        let transaction = self.0.unchecked_transaction()?;
-        transaction.execute(SET_POLICY, params!["retention_days", days])?;
-        Self::prune_records(&transaction, before)?;
-        transaction.commit()?;
-        Ok(())
+        self.cleanup(|| {
+            let transaction = self.0.unchecked_transaction()?;
+            transaction.execute(SET_POLICY, params!["retention_days", days])?;
+            Self::prune_records(&transaction, before)?;
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
     pub(crate) fn set_policies(
@@ -133,20 +169,24 @@ impl Store {
         before: u64,
         at: u64,
     ) -> Result<Vec<Session>> {
-        let transaction = self.0.unchecked_transaction()?;
-        transaction.execute(SET_POLICY, params!["retention_days", days])?;
-        transaction.execute(SET_POLICY, params!["completed_minutes", minutes])?;
-        Self::prune_records(&transaction, before)?;
-        let sessions = self.load(at, minutes)?;
-        transaction.commit()?;
-        Ok(sessions)
+        self.cleanup(|| {
+            let transaction = self.0.unchecked_transaction()?;
+            transaction.execute(SET_POLICY, params!["retention_days", days])?;
+            transaction.execute(SET_POLICY, params!["completed_minutes", minutes])?;
+            Self::prune_records(&transaction, before)?;
+            let sessions = self.load(at, minutes)?;
+            transaction.commit()?;
+            Ok(sessions)
+        })
     }
 
     pub(crate) fn clear(&self) -> Result<()> {
-        let transaction = self.0.unchecked_transaction()?;
-        transaction.execute_batch("DELETE FROM sessions; DELETE FROM decisions;")?;
-        transaction.commit()?;
-        Ok(())
+        self.cleanup(|| {
+            let transaction = self.0.unchecked_transaction()?;
+            transaction.execute_batch("DELETE FROM sessions; DELETE FROM decisions;")?;
+            transaction.commit()?;
+            Ok(())
+        })
     }
 
     pub(crate) fn save_decision(&self, decision: &crate::Decision) -> Result<()> {
@@ -201,7 +241,7 @@ mod tests {
             .0
             .pragma_query_value(None, "journal_mode", |r| r.get(0))
             .unwrap();
-        assert_eq!(mode, if cfg!(windows) { "truncate" } else { "delete" });
+        assert_eq!(mode, if cfg!(windows) { "wal" } else { "delete" });
         for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
             let actual: i32 = store
                 .0
@@ -213,7 +253,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn truncating_journal_is_empty_after_commit_and_rollback_and_reopens() {
+    fn windows_cleanup_restores_full_sync_wal_and_reopens() {
         let directory = tempfile::TempDir::new().unwrap();
         let path = directory.path().join("state.db");
         let store = Store::open(&path).unwrap();
@@ -225,28 +265,123 @@ mod tests {
             assert_eq!(actual, expected);
         }
         let journal = directory.path().join("state.db-journal");
-        store.set_policy("retention_days", 14).unwrap();
-        assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
-        {
-            let transaction = store.0.unchecked_transaction().unwrap();
-            transaction
-                .execute(SET_POLICY, params!["retention_days", 30])
-                .unwrap();
-            // Dropping an uncommitted transaction must roll back the saved preference.
-        }
+        store.set_retention(14, 0).unwrap();
+        let rollback: Result<()> = store.cleanup(|| {
+            let transaction = store.0.unchecked_transaction()?;
+            transaction.execute(SET_POLICY, params!["retention_days", 30])?;
+            Err("PUBLIC_ROLLBACK".into())
+        });
+        assert!(rollback.is_err());
         assert_eq!(store.policy("retention_days", 0).unwrap(), 14);
-        assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
+        let mode: String = store
+            .0
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            assert_eq!(
+                store
+                    .0
+                    .pragma_query_value(None, name, |r| r.get::<_, i32>(0))
+                    .unwrap(),
+                expected
+            );
+        }
+        // WAL may remove the old rollback journal, but cannot leave its contents.
+        if journal.exists() {
+            assert_eq!(std::fs::metadata(&journal).unwrap().len(), 0);
+        }
         drop(store);
         let copy = directory.path().join("restored.db");
         std::fs::copy(&path, &copy).unwrap();
-        std::fs::copy(&journal, directory.path().join("restored.db-journal")).unwrap();
         let reopened = Store::open(&copy).unwrap();
         assert_eq!(reopened.policy("retention_days", 0).unwrap(), 14);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cleanup_holds_exclusive_lock_until_the_transaction_is_finished() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("state.db");
+        let store = Store::open(&path).unwrap();
+        store.set_policy("retention_days", 14).unwrap();
+        store
+            .cleanup(|| {
+                let other = Connection::open(&path)?;
+                other.busy_timeout(Duration::ZERO)?;
+                let switch: rusqlite::Result<String> =
+                    other.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0));
+                assert!(switch.is_err());
+                let read: rusqlite::Result<u32> =
+                    other.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0));
+                assert!(read.is_err());
+                let transaction = store.0.unchecked_transaction()?;
+                transaction.execute(SET_POLICY, params!["retention_days", 30])?;
+                transaction.commit()?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(store.policy("retention_days", 0).unwrap(), 30);
+        let other = Connection::open(&path).unwrap();
         assert_eq!(
-            std::fs::metadata(directory.path().join("restored.db-journal"))
-                .unwrap()
-                .len(),
-            0
+            other
+                .query_row(
+                    "SELECT value FROM settings WHERE key='retention_days'",
+                    [],
+                    |r| r.get::<_, u16>(0)
+                )
+                .unwrap(),
+            30
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_wal_restore_returns_the_committed_result_with_safe_fallback() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("state.db");
+        let store = Store::open(&path).unwrap();
+        store.set_policy("retention_days", 14).unwrap();
+        let reader = std::cell::RefCell::new(None);
+        store
+            .cleanup(|| {
+                let transaction = store.0.unchecked_transaction()?;
+                transaction.execute("DELETE FROM settings", [])?;
+                transaction.commit()?;
+                // Inject a reader at the legitimate post-commit NORMAL -> WAL boundary.
+                store.0.pragma_update(None, "locking_mode", "NORMAL")?;
+                store
+                    .0
+                    .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, u32>(0))?;
+                let other = Connection::open(&path)?;
+                other.execute_batch("BEGIN")?;
+                other.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, u32>(0))?;
+                reader.replace(Some(other));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(store.policy("retention_days", 7).unwrap(), 7);
+        let mode: String = store
+            .0
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "truncate");
+        for (name, expected) in [("synchronous", 2), ("secure_delete", 1)] {
+            assert_eq!(
+                store
+                    .0
+                    .pragma_query_value(None, name, |r| r.get::<_, i32>(0))
+                    .unwrap(),
+                expected
+            );
+        }
+        drop(reader.take());
+        store.set_retention(30, 0).unwrap();
+        assert_eq!(store.policy("retention_days", 0).unwrap(), 30);
+        let mode: String = store
+            .0
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
     }
 }
