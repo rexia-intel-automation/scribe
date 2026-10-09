@@ -27,5 +27,5 @@ jobs:
           npm run build
       - name: Build the same isolated helper fixture as the native CI
         run: cargo build --manifest-path app/hook-client/Cargo.toml --release --features test-fixture --target-dir app/hook-client/target/fixture --locked
-      - name: Trace the complete existing Core suite with public temporary data
+      - name: Trace wall and thread CPU time in the complete existing Core suite
         run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked --features desktop,decision-timing --test core -- --test-threads=1 --nocapture

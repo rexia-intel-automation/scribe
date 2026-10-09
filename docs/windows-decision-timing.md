@@ -26,6 +26,18 @@ exemplos por grupo, pacing, quotas, commit e critério estrito. A feature
   operação SQL, que inclui preparar/executar a consulta e seu commit. Não
   separam flushes, espera de I/O ou preempção do sistema operacional. São
   impressos também ao criar a decisão, não só ao resolver.
+- `cpu_available` e `cpu_us` (Windows): disponibilidade e diferença entre o
+  tempo de CPU da própria thread antes e depois da operação SQL síncrona.
+  Soma tempo de kernel e usuário de
+  [GetThreadTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getthreadtimes),
+  convertido de unidades de 100 ns para microssegundos. Não identifica outra
+  thread nem registra handles. Se a API falhar, `cpu_available=0`; nesse caso
+  o zero de `cpu_us` não é uma medição. A resolução pode ser grosseira e zero
+  disponível também não significa ausência de processamento. Tempo de CPU
+  baixo em relação ao tempo de parede é compatível com espera ou preempção,
+  mas não identifica I/O, flush, disco ou antivírus como causa. O relógio de
+  parede termina antes da segunda consulta de CPU; os timers externos do
+  Core incluem o custo das consultas e do log.
 
 No Windows, o teste também observa somente tamanho do WAL, `mxFrame` e
 `nBackfill` do WAL-index antes da escolha e depois da entrega. Lê apenas os
@@ -71,3 +83,20 @@ reproduz toda a preparação e carga de compilação do job CI; esta diferença
 também limita a comparação. Não acrescenta testes, carga ou probe e mantém
 as 512 escolhas assinadas, pacing, quotas e critério estrito. A rodada
 instrumentada continua sem substituir o CI normal nem apagar falhas prévias.
+
+## Reprodução no contexto completo
+
+O head `4a4eabc`, trace `37870807417`, job `113628217713`, reproduziu a
+falha: 31 testes passaram e o NFR02 falhou, com p95 HTTP permitir/negar
+4/26 ms e Core permitir/negar 3/111 ms. Em HTTP/negar, amostra 58, JSON levou
+48 us e SQL 950391 us; os frames passaram de 984 para 985 e o backfill
+permaneceu zero. Em Core/negar, amostra 51, JSON levou 32 us e SQL 426041 us,
+com frames 321 para 322 e backfill zero. Houve também uma amostra lenta
+coincidente com reset, mas checkpoint sozinho não explica todas as pausas.
+Esses tempos SQL ainda incluem espera e preempção; não provam uma causa.
+
+O CI normal pull do mesmo head também falhou no Windows (job
+`113628217936`): HTTP permitir/negar 255/30 ms e Core permitir/negar 27/25 ms.
+O medidor de CPU acrescentado na rodada seguinte procura distinguir trabalho
+da thread de tempo sem CPU, mantendo a suíte completa, o commit durável e
+o mesmo critério de aprovação. Os resultados anteriores permanecem válidos.
