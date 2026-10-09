@@ -1,0 +1,31 @@
+name: Windows WAL decision timing
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-decision-timing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Build the same desktop frontend as the native CI
+        working-directory: app
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+      - name: Build the same isolated helper fixture as the native CI
+        run: cargo build --manifest-path app/hook-client/Cargo.toml --release --features test-fixture --target-dir app/hook-client/target/fixture --locked
+      - name: Trace wall and thread CPU time in the complete existing Core suite
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml --locked --features desktop,decision-timing --test core -- --test-threads=1 --nocapture

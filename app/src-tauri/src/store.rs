@@ -6,6 +6,35 @@ pub(crate) struct Store(Connection);
 const SET_POLICY: &str = "INSERT INTO settings(key,value) VALUES(?1,?2)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value";
 
+#[cfg(all(windows, feature = "decision-timing"))]
+fn thread_cpu_us() -> Option<u64> {
+    use windows_sys::Win32::{
+        Foundation::FILETIME,
+        System::Threading::{GetCurrentThread, GetThreadTimes},
+    };
+    let empty = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (empty, empty, empty, empty);
+    // The pseudo handle refers to this calling thread; all output pointers are valid.
+    let available = unsafe {
+        GetThreadTimes(
+            GetCurrentThread(),
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    };
+    if available == 0 {
+        return None;
+    }
+    let ticks =
+        |value: FILETIME| (u64::from(value.dwHighDateTime) << 32) | u64::from(value.dwLowDateTime);
+    Some((ticks(kernel) + ticks(user)) / 10)
+}
+
 impl Store {
     pub(crate) fn open(path: &Path) -> Result<Self> {
         let parent = path
@@ -190,8 +219,31 @@ impl Store {
     }
 
     pub(crate) fn save_decision(&self, decision: &crate::Decision) -> Result<()> {
+        #[cfg(feature = "decision-timing")]
+        let serializing = std::time::Instant::now();
+        let serialized = serde_json::to_string(decision)?;
+        #[cfg(feature = "decision-timing")]
+        let json_us = serializing.elapsed().as_micros();
+        #[cfg(all(windows, feature = "decision-timing"))]
+        let cpu_before = thread_cpu_us();
+        #[cfg(feature = "decision-timing")]
+        let executing = std::time::Instant::now();
         self.0.execute("INSERT INTO decisions(id,created_at,data) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
-            params![decision.id, i64::try_from(decision.created_at)?, serde_json::to_string(decision)?])?;
+            params![decision.id, i64::try_from(decision.created_at)?, serialized])?;
+        #[cfg(feature = "decision-timing")]
+        let sqlite_us = executing.elapsed().as_micros();
+        #[cfg(all(windows, feature = "decision-timing"))]
+        {
+            let cpu_us = cpu_before
+                .zip(thread_cpu_us())
+                .map(|(before, after)| after.saturating_sub(before));
+            eprintln!(
+                "SCRIBE_STORAGE_TIMING json_us={json_us} sqlite_us={sqlite_us} cpu_available={} cpu_us={}",
+                u8::from(cpu_us.is_some()), cpu_us.unwrap_or(0),
+            );
+        }
+        #[cfg(all(not(windows), feature = "decision-timing"))]
+        eprintln!("SCRIBE_STORAGE_TIMING json_us={json_us} sqlite_us={sqlite_us}");
         Ok(())
     }
 
