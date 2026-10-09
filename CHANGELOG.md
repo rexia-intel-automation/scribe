@@ -6,6 +6,10 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- Fonte GLib 0.18.5 inclui o backport oficial de `VariantStrIter`, preservando
+  a API GTK3. O CI verifica os hashes e executa os iteradores com otimizações
+  no Linux; avisos baseados na versão e a revisão de segurança continuam
+  documentados. Licença e autoria gtk-rs acompanham os recursos dos pacotes.
 - Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
   estado compartilhado, impedindo envios posteriores ao encerramento. No
   timeout, uma resposta válida já enviada antes do fechamento é preservada.
