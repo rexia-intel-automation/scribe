@@ -14,6 +14,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- A gota reabre os olhos mesmo quando um frame atrasado pula o fim da piscada;
+  a animação volta a dormir depois de repintar. O guia AppImage cria uma pasta
+  persistente única por extração para evitar selecionar o helper antigo.
 - Apagar histórico usa uma transação que faz rollback se qualquer exclusão
   falhar, sem deixar gravações posteriores presas numa transação não confirmada.
   A limpeza mantém secure_delete e não executa VACUUM após o commit.

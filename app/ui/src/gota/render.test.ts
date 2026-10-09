@@ -182,6 +182,26 @@ describe("canvas scheduling and accessibility", () => {
     renderer.draw(3700);
     expect(context.clearRect).toHaveBeenCalledTimes(2);
   });
+  it.each([40, 96])(
+    "reopens eyes at %i px when a late frame skips the blink transition",
+    (size) => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const { renderer, context } = avatar(size);
+      renderer.draw(3500);
+      renderer.draw(3610);
+      expect(vi.mocked(context.ellipse).mock.lastCall?.[3]).toBe(
+        size * 0.32 * 0.02,
+      );
+      renderer.draw(3680);
+      expect(vi.mocked(context.ellipse).mock.lastCall?.[3]).toBe(
+        size * 0.32 * 0.11,
+      );
+      expect(context.clearRect).toHaveBeenCalledTimes(3);
+      expect(renderer.frameDelay(3680)).toBeGreaterThan(0);
+      renderer.draw(3800);
+      expect(context.clearRect).toHaveBeenCalledTimes(3);
+    },
+  );
   it("omits eyes and highlight below the specified radius", () => {
     const { renderer, context } = avatar(24);
     vi.mocked(context.ellipse).mockClear();
