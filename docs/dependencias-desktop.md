@@ -8,7 +8,7 @@ não aprova a catraca de segurança da Fase 5.
 | Aviso | Dependência | Alcance verificado | Tratamento |
 | --- | --- | --- | --- |
 | [RUSTSEC-2024-0370](https://rustsec.org/advisories/RUSTSEC-2024-0370/) | proc-macro-error 1.0.4 | glib-macros/gtk3-macros; expansão de macros na compilação, não código do servidor | Exceção específica para ausência de manutenção; auditar novamente na Fase 5 |
-| [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429/) | glib 0.18.5 | `VariantStrIter::impl_get`; SDK GTK transitivo no Linux | Backport local das duas linhas oficiais, com hashes de origem e fonte verificados pelo CI; revisão atual ainda necessária |
+| [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429/) | glib 0.18.5 | `VariantStrIter::impl_get`; SDK GTK transitivo no Linux | Backport local das duas linhas oficiais; origem conferida na preparação, consistência com o manifesto e delta verificados pelo CI; revisão atual ainda necessária |
 
 O segundo aviso descreve uma referência imutável passada como saída mutável
 para C e possível dereferência nula. Versões glib >=0.20 corrigem o problema,

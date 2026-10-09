@@ -90,7 +90,8 @@ jobs:
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
       - name: Test GLib variant iterators with release optimizations
         if: matrix.os == 'ubuntu-22.04'
-        run: cargo test --manifest-path app/src-tauri/Cargo.toml -p glib --release --locked --lib variant_iter::tests:: -- --nocapture
+        run: |
+          cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --release --locked --test glib_variant -- --nocapture
       - run: cargo build --manifest-path app/src-tauri/Cargo.toml --release --no-default-features --features desktop,tauri/custom-protocol --locked --bin scribe
       - name: Enforce local core line coverage
         if: matrix.os == 'ubuntu-22.04'

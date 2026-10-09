@@ -19,8 +19,9 @@ linhas para o SHA-256 original de `variant_iter.rs`:
 O restante do pacote foi preservado byte a byte. Isso comprova a origem e o
 delta; não é uma prova de ausência de todos os defeitos na dependência.
 
-O CI Linux executa os testes upstream de `variant_iter` com otimizações de
-release, incluindo percurso pelos dois extremos e esgotamento. Um resultado
+O CI Linux executa `tests/glib_variant.rs` do Scribe contra a dependência
+resolvida, com otimizações de release, incluindo percurso pelos dois extremos,
+Unicode, array vazio e índices fora do intervalo. Um resultado
 verde mostra a execução nessa configuração, sem provar ausência universal
 de comportamento indefinido. Revisão e CI atuais são necessários para integrar.
 
