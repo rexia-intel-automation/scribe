@@ -1326,12 +1326,22 @@ async fn raw_request_with_timeout(
     body: &str,
     read_timeout: Duration,
 ) -> Reply {
+    #[cfg(feature = "decision-timing")]
+    let connecting = Instant::now();
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    #[cfg(feature = "decision-timing")]
+    let connect_us = connecting.elapsed().as_micros();
+    #[cfg(feature = "decision-timing")]
+    let writing = Instant::now();
     let data = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n{extra}\r\n{body}",
         body.len()
     );
     socket.write_all(data.as_bytes()).await.unwrap();
+    #[cfg(feature = "decision-timing")]
+    let write_us = writing.elapsed().as_micros();
+    #[cfg(feature = "decision-timing")]
+    let reading = Instant::now();
     let mut bytes = vec![];
     tokio::time::timeout(read_timeout, socket.read_to_end(&mut bytes))
         .await
@@ -1339,6 +1349,10 @@ async fn raw_request_with_timeout(
             panic!("HTTP {method} {path}: response did not complete within {read_timeout:?}")
         })
         .unwrap();
+    #[cfg(feature = "decision-timing")]
+    if method == "POST" {
+        eprintln!("SCRIBE_HTTP_CLIENT_TIMING connect_us={connect_us} write_us={write_us} read_eof_us={} total_us={}", reading.elapsed().as_micros(), connecting.elapsed().as_micros());
+    }
     let text = String::from_utf8(bytes).unwrap();
     let (headers, body) = text.split_once("\r\n\r\n").unwrap();
     Reply {

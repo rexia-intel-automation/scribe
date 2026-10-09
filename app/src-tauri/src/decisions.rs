@@ -536,7 +536,14 @@ impl Core {
 
     /// Resolve exactly once, after validating type, deadline and risk confirmation.
     pub fn resolve_decision(&self, id: &str, input: DecisionInput) -> Result<()> {
+        #[cfg(feature = "decision-timing")]
+        let locking = std::time::Instant::now();
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        #[cfg(feature = "decision-timing")]
+        eprintln!(
+            "SCRIBE_DECISION_CORE_TIMING lock_us={}",
+            locking.elapsed().as_micros()
+        );
         let pending = data.decisions.get(id).ok_or("Unknown decision")?;
         let deadline = pending.deadline;
         let mut view = pending.view.clone();

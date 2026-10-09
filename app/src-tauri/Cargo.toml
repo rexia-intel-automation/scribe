@@ -12,6 +12,7 @@ required-features = ["desktop"]
 
 [features]
 test-fixture = []
+decision-timing = []
 desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-opener", "dep:sys-locale", "dep:notify-rust"]
 
 [build-dependencies]

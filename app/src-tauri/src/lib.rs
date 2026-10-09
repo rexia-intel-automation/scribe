@@ -1,5 +1,7 @@
 //! Scribe's local session core. Persistence contains validated display data;
 //! raw hook envelopes, credentials and human answer payloads are excluded.
+#[cfg(all(feature = "decision-timing", not(debug_assertions)))]
+compile_error!("decision-timing is restricted to debug diagnostics, not release builds");
 mod decisions;
 mod interactive;
 mod mcp;
@@ -246,8 +248,16 @@ impl Core {
         if !hook.valid(route) {
             return Err("Invalid hook contract".into());
         }
+        #[cfg(feature = "decision-timing")]
+        let locking = std::time::Instant::now();
         let mut data = self.data.lock().map_err(|_| "State lock unavailable")?;
+        #[cfg(feature = "decision-timing")]
+        let lock_us = locking.elapsed().as_micros();
+        #[cfg(feature = "decision-timing")]
+        let pruning = std::time::Instant::now();
         data.prune(at)?;
+        #[cfg(feature = "decision-timing")]
+        let prune_us = pruning.elapsed().as_micros();
         let completed_minutes = data.completed_minutes;
         data.sessions
             .retain(|_, s| s.visible(at, completed_minutes));
@@ -380,7 +390,11 @@ impl Core {
             },
             at,
         );
+        #[cfg(feature = "decision-timing")]
+        let before_save_us = pruning.elapsed().as_micros();
         data.store.save(&session)?;
+        #[cfg(feature = "decision-timing")]
+        eprintln!("SCRIBE_HOOK_CORE_TIMING lock_us={lock_us} prune_us={prune_us} before_save_us={before_save_us} after_save_us={}", pruning.elapsed().as_micros());
         data.agents.insert(session.id.clone(), agents);
         data.sessions.insert(session.id.clone(), session.clone());
         let _ = self.events.send(StateEvent::Session(session));
