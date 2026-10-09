@@ -14,6 +14,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- O serviço MCP interno fica montado apenas nos dois endpoints autenticados,
+  impedindo que outros caminhos cheguem ao serviço usando apenas Bearer.
+  A política de segurança descreve a autenticação HMAC e o helper em stdio.
 - A transição entre formas pinta a geometria final mesmo quando o próximo frame
   chega depois dos 450 ms; depois a forma parada volta a dormir. Os READMEs
   também usam uma pasta exclusiva por extração AppImage.

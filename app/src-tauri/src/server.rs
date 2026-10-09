@@ -153,7 +153,8 @@ impl LocalServer {
             .route("/v1/state", get(snapshot))
             .route("/v1/events", get(events))
             .route("/v1/decisions/{id}", post(decision))
-            .nest_service("/mcp", service)
+            .route_service("/mcp", service.clone())
+            .route_service("/mcp/", service)
             .with_state(state.clone())
             .layer(middleware::from_fn_with_state(state, defend));
         let shutdown = cancel.clone();
