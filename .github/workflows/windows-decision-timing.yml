@@ -1,4 +1,4 @@
-name: Windows decision timing
+name: Windows WAL decision timing
 
 on:
   pull_request:

@@ -832,6 +832,27 @@ struct Reply {
     body: String,
 }
 
+#[cfg(all(windows, feature = "decision-timing"))]
+fn wal_observation(database: &Path) -> Option<(u64, u32, u32)> {
+    use std::io::Read;
+    let mut wal = database.as_os_str().to_owned();
+    wal.push("-wal");
+    let bytes = fs::metadata(wal).ok()?.len();
+    let mut shm = database.as_os_str().to_owned();
+    shm.push("-shm");
+    let mut header = [0u8; 100];
+    fs::File::open(shm).ok()?.read_exact(&mut header).ok()?;
+    // This is a read-only observation of the public test DB, not SQLite locking.
+    // Reject an uninitialized or inconsistent duplicate header. The WAL-index
+    // fields use native byte order; nBackfill is at 96 (not attempted at 128).
+    if header[12] != 1 || header[..48] != header[48..96] {
+        return None;
+    }
+    let frames = u32::from_ne_bytes(header[16..20].try_into().ok()?);
+    let backfilled = u32::from_ne_bytes(header[96..100].try_into().ok()?);
+    (backfilled <= frames).then_some((bytes, frames, backfilled))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
     const SAMPLE_COUNT: usize = 128;
@@ -917,6 +938,8 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                 );
                 let path = format!("/v1/decisions/{}", pending.id);
                 let choice = json!({"action":action}).to_string();
+                #[cfg(all(windows, feature = "decision-timing"))]
+                let wal_before = wal_observation(&temp.path().join("state.db"));
                 // This upper bound includes localhost transport, commit and signing;
                 // it does not measure a physical click or the native helper's stdout.
                 let started = Instant::now();
@@ -935,6 +958,28 @@ async fn permission_choices_deliver_signed_hook_responses_under_100ms_p95() {
                     .unwrap();
                 let total = started.elapsed();
                 let delivery = total.saturating_sub(choice_elapsed);
+                #[cfg(all(windows, feature = "decision-timing"))]
+                {
+                    // Both file observations and printing are outside the timing.
+                    // They can still perturb caching/scheduling; this is diagnostic.
+                    let wal_after = wal_observation(&temp.path().join("state.db"));
+                    if let (Some(before), Some(after)) = (wal_before, wal_after) {
+                        if sample == 0
+                            || sample == SAMPLE_COUNT - 1
+                            || total >= Duration::from_millis(100)
+                            || after.1 < before.1
+                            || after.2 != before.2
+                        {
+                            eprintln!(
+                                "SCRIBE_WAL_TIMING group={} sample={sample} total_us={} bytes_before={} bytes_after={} frames_before={} frames_after={} backfill_before={} backfill_after={}",
+                                usize::from(transport == "direct-core") * 2 + usize::from(action == "deny"),
+                                total.as_micros(), before.0, after.0, before.1, after.1, before.2, after.2,
+                            );
+                        }
+                    } else {
+                        eprintln!("SCRIBE_WAL_TIMING sample={sample} observation_available=0");
+                    }
+                }
                 samples.push(total);
                 choices.push(choice_elapsed);
                 deliveries.push(delivery);
