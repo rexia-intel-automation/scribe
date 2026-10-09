@@ -194,7 +194,9 @@ O ensaio Claude Code 2.1.293 em -p não ofereceu AskUserQuestion; suporte nativo
 headless não está validado. Um ensaio interativo real permanece necessário.
 
 As exceções GTK estão documentadas em dependencias-desktop.md. A inferência de
-não alcance de VariantStrIter não corrige glib nem constitui prova formal.
+não alcance de VariantStrIter não constitui prova formal. Esta branch usa o
+backport oficial de duas linhas na fonte local glib 0.18.5, com origem e
+integridade em vendor/README.md; revisão e CI atuais ainda são necessários.
 Instaladores sem certificado não estão assinados. Conferir SHA-256 detecta
 alteração em relação ao checksum confiável; não estabelece sozinho a autoria.
 Nenhuma proteção do CI ou alerta é contornada para publicar.

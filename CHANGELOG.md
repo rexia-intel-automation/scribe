@@ -24,6 +24,13 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
   instalados no smoke de release. Falhas de inicialização registram categoria,
   código de saída e sinal sem imprimir o stderr privado do app.
 
+- Fonte GLib 0.18.5 inclui o backport oficial de `VariantStrIter`, preservando
+  a API GTK3. O CI verifica os hashes e executa os iteradores com otimizações
+  no Linux; avisos baseados na versão e a revisão de segurança continuam
+  documentados. Licença e autoria gtk-rs acompanham os recursos dos pacotes.
+- Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
+  estado compartilhado, impedindo envios posteriores ao encerramento. No
+  timeout, uma resposta válida já enviada antes do fechamento é preservada.
 - Listagem de ferramentas MCP por stdio e HTTP inclui `ttlMs: 0` e
   `cacheScope: "private"`, evitando a rejeição de `tools/list` observada no
   Claude Code 2.1.294. Mantém a negociação `2025-11-25` e as definições de
