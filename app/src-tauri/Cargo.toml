@@ -51,3 +51,9 @@ libc = "0.2"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["process"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+glib = "=0.18.5"
+
+[patch.crates-io]
+glib = { path = "../../vendor/glib-0.18.5" }
