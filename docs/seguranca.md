@@ -39,7 +39,8 @@ precisam usar os diretórios fixos documentados; não há fallback para esses va
 
 O MCP externo usa o helper em stdio. Inicialização e descoberta de ferramentas
 funcionam mesmo com o app fechado; uma chamada indisponível retorna erro, sem
-inventar resposta ou consentimento. O endpoint interno `/mcp` exige assinatura,
+inventar resposta ou consentimento. Os endpoints internos exatos `/mcp` e
+`/mcp/` exigem assinatura; subcaminhos não são montados no serviço MCP. O canal
 não aceita mais somente Bearer, e usa domínios HMAC exclusivos do MCP. O helper
 verifica a prova do servidor e seu nonce fresco antes de enviar o corpo da
 ferramenta, pelo mesmo socket HTTP estabelecido, sem pool ou reconexão. O nonce
