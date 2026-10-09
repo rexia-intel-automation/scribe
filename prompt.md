@@ -477,7 +477,7 @@ Regras do marketplace (confirme na documentação): caminhos `source` relativos 
 | UI | Vitest + Testing Library | Componentes, i18n, acessibilidade (axe) | Sem violações sérias de acessibilidade |
 | E2E da janela | Playwright contra a UI com servidor simulado | Chegada de decisão, atalhos, recolher, expirar | Fluxos principais |
 | Visual | Playwright (capturas) | As formas em 24/40/96 px, claro e escuro | Revisão humana na Fase 3 |
-| Manual com Claude Code real | Roteiro em `docs/testes-manuais.md` | Instalar pelo marketplace, 3 sessões, permitir, negar, expirar, app fechado | Executado antes de cada release |
+| Manual com Claude Code real | Roteiro em `docs/teste-equipe-ti.md` | Instalar pelo marketplace, 3 sessões, permitir, negar, expirar, app fechado | Executado antes de cada release |
 
 O CI (`ci.yml`) roda: lint (clippy, eslint), formatação (rustfmt, prettier), testes, `npm audit`/`cargo audit`, `claude plugin validate .` (se o CLI estiver disponível no runner; senão, validação contra os JSON Schemas) e build do app nas três plataformas.
 
