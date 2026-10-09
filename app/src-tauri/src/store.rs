@@ -178,3 +178,82 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn permission_commit_crossing_deadline_cannot_deliver_allow() {
+        use crate::{now_ms, Core, DecisionInput};
+        use serde_json::json;
+        use std::cell::RefCell;
+
+        thread_local! {
+            static BLOCKER: RefCell<Option<(Connection, tokio::time::Instant)>> = const { RefCell::new(None) };
+        }
+        fn release_writer_after_deadline(_: i32) -> bool {
+            BLOCKER.with(|slot| {
+                let Some((writer, deadline)) = slot.borrow_mut().take() else {
+                    return false;
+                };
+                std::thread::sleep(
+                    deadline.saturating_duration_since(tokio::time::Instant::now())
+                        + Duration::from_millis(10),
+                );
+                writer.execute_batch("COMMIT").unwrap();
+                true
+            })
+        }
+
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("state.db");
+        let core = Core::open(&path, now_ms()).unwrap();
+        let body = serde_json::to_vec(&json!({
+            "hook_event_name":"PermissionRequest", "session_id":"deadline-test",
+            "cwd":"/public/project", "tool_name":"Bash", "tool_use_id":"public-call",
+            "tool_input":{"command":"echo public"}
+        }))
+        .unwrap();
+        let wait = core.permission(&body, 1).unwrap();
+        let (id, deadline) = {
+            let data = core.data.lock().unwrap();
+            data.store
+                .0
+                .busy_handler(Some(release_writer_after_deadline))
+                .unwrap();
+            let pending = data.decisions.values().next().unwrap();
+            (pending.view.id.clone(), pending.deadline.unwrap())
+        };
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+        BLOCKER.with(|slot| *slot.borrow_mut() = Some((writer, deadline)));
+        assert!(tokio::time::Instant::now() < deadline);
+        let result = core.resolve_decision(
+            &id,
+            serde_json::from_value::<DecisionInput>(json!({"action":"allow"})).unwrap(),
+        );
+        assert!(
+            BLOCKER.with(|slot| slot.borrow().is_none()),
+            "SQLite must actually wait for the writer"
+        );
+        assert!(tokio::time::Instant::now() >= deadline);
+        let answer = wait.receive().await;
+        assert_eq!(
+            answer.get("answer"),
+            Some(&serde_json::Value::Null),
+            "late durable commit must return no decision: {answer}"
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            core.data.lock().unwrap().decisions[&id].view.status,
+            "expired"
+        );
+        drop(core);
+        let reopened = Core::open(&path, now_ms()).unwrap();
+        assert_eq!(
+            reopened.data.lock().unwrap().decisions[&id].view.status,
+            "expired"
+        );
+    }
+}
