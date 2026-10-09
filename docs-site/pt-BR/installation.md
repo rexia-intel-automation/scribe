@@ -8,11 +8,11 @@ A beta.1 não foi revalidada com o Claude Code `2.1.294` e não inclui as corre�
 
 A [página da beta](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1) mantém o instalador, o script, os checksums e o roteiro de teste originais. Use somente os arquivos dessa release e a fonte de plugin fixada na mesma tag. O script original não fixa uma revisão quando registra um marketplace novo; executá-lo sozinho pode buscar o plugin incompatível do branch atual.
 
-Confira cada arquivo baixado contra `SHA256SUMS` da release antes de usá-lo. O instalador não é assinado; siga a política da organização se o Windows ou um software de segurança exibir um aviso. Instale o executável para o usuário atual, abra o Scribe pelo menu Iniciar e mantenha-o aberto. O script original exige `claude.exe` nativo no `PATH`; shims `.cmd` do npm não são aceitos.
+Confira cada arquivo baixado contra `SHA256SUMS` da release antes de usá-lo. O instalador não é assinado; siga a política da organização se o Windows ou um software de segurança exibir um aviso. O script original exige `claude.exe` nativo no `PATH`; shims `.cmd` do npm não são aceitos.
 
 ### Fixar o plugin numa máquina nova
 
-Antes do script, execute `claude plugin marketplace list --json`. Se `rexia-scribe` já estiver registrado, siga este caminho somente se sua fonte já tiver `ref` igual a `v0.1.0-beta.1`. Não substitua uma instalação candidata por este procedimento.
+Antes de instalar o executável ou executar o script, execute `claude plugin marketplace list --json`. Se `rexia-scribe` já estiver registrado com outro `ref` ou sem `ref`, não instale a beta, não execute o script nem altere esse registro. Se já usa o app/helper candidato ou o plugin `0.1.1`, preserve essa instalação. Este procedimento serve para uma máquina nova ou uma combinação beta.1 existente com a fonte já fixada na tag correspondente.
 
 Se o marketplace ainda não existir, registre a tag beta.1:
 
@@ -23,7 +23,7 @@ claude plugin marketplace list --json
 
 Confira `name: rexia-scribe` e `ref: v0.1.0-beta.1` na listagem. O sufixo `#<ref>` é o mecanismo de [fixação documentado pelo Claude Code](https://code.claude.com/docs/en/plugins/host-marketplace#host-your-marketplace). Esse registro e a validação do manifesto `0.1.0` foram conferidos num perfil separado; isso não substitui o ensaio completo com o app e as sessões reais.
 
-Com a fonte correspondente registrada, execute o script original baixado da beta.1:
+Com a fonte correspondente registrada, instale o executável da beta.1 para o usuário atual, abra o Scribe pelo menu Iniciar e mantenha-o aberto. Execute o script original baixado dessa release:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1

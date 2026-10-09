@@ -8,11 +8,11 @@ Beta.1 has not been revalidated with Claude Code `2.1.294` and does not include 
 
 The [beta release page](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.1) retains its original setup executable, script, checksums, and test checklist. Use only that release's files and a plugin source pinned to the same tag. The original script does not pin a revision when registering a new marketplace; running it alone can fetch the incompatible plugin from the current branch.
 
-Verify each downloaded file against the release's `SHA256SUMS` before use. The installer is unsigned; follow your organization's policy if Windows or security software warns you. Install the executable for the current user, launch Scribe from the Start menu, and keep it open. The original setup script requires native `claude.exe` on `PATH`; npm `.cmd` shims are not supported.
+Verify each downloaded file against the release's `SHA256SUMS` before use. The installer is unsigned; follow your organization's policy if Windows or security software warns you. The original setup script requires native `claude.exe` on `PATH`; npm `.cmd` shims are not supported.
 
 ### Pin the plugin on a new machine
 
-Before running the script, run `claude plugin marketplace list --json`. If `rexia-scribe` is already registered, follow this path only if its source already has `ref` set to `v0.1.0-beta.1`. Do not replace a candidate installation with this procedure.
+Before installing the executable or running the script, run `claude plugin marketplace list --json`. If `rexia-scribe` is already registered with a different `ref` or no `ref`, do not install the beta, run the script, or change that registration. If you already use the candidate app/helper or plugin `0.1.1`, preserve that installation. This procedure is for a new machine or an existing beta.1 pairing whose source is already pinned to the matching tag.
 
 If the marketplace does not exist, register the beta.1 tag:
 
@@ -23,7 +23,7 @@ claude plugin marketplace list --json
 
 Check for `name: rexia-scribe` and `ref: v0.1.0-beta.1` in the listing. The `#<ref>` suffix is Claude Code's [documented pinning mechanism](https://code.claude.com/docs/en/plugins/host-marketplace#host-your-marketplace). Registering this source and validating its `0.1.0` manifest were checked in a separate profile; this does not replace a complete test with the app and real sessions.
 
-Once the matching source is registered, run the original script downloaded from beta.1:
+Once the matching source is registered, install the beta.1 executable for the current user, launch Scribe from the Start menu, and keep it open. Run the original script downloaded from that release:
 
 ```powershell
 powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
