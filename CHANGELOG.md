@@ -6,10 +6,11 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Alterado
 
-- SQLite no Windows reutiliza o journal de rollback por truncamento, mantendo
-  FULL, secure_delete e commit antes da resposta ao Claude. Linux/macOS mantêm
-  DELETE. O benchmark indica redução de custo no Windows; o SLA continua
-  exigido pelo teste nativo e não é garantido em qualquer disco.
+- SQLite no Windows usa WAL/FULL nas gravações e muda para rollback journal
+  com lock exclusivo antes de apagar dados ou aplicar retenção, mantendo
+  secure_delete e commit antes da resposta ao Claude. Leitores que impedem
+  essa transição fazem a limpeza falhar sem mudar dados ou preferências.
+  Linux/macOS mantêm DELETE. O SLA continua exigido pelo teste nativo.
 
 ### Corrigido
 

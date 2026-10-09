@@ -26,24 +26,27 @@ fn combined_policy_failure_rolls_back_both_settings_cleanup_and_memory() {
     hook(&core, "completed", "SessionStart", at - 21 * 60_000);
     hook(&core, "completed", "SessionEnd", at - 20 * 60_000);
     let db = rusqlite::Connection::open(&path).unwrap();
-    // This fault-injection writer must use the same per-connection rollback mode.
+    // This fault-injection writer must use the same Windows write-ahead mode.
     #[cfg(windows)]
-    db.execute_batch("PRAGMA journal_mode=TRUNCATE;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
     db.execute_batch(
         "CREATE TRIGGER fail_second BEFORE INSERT ON settings
         WHEN NEW.key='completed_minutes' BEGIN SELECT RAISE(ABORT, 'PUBLIC_FAILURE'); END;",
     )
     .unwrap();
+    drop(db);
     assert!(core.set_policies(1, 30, at).is_err());
     let before = core.snapshot(at).unwrap();
     assert_eq!(before.sessions.len(), 1);
     assert_eq!(before.sessions[0].steps.len(), 2);
+    let db = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         db.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, u32>(0))
             .unwrap(),
         0
     );
     db.execute_batch("DROP TRIGGER fail_second").unwrap();
+    drop(db);
     core.set_policies(1, 30, at).unwrap();
     let after = core.snapshot(at).unwrap();
     assert_eq!(after.sessions.len(), 2);
@@ -57,6 +60,7 @@ fn combined_policy_failure_rolls_back_both_settings_cleanup_and_memory() {
             .len(),
         1
     );
+    let db = rusqlite::Connection::open(&path).unwrap();
     assert_eq!(
         db.query_row(
             "SELECT value FROM settings WHERE key='retention_days'",
