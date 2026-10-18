@@ -129,6 +129,12 @@ pub struct View {
     error: Option<String>,
     warning: Option<String>,
     notification_decision_id: Option<String>,
+    build: BuildInfo,
+}
+#[derive(Clone, Serialize)]
+struct BuildInfo {
+    version: &'static str,
+    revision: &'static str,
 }
 struct Desktop {
     core: Option<Core>,
@@ -379,6 +385,10 @@ fn view(data: &Desktop) -> Result<View, String> {
         error: data.error.lock().map_err(|_| "bridgeUnavailable")?.clone(),
         warning: data.warning.clone(),
         notification_decision_id: None,
+        build: BuildInfo {
+            version: env!("CARGO_PKG_VERSION"),
+            revision: scribe_hook_protocol::BUILD_REVISION,
+        },
     })
 }
 #[tauri::command]

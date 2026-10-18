@@ -1,6 +1,6 @@
-# Scribe v0.1.0: roteiro de teste do candidato com MCP stdio
+# Scribe v0.1.0-beta.2: roteiro de teste do candidato com MCP stdio
 
-Build: instalador `Scribe_0.1.0_x64-setup.exe`, com o app, o helper
+Build: instalador `Scribe_0.1.0-beta.2_x64-setup.exe`, com o app, o helper
 `scribe-hook.exe` e o `configure-claude-plugin.ps1` da mesma release, mais o
 plugin `scribe` 0.1.1. Anote a tag e o `source_sha` de `BUILD-METADATA.txt` da
 release testada; em um candidato local, use os metadados fornecidos junto ao
@@ -8,8 +8,8 @@ pacote. Confira o SHA-256 publicado antes de instalar. Este roteiro descreve
 um candidato ainda em validação: as caixas abaixo são o que se
 **espera** ver, não resultados já aprovados.
 
-Esta versão **não é compatível** com o app e o helper da `v0.1.0-beta.1`, embora
-os dois se chamem 0.1.0. Quem tem o beta.1 instala por cima e roda o script de
+Esta versão **não é compatível** com o app e o helper da `v0.1.0-beta.1`.
+Quem tem o beta.1 instala por cima e roda o script de
 configuração de novo (seção 1).
 
 Duração: uns 35 min por pessoa. Requisitos: Windows 10 ou 11, Claude Code
@@ -27,7 +27,7 @@ AskUserQuestion não foi oferecida.
   `allowManagedHooksOnly`, o Scribe não recebe eventos. Anote se for o caso.
 
 ## 1. Instalação (seguindo só o README)
-- [ ] Rodar `Scribe_0.1.0_x64-setup.exe`. Instala só para o usuário, sem admin.
+- [ ] Rodar `Scribe_0.1.0-beta.2_x64-setup.exe`. Instala só para o usuário, sem admin.
   O instalador não é assinado: se o SmartScreen ou o antivírus avisar, anote a
   mensagem exata e siga a política da TI.
 - [ ] Abrir o Scribe pelo menu Iniciar ao menos uma vez. A janela lateral aparece.

@@ -153,7 +153,8 @@ impl LocalServer {
             .route("/v1/state", get(snapshot))
             .route("/v1/events", get(events))
             .route("/v1/decisions/{id}", post(decision))
-            .nest_service("/mcp", service)
+            .route_service("/mcp", service.clone())
+            .route_service("/mcp/", service)
             .with_state(state.clone())
             .layer(middleware::from_fn_with_state(state, defend));
         let shutdown = cancel.clone();
@@ -659,7 +660,9 @@ async fn mcp_challenge(
 }
 
 async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION")}))
+    Json(
+        serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION"),"sourceRevision":scribe_hook_protocol::BUILD_REVISION}),
+    )
 }
 
 async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: Bytes) -> Response {

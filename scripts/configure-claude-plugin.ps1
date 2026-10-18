@@ -134,7 +134,7 @@ function Test-ScribeMcpHelper {
         $versionProperty = $capability.PSObject.Properties['version']
         $transportProperty = $capability.PSObject.Properties['mcp_transport']
         return ($null -ne $nameProperty -and $nameProperty.Value -ceq 'scribe-hook' -and
-            $null -ne $versionProperty -and $versionProperty.Value -ceq '0.1.0' -and
+            $null -ne $versionProperty -and $versionProperty.Value -ceq '0.1.0-beta.2' -and
             $null -ne $transportProperty -and $transportProperty.Value -ceq 'attested-stdio-v1')
     }
     catch {
@@ -160,12 +160,14 @@ $configureValues = $null
 $marketplaceOutput = $null
 try {
     $script:Stage = 'locate Claude CLI'
+    $script:FailureReason = 'Install the native Claude Code executable (claude.exe) and reopen PowerShell. npm command shims are not supported.'
     $claudeCommand = Get-Command claude -CommandType Application -ErrorAction Stop
     if ($claudeCommand.CommandType -ne 'Application' -or
         [IO.Path]::GetExtension($claudeCommand.Source) -ne '.exe') {
         throw 'Claude Code native executable is unavailable.'
     }
     $script:ClaudeExecutable = $claudeCommand.Source
+    $script:FailureReason = $null
 
     $script:Stage = 'validate Scribe installation'
     if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -or
@@ -200,7 +202,11 @@ try {
     $helperPath = $hookPath
     $script:Stage = 'MCP helper capability check'
     if (-not (Test-ScribeMcpHelper -HelperPath $helperPath)) {
-        $script:FailureReason = 'Update the Scribe app and helper together to a build that supports MCP stdio.'
+        $script:FailureReason = if ($script:TimedOut) {
+            'The helper did not respond within 3 seconds. Retry once after Windows finishes checking the installed files; if it persists, send IT this stage and timeout status.'
+        } else {
+            'Update the Scribe app and helper together to a build that supports MCP stdio.'
+        }
         throw 'Required MCP helper capability is unavailable.'
     }
 
@@ -213,7 +219,11 @@ try {
         throw 'Marketplace list failed.'
     }
 
-    $marketplaceOutput = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    # Preserve a one-entry JSON array in both PowerShell 5.1 and 7.
+    # Validate the standalone response before wrapping it to reject composite JSON.
+    $null = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    $marketplaceEnvelope = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject ('{"response":' + $marketplaceResult.Output + '}') -ErrorAction Stop
+    $marketplaceOutput = $marketplaceEnvelope.PSObject.Properties['response'].Value
     if ($marketplaceOutput -is [array]) {
         $marketplaceEntries = $marketplaceOutput
     }
@@ -226,6 +236,7 @@ try {
     $existingMarketplace = @($marketplaceEntries | Where-Object { $_.name -eq 'rexia-scribe' }).Count -gt 0
     $marketplaceResult = $null
     $marketplaceOutput = $null
+    $marketplaceEnvelope = $null
     $marketplaceEntries = $null
 
     if ($existingMarketplace) {

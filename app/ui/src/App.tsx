@@ -430,6 +430,14 @@ function Settings({
       </section>
       <footer>
         <h3>{t(language, "about")}</h3>
+        {view.build && (
+          <p title={view.build.revision}>
+            {t(language, "buildVersion", {
+              version: view.build.version,
+              revision: view.build.revision.slice(0, 12),
+            })}
+          </p>
+        )}
         <p>{t(language, "legal")}</p>
       </footer>
     </dialog>
@@ -501,6 +509,7 @@ export default function App({
       }
     }
     setView(next);
+    setNow(Date.now());
     if (!next.error) setError(null);
     if (next.sessions.some((session) => session.lastEventAt >= opened.current))
       setHeardHook(true);
@@ -781,21 +790,22 @@ export default function App({
             </ul>
           </section>
         )}
-        {now - opened.current >= 300000 && !heardHook && (
-          <aside className="hint">
-            <p>{t(language, "troubleshoot")}</p>
-            <button
-              className="help-link"
-              onClick={() =>
-                void bridge
-                  .openHelp()
-                  .catch(() => setError("bridgeUnavailable"))
-              }
-            >
-              {t(language, "help")}
-            </button>
-          </aside>
-        )}
+        {!heardHook &&
+          (view.sessions.length === 0 || now - opened.current >= 300000) && (
+            <aside className="hint">
+              <p>{t(language, "troubleshoot")}</p>
+              <button
+                className="help-link"
+                onClick={() =>
+                  void bridge
+                    .openHelp()
+                    .catch(() => setError("bridgeUnavailable"))
+                }
+              >
+                {t(language, "help")}
+              </button>
+            </aside>
+          )}
       </div>
       {settings && (
         <Settings

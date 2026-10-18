@@ -11,6 +11,9 @@ pub use profile::{trusted_profile_dirs, ProfileDirs};
 /// Offline tool discovery; the app tests this against its generated schemas.
 pub const MCP_TOOLS: &str = include_str!("../mcp-tools.json");
 
+/// Build provenance for support; never used as an authentication credential.
+pub const BUILD_REVISION: &str = env!("SCRIBE_BUILD_REVISION");
+
 fn mac(key: &str, fields: &[&[u8]]) -> Hmac<Sha256> {
     let mut mac =
         Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC accepts any key size");

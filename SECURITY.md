@@ -19,17 +19,20 @@ sensitive details.
 
 ## Trust boundaries
 
-Scribe listens only on IPv4 loopback. Hooks use a separate private HMAC key;
-MCP uses Bearer authentication; decision routes additionally require an
-ephemeral UI credential retained inside Rust. The webview receives safe
-display data. It does not receive these keys or arbitrary filesystem access.
+Scribe listens only on IPv4 loopback. Hooks and the internal MCP endpoint use
+a private HMAC key, authenticated server challenges and signed requests and
+responses, with separate protocol domains. External MCP clients use the helper
+over stdio. Health requires Bearer authentication; state, event and decision
+routes additionally require an ephemeral UI credential retained inside Rust.
+The webview receives safe display data. It does not receive these keys or
+arbitrary filesystem access.
 
 Processes running as the same OS user, administrators and compromised harnesses
 may read user-owned secrets or control the application. Scribe does not provide
-an isolation boundary against those attackers. MCP callers sharing a Bearer
-credential also share authority to name sessions; that identity is not
-cryptographically isolated. A plan approval can return Claude Code to its
-previous permission mode.
+an isolation boundary against those attackers. MCP callers sharing the private
+HMAC key also share authority to name sessions; that identity is not
+cryptographically isolated. A Bearer credential alone cannot authorize MCP
+calls. A plan approval can return Claude Code to its previous permission mode.
 
 See the [threat model and regression inventory](docs/seguranca.md) and
 [desktop dependency exceptions](docs/dependencias-desktop.md). A green audit

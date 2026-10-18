@@ -4,16 +4,16 @@ Aplicativo desktop local para acompanhar sessões do Claude Code e decisões hum
 
 [English](README.md)
 
-**Estado da release:** `v0.1.0-beta.1` é a última beta Windows publicada. O
-candidato atual com MCP stdio ainda está em validação; não foi publicado nem
-aceito como release. Perguntas nativas e aprovação de planos ainda precisam de
-teste em uma sessão interativa nova do Claude Code. Veja
-[a verificação das decisões](docs/fase-4.md) para evidências e limites pendentes.
+**Estado da release:** esta fonte prepara a experimental `v0.1.0-beta.2` para
+avaliação da TI. Confira os downloads na [página da release](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2);
+se a página não estiver disponível, a publicação ainda não terminou. Perguntas
+nativas e aprovação de planos ainda precisam de sessão interativa nova do
+Claude Code e aceite humano. Veja
+[a verificação das decisões](https://github.com/rexia-intel-automation/scribe/blob/main/docs/fase-4.md) para evidências e limites pendentes.
 
 O plugin candidato é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper.
 O plugin publicado na beta.1 usa HTTP/Bearer e é incompatível. O app/helper
-candidato ainda informa versão de pacote `0.1.0`, também usada na beta.1; o
-número sozinho não identifica uma versão compatível. Mantenha app, helper,
+candidato informa versão de pacote `0.1.0-beta.2`. Mantenha app, helper,
 script de configuração, fonte do plugin e checksums do mesmo pacote/revisão
 candidata; anote o `source_sha` de `BUILD-METADATA.txt`. O script verifica a
 capacidade do helper, mas isso não confirma que o app desktop está em execução
@@ -47,10 +47,10 @@ empresa não são apagadas pelo Scribe.
 
 ## Teste do candidato no Windows
 
-O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
-pacote candidato, use estes arquivos correspondentes:
+Baixe o pacote combinado somente da página da beta.2, ou obtenha um candidato
+verificado com a TI. Use estes arquivos correspondentes:
 
-- `Scribe_0.1.0_x64-setup.exe` (app e helper)
+- `Scribe_0.1.0-beta.2_x64-setup.exe` (app e helper)
 - `configure-claude-plugin.ps1`
 - `SHA256SUMS.txt` e `BUILD-METADATA.txt`
 - `teste-equipe-ti.md` (roteiro de testes)
@@ -65,8 +65,8 @@ fornecer o plugin `0.1.1`: o script reutiliza um marketplace `rexia-scribe`
 existente ou, se não houver um, instala do branch padrão do repositório público.
 O script candidato atualiza o marketplace existente e o plugin, e verifica que
 o plugin `0.1.1` está habilitado para o usuário antes de configurá-lo. Uma versão
-antiga ou incompatível causa falha na configuração. O candidato ainda aguarda
-CI e um ensaio interativo externo.
+antiga ou incompatível causa falha na configuração. A publicação exige CI e smokes de instalação concluídos. Um ensaio interativo
+externo e o aceite humano continuam pendentes.
 
 Antes de executar, confira os hashes do instalador e do script com as entradas
 correspondentes em `SHA256SUMS.txt`. No PowerShell:
@@ -118,8 +118,8 @@ O plugin MCP deixou de armazenar ou enviar o token Bearer da conexão pelo
 plugin deixa de ser usado por este candidato; o arquivo de conexão continua
 privado ao Scribe. O script usa a CLI oficial e não edita nem limpa diretamente
 os arquivos de configuração do Claude Code. Atualize app/helper e plugin juntos; use `source_sha` e a
-capacidade verificada para identificar compatibilidade, pois a versão de pacote
-`0.1.0` do app/helper não distingue o candidato da beta.1.
+capacidade verificada para identificar a revisão compatível. Configurações →
+Sobre mostra a revisão do app; `--mcp-check` inclui `source_revision` no helper.
 
 O script não é assinado. `Restricted` bloqueia scripts; `RemoteSigned` pode
 bloquear este arquivo baixado. Só depois de aprovar o arquivo e seu SHA-256,
@@ -142,11 +142,159 @@ precisa do app deve informar que o Scribe está indisponível. Reabra o Scribe e
 tente novamente na mesma sessão do Claude; a chamada deve se recuperar sem
 reiniciar o Claude Code. O modo não interativo `claude -p` não é o caminho de
 teste para perguntas AskUserQuestion interativas. Siga o
-[roteiro de teste da TI](docs/teste-equipe-ti.md), também disponível no arquivo
+[roteiro de teste da TI](https://github.com/rexia-intel-automation/scribe/blob/main/docs/teste-equipe-ti.md), também disponível no arquivo
 baixado `teste-equipe-ti.md`, e registre falhas sem incluir
 tokens, segredos ou o conteúdo de qualquer pasta de dados do Scribe.
 
-### Atualizar e desinstalar
+## Configuração candidata no macOS e Linux
+
+Os pacotes candidatos com stdio ainda não foram publicados. Estas instruções
+descrevem o layout esperado do pacote candidato e não comprovam uma instalação
+limpa concluída; a beta.1 publicada é somente para Windows e incompatível com o
+plugin 0.1.1. Use apenas uma futura combinação em que app, helper, plugin,
+checksums e `source_sha` de `BUILD-METADATA.txt` correspondam. Siga a política
+da sua organização para software sem assinatura. Não desative o Gatekeeper nem
+outros controles de segurança.
+
+No macOS, confira o DMG com `shasum -a 256 -c SHA256SUMS.txt`, abra-o no Finder
+e copie `Scribe.app` para Aplicativos. Abra o Scribe em Aplicativos uma vez para
+criar sua conexão privada. Para Aplicativos do sistema, o helper fica em
+`/Applications/Scribe.app/Contents/MacOS/scribe-hook`. Se o macOS bloquear o
+app sem assinatura, pare e siga o processo da sua organização para software
+aprovado; este guia não contorna o Gatekeeper.
+
+Para um pacote Debian/Ubuntu, confira o checksum com
+`sha256sum -c SHA256SUMS.txt`, instale o `.deb` correspondente pelo processo
+aprovado de gerenciamento de pacotes e localize o helper instalado. Para o
+candidato 0.1.0-beta.2 no Debian/Ubuntu:
+
+```sh
+sudo apt install ./Scribe_0.1.0-beta.2_amd64.deb
+dpkg -L scribe | grep '/scribe-hook$'
+```
+
+Abra o Scribe pelo menu de aplicativos uma vez para criar a conexão privada.
+Use o caminho absoluto impresso por `dpkg -L` como `SCRIBE_HELPER` abaixo.
+
+No macOS, defina `SCRIBE_HELPER` com o caminho acima. No Debian/Ubuntu, use o
+caminho exato impresso por `dpkg -L`:
+
+```sh
+SCRIBE_HELPER='/caminho/absoluto/para/scribe-hook'
+test -x "$SCRIBE_HELPER"
+```
+
+Para AppImage no Ubuntu 22.04, instale primeiro as bibliotecas FUSE e EGL do sistema:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y libfuse2 libegl1
+```
+
+Outras distribuições exigem os pacotes correspondentes de FUSE 2 e EGL.
+AppImage depende das bibliotecas gráficas do sistema; veja a
+[exclusão de bibliotecas gráficas do AppImage](https://docs.appimage.org/introduction/concepts.html#build-on-old-systems-run-on-newer-systems).
+
+Depois confira o checksum, torne o arquivo executável e extraia-o para
+uma pasta permanente nova e vazia da sua conta. O helper precisa permanecer nesse caminho
+extraído para que o Claude Code possa iniciá-lo mesmo com o Scribe fechado. Não
+configure um caminho dentro de uma montagem temporária do AppImage:
+
+```sh
+chmod +x ./Scribe*.AppImage
+mkdir -p "$HOME/.local/opt"
+SCRIBE_EXTRACT_DIR="$(mktemp -d "$HOME/.local/opt/scribe-candidate.XXXXXX")"
+cd "$SCRIBE_EXTRACT_DIR"
+/caminho/absoluto/Scribe.AppImage --appimage-extract
+mv squashfs-root appimage-root
+find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print
+```
+
+Pare se algum comando falhar. Cada extração recebe uma nova pasta permanente;
+não mova `squashfs-root` para um `appimage-root` antigo. Mantenha
+`SCRIBE_EXTRACT_DIR` definida no mesmo shell para o próximo comando do helper.
+
+Abra o AppImage original pelo gerenciador de arquivos uma vez para criar a
+conexão privada. Mantenha a pasta extraída no lugar para o caminho do helper.
+
+Use o caminho absoluto mostrado por `find` como `SCRIBE_HELPER`. AppImages do
+tipo 2 aceitam `--appimage-extract`, que cria `squashfs-root` na pasta atual;
+veja o [guia oficial de extração do AppImage](https://docs.appimage.org/user-guide/run-appimages.html#extract-the-contents-of-an-appimage).
+
+Defina a variável com o caminho retornado por `find` e confirme que o arquivo
+é executável:
+
+```sh
+SCRIBE_HELPER="$(find "$SCRIBE_EXTRACT_DIR/appimage-root" -name scribe-hook -print -quit)"
+test -x "$SCRIBE_HELPER"
+```
+
+Depois de instalar e abrir o app uma vez, instale o plugin combinado para seu
+usuário com a CLI nativa do Claude Code. Primeiro, confirme que o helper termina
+com sucesso e informa a capacidade candidata:
+
+```sh
+"$SCRIBE_HELPER" --mcp-check
+```
+
+Continue somente se o JSON informar `name` `scribe-hook`, `version` `0.1.0-beta.2` e
+`mcp_transport` `attested-stdio-v1`. Isso confere o build e a inicialização do
+helper; não prova que o app desktop esteja aberto nem valida uma chamada MCP
+real.
+
+Confira se o marketplace com nome `rexia-scribe` já está registrado:
+
+```sh
+claude plugin marketplace list --json
+```
+
+Se a listagem mostrar `rexia-scribe`, atualize esse marketplace, instale o
+plugin dele e atualize o plugin no escopo do usuário. Estas formas de argumentos
+são usadas pelo script de configuração candidato do Windows:
+
+```sh
+claude plugin marketplace update rexia-scribe
+claude plugin install scribe@rexia-scribe --scope user --config "client_path=$SCRIBE_HELPER"
+claude plugin update scribe@rexia-scribe --scope user
+```
+
+Quando `rexia-scribe` não existir, pule a atualização do marketplace e use:
+
+```sh
+claude plugin install scribe --marketplace rexia-intel-automation/scribe --scope user --config "client_path=$SCRIBE_HELPER"
+claude plugin update scribe@rexia-scribe --scope user
+```
+
+Antes de configurar ou reiniciar o Claude Code, confira `claude plugin list
+--json`. A listagem deve mostrar exatamente um plugin `scribe@rexia-scribe` no
+escopo `user`, com versão `0.1.1` e `enabled: true` (e `folderVersion: 0.1.1`
+quando esse campo for informado). Pare se a entrada estiver ausente,
+desabilitada, duplicada ou em outra versão.
+
+Defina ou atualize o caminho do helper com a entrada `--values-stdin` da CLI.
+Python 3 é necessário somente aqui para serializar o caminho como JSON com
+segurança, inclusive espaços e barras invertidas:
+
+```sh
+printf '%s\n' "$SCRIBE_HELPER" | python3 -c 'import json,sys; print(json.dumps({"client_path": sys.stdin.read().rstrip("\n")}))' | claude plugin configure scribe@rexia-scribe --values-stdin
+```
+
+O plugin guarda apenas o caminho do helper; ele lê a conexão do perfil privado
+do Scribe na conta atual do sistema. Não copie o token do Scribe. Reinicie o
+Claude Code após configurar. A configuração pela CLI no macOS e Linux, a
+instalação limpa dos pacotes e o comportamento visual do app ainda não foram
+validados; uma sessão interativa nova e as verificações visuais são etapas
+manuais separadas de aceite.
+
+Para atualizar um AppImage, feche primeiro o Scribe e todas as sessões do Claude
+Code. Confira o novo AppImage combinado, extraia-o para uma nova pasta
+permanente vazia, abra o AppImage atualizado uma vez e defina `SCRIBE_HELPER`
+com o helper dessa nova extração. Repita a verificação do helper, a conferência
+da versão do plugin e o passo `plugin configure` acima antes de reiniciar o
+Claude Code. Mantenha a extração antiga até configurar o novo caminho do helper;
+depois disso, ela pode ser removida.
+
+## Atualizar e desinstalar no Windows
 
 Feche o Scribe pelo menu da bandeja e execute o instalador candidato para
 atualizar. O teste de upgrade da beta anterior preservou histórico e
@@ -163,7 +311,7 @@ bytes remanescentes no disco. Reinstalar depois de excluir
 novamente. Depois de atualizar o Scribe, execute o script outra vez para
 atualizar o caminho do helper salvo pelo plugin.
 
-### Solução de problemas
+## Solução de problemas no Windows
 
 - O instalador não é assinado; SmartScreen ou antivírus corporativo podem
   bloqueá-lo. Anote a mensagem exata e siga a política da TI.
@@ -186,7 +334,7 @@ atualizar o caminho do helper salvo pelo plugin.
   longos no Git da organização. O script não altera configurações do Git.
 
 A beta v0.1 mantém o foco em acompanhar sessões. A direção da v0.3 para
-cooperação entre agentes está registrada no [plano do produto](docs/plano-v0.1.md)
+cooperação entre agentes está registrada no [plano do produto](https://github.com/rexia-intel-automation/scribe/blob/main/docs/plano-v0.1.md)
 e continua sendo trabalho futuro, não uma capacidade da v0.1.
 
 MIT © 2026 RexIA Tecnologia e Automação Digital LTDA.

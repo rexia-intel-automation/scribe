@@ -34,7 +34,7 @@ public static class FakeScribeExecutable
             {
                 return 0;
             }
-            Console.WriteLine("{\"name\":\"scribe-hook\",\"version\":\"0.1.0\",\"mcp_transport\":\"attested-stdio-v1\"}");
+            Console.WriteLine("{\"name\":\"scribe-hook\",\"version\":\"0.1.0-beta.2\",\"mcp_transport\":\"attested-stdio-v1\"}");
             return 0;
         }
 
@@ -42,6 +42,7 @@ public static class FakeScribeExecutable
         if (args.Length >= 4 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "list")
         {
             var mode = Environment.GetEnvironmentVariable("SCRIBE_TEST_MARKETPLACE_MODE");
+            if (mode == "single-array") { Console.WriteLine("[{\"name\":\"rexia-scribe\"}]"); return 0; }
             Console.WriteLine(mode == "missing"
                 ? "{\"marketplaces\":[{\"name\":\"synthetic-other\"}]}"
                 : "{\"marketplaces\":[{\"name\":\"rexia-scribe\"},{\"name\":\"synthetic-other\"}]}");
@@ -220,6 +221,23 @@ windowsTest('PowerShell 5.1 and 7 reject a helper without attested-stdio-v1 befo
   }
 });
 
+windowsTest('PowerShell 5.1 and 7 explain an unsupported npm shim without executing it', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      await rm(join(fixture.fakeBin, 'claude.exe'));
+      await writeFile(join(fixture.fakeBin, 'claude.cmd'), '@echo SYNTHETIC_CLI_SECRET\r\n', 'utf8');
+      const result = runSetup(fixture);
+      assert.equal(result.status, 1, diagnostic(result, fixture));
+      assert.match(result.stderr, /native Claude Code executable \(claude.exe\)/);
+      assert.match(result.stderr, /npm command shims are not supported/);
+      assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SYNTHETIC_CLI_SECRET|SYNTHETIC_BEARER/);
+      assert.deepEqual(await recordedCalls(fixture.logPath), []);
+    });
+  }
+});
+
 windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and pass only client_path', async t => {
   for (const shell of ['5.1', '7']) {
     await t.test(`PowerShell ${shell}`, async t2 => {
@@ -273,6 +291,20 @@ windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and p
         assert.equal((await realpath(payload.client_path)).toLowerCase(), expectedHelperPath.toLowerCase());
         assert.doesNotMatch(JSON.stringify(payload), /SYNTHETIC_BEARER|SYNTHETIC_INDEPENDENT_HOOK_KEY|token|hook_key|port/i);
       }
+    });
+  }
+});
+
+windowsTest('PowerShell 5.1 and 7 preserve a one-entry marketplace array from the real CLI', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'valid', SCRIBE_TEST_MARKETPLACE_MODE: 'single-array' });
+      assert.equal(result.status, 0, diagnostic(result, fixture));
+      const calls = (await recordedCalls(fixture.logPath)).filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
+      assert.deepEqual(calls[1].slice(0, 3), ['plugin', 'marketplace', 'update']);
+      assert.equal(calls.at(-1)[1], 'configure');
     });
   }
 });
@@ -370,7 +402,7 @@ windowsTest('PowerShell 5.1 and 7 stop a hung helper check before CLI use', asyn
       const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'hang' });
       assert.equal(result.status, 1, diagnostic(result, fixture));
       assert.match(result.stderr, /MCP helper capability check \(timeout\)/);
-      assert.match(result.stderr, /Update the Scribe app and helper together/);
+      assert.match(result.stderr, /helper did not respond within 3 seconds/);
       assert.ok(Date.now() - started < 10000, 'helper check must have a short deadline');
       assert.deepEqual(await recordedCalls(fixture.logPath), []);
     });

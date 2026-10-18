@@ -4,8 +4,60 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ## [Não lançado]
 
+Preparação do pacote `0.1.0-beta.2`, com plugin `0.1.1`. A versão pública
+continua beta.1 até a publicação de uma nova tag após revisão e verificações.
+
+Os gates de servidor de 100/200 ms desta beta usam o notebook Windows de
+referência do escritório; o CI hospedado preserva cenários e publica os quantis
+como diagnóstico. A publicação exige evidência recente da árvore `app` inteira.
+O ADR 0014 registra esta decisão e os limites da medição.
+
+### Alterado
+
+- SQLite no Windows usa WAL/FULL nas gravações e muda para rollback journal
+  com lock exclusivo antes de apagar dados ou aplicar retenção, mantendo
+  secure_delete e commit antes da resposta ao Claude. Leitores que impedem
+  essa transição fazem a limpeza falhar sem mudar dados ou preferências.
+  Linux/macOS mantêm DELETE. O SLA continua exigido pelo teste nativo.
+
 ### Corrigido
 
+- Configuração no PowerShell 7 preserva uma lista com um único marketplace,
+  como a CLI nativa atual retorna, sem falhar antes de instalar o plugin.
+- O MSI usa a versão numérica interna `0.1.0.2`, aceita pelo WiX, mantendo
+  `0.1.0-beta.2` no app, helper e nomes dos pacotes.
+- Alvos de permissões encurtam caminhos privados antes de exibir ou gravar.
+  Se parte da ação foi ocultada, a aprovação fica no terminal; o cartão não
+  permite armar ou autorizar uma ação parcialmente representada.
+- Ajuda de integração disponível imediatamente enquanto o app aguarda sua
+  primeira sessão, sem esperar cinco minutos numa janela vazia.
+- A tela Sobre, o health autenticado e o diagnóstico do helper identificam a
+  revisão de origem. O smoke de instalação confere a revisão do app e do
+  helper contra o pacote selecionado, inclusive quando a versão numérica é igual.
+- O serviço MCP interno fica montado apenas nos dois endpoints autenticados,
+  impedindo que outros caminhos cheguem ao serviço usando apenas Bearer.
+  A política de segurança descreve a autenticação HMAC e o helper em stdio.
+- A transição entre formas pinta a geometria final mesmo quando o próximo frame
+  chega depois dos 450 ms; depois a forma parada volta a dormir. Os READMEs
+  também usam uma pasta exclusiva por extração AppImage.
+- A gota reabre os olhos mesmo quando um frame atrasado pula o fim da piscada;
+  a animação volta a dormir depois de repintar. O guia AppImage cria uma pasta
+  persistente única por extração para evitar selecionar o helper antigo.
+- Apagar histórico usa uma transação que faz rollback se qualquer exclusão
+  falhar, sem deixar gravações posteriores presas numa transação não confirmada.
+  A limpeza mantém secure_delete e não executa VACUUM após o commit.
+- Agendamento da animação da gota em repouso por timer, sem manter uma callback
+  de desenho contínua; padrões de risco reconhecem caminhos sob `/bin` e
+  `/usr/bin` de ferramentas e interpretadores Unix, e metadados de planos
+  são higienizados. Os padrões continuam sendo heurísticas.
+- Pré-requisitos do AppImage no Ubuntu 22.04 incluem FUSE 2 e EGL, também
+  instalados no smoke de release. Falhas de inicialização registram categoria,
+  código de saída e sinal sem imprimir o stderr privado do app.
+
+- Fonte GLib 0.18.5 inclui o backport oficial de `VariantStrIter`, preservando
+  a API GTK3. O CI verifica os hashes e executa os iteradores com otimizações
+  no Linux; avisos baseados na versão e a revisão de segurança continuam
+  documentados. Licença e autoria gtk-rs acompanham os recursos dos pacotes.
 - Timeout ou desconexão de uma decisão fecha o transporte antes de esperar o
   estado compartilhado, impedindo envios posteriores ao encerramento. No
   timeout, uma resposta válida já enviada antes do fechamento é preservada.

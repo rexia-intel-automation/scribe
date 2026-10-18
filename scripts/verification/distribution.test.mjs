@@ -59,6 +59,9 @@ test('distribution overlay enables all required bundles without changing the bas
   assert.equal(overlay.bundle.active, true);
   assert.deepEqual(overlay.bundle.targets, ['nsis', 'msi', 'app', 'dmg', 'deb', 'appimage']);
   assert.deepEqual(overlay.bundle.externalBin, ['binaries/scribe-hook']);
+  // MSI requires a numeric product version while the application keeps its beta label.
+  assert.equal(base.version, '0.1.0-beta.2');
+  assert.equal(overlay.bundle.windows.wix.version, '0.1.0.2');
 });
 
 test('macOS staging provides each Tauri target-specific external sidecar', (t) => {

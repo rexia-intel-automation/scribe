@@ -1,6 +1,6 @@
 [package]
 name = "scribe-core"
-version = "0.1.0"
+version = "0.1.0-beta.2"
 edition = "2021"
 license = "MIT"
 description = "Local session state and authenticated HTTP server for Scribe"
@@ -51,3 +51,9 @@ libc = "0.2"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["process"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+glib = "=0.18.5"
+
+[patch.crates-io]
+glib = { path = "../../vendor/glib-0.18.5" }

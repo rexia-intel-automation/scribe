@@ -1,5 +1,18 @@
 # Artefatos de distribuição (previews)
 
+## Identificação da revisão instalada
+
+O candidato mostra versão e revisão em Configurações → Sobre o Scribe.
+O helper informa `source_revision` em `--mcp-check`; o health autenticado
+informa `sourceRevision`. Esses valores são metadados de suporte, sem função
+de autenticação. Os builds no GitHub usam `GITHUB_SHA`; um build local pode
+informar `SCRIBE_SOURCE_SHA` com o commit correspondente. Sem esses valores,
+a identificação é `development`, e o artefato não passa no smoke de release.
+
+O smoke de instalação exige que app e helper informem o mesmo SHA registrado
+em `BUILD-METADATA.txt`. Isso detecta componentes trocados mesmo quando ambos
+informam a mesma versão numérica; não substitui checksums, assinatura ou aprovação independente.
+
 ## Verificação da instalação antes da publicação
 
 O workflow `Release` testa os cinco formatos em runners novos e separados antes de publicar: NSIS, MSI, DMG, DEB e AppImage. A instalação usa apenas os artefatos do próprio run, depois de conferir os checksums, a versão e o SHA de origem com o coletor de release. Esse teste roda em tags de release validadas ou em uma execução manual no `main`; nunca instala artefatos de uma PR.

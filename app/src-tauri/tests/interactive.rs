@@ -344,10 +344,7 @@ async fn plan_allow_echoes_original_content_and_deny_fails_closed() {
     assert!(card.can_allow);
     assert!(!card.armed);
     assert_eq!(card.target, "Step 1: inspect");
-    assert_eq!(
-        card.plan_file_path.as_deref(),
-        Some("/public/project/PLAN.md")
-    );
+    assert_eq!(card.plan_file_path.as_deref(), Some("…/project/PLAN.md"));
     let original: Value = serde_json::from_slice(&body).unwrap();
 
     for invalid in [
@@ -411,6 +408,46 @@ async fn plan_allow_echoes_original_content_and_deny_fails_closed() {
         feedback
     );
     assert!(feedback.chars().count() <= 200);
+}
+
+#[tokio::test]
+async fn plan_file_paths_are_shortened_in_decisions_but_original_input_is_returned() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("state.db");
+    let core = Core::open(&path, now_ms()).unwrap();
+
+    for (session, original_path) in [
+        ("plan-windows-path", r"C:\Users\alice\private\plans\file.md"),
+        ("plan-unix-path", "/home/alice/private/plans/file.md"),
+    ] {
+        start(&core, session);
+        let body = plan_input(session, "Step 1: inspect", original_path);
+        let original: Value = serde_json::from_slice(&body).unwrap();
+        let wait = core.interactive(&body, 60).unwrap();
+        let id = pending_id(&core, session);
+        let card = decision(&core, &id);
+
+        assert_eq!(card.plan_file_path.as_deref(), Some("…/plans/file.md"));
+        let snapshot = serde_json::to_string(&core.snapshot(now_ms()).unwrap()).unwrap();
+        assert!(!snapshot.contains("alice"));
+        assert!(!snapshot.contains("private"));
+        let stored = persisted_decisions(&path);
+        assert!(!stored.contains("alice"));
+        assert!(!stored.contains("private"));
+        let bytes = database_text(&path);
+        assert!(!bytes.contains("alice"));
+        assert!(!bytes.contains("private"));
+
+        core.resolve_decision(&id, input(json!({"action":"arm"})))
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(1050)).await;
+        core.resolve_decision(&id, input(json!({"action":"allow"})))
+            .unwrap();
+        assert_eq!(
+            wait.receive().await["hookSpecificOutput"]["updatedInput"],
+            original["tool_input"]
+        );
+    }
 }
 
 #[tokio::test]

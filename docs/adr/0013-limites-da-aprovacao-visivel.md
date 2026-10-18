@@ -39,6 +39,24 @@ Esta decisão registra uma limitação funcional da v0.1; não amplia a allowlis
 não substitui o ensaio humano de FR-20 e não declara a Fase 4 aprovada.
 Uma ampliação futura exige representação integral e segura, testes e revisão.
 
+## Complemento — privacidade de caminhos (2026-10-17)
+
+Na retomada autônoma autorizada pelo Mohamad, a decisão para conciliar FR-20
+com §8.4 é encurtar os caminhos também nos alvos de permissões, antes da
+exibição e da persistência. Se isso altera a representação recebida, o cartão
+não pode armar nem permitir a ação; negar e voltar ao terminal continuam
+disponíveis. O terminal apresenta a solicitação original. Isso vale também
+para caminhos dentro de comandos e de metadados com vários campos.
+Essa regra se refere ao alvo de permissões. O caminho informativo de um plano
+continua encurtado enquanto seu texto integral validado permanece visível;
+a aprovação do plano mantém seus dois gestos e o eco original em memória.
+
+O encurtamento não é uma autorização implícita de um caminho semelhante.
+Pedidos relativos inteiramente visíveis continuam sujeitos às mesmas regras.
+A regressão usa caminhos fictícios POSIX, Windows e UNC, verifica os controles
+de aprovação e inspeciona snapshot, reabertura e bytes do banco. Ela cobre
+novas decisões; não afirma apagar dados de versões anteriores ou backups.
+
 O ADR 0009 registra o estado anterior à implementação das respostas.
 O ADR 0010 documenta a implementação posterior de scribe_ask e permissões;
 o ADR 0011 documenta as sugestões de atualização de permissões. Esses registros

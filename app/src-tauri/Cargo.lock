@@ -1397,8 +1397,6 @@ dependencies = [
 [[package]]
 name = "glib"
 version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5"
 dependencies = [
  "bitflags 2.13.2",
  "futures-channel",
@@ -3206,11 +3204,12 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scribe-core"
-version = "0.1.0"
+version = "0.1.0-beta.2"
 dependencies = [
  "axum",
  "base64 0.23.1",
  "futures-util",
+ "glib",
  "hyper",
  "hyper-util",
  "libc",

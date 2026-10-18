@@ -216,6 +216,17 @@ Formato: **FR-ID — título.** Critérios em Dado / Quando / Então. "Sessão" 
 | NFR-10 | Plataformas | macOS 13+, Windows 10+, Ubuntu 22.04+ |
 | NFR-11 | Licenças | Somente dependências compatíveis com MIT; fontes com licença OFL embarcadas |
 
+Para a beta.2, os gates de servidor de NFR-01/02 são medidos no notebook
+Windows de referência do escritório (i5-10300H, 16 GB, Windows 11, SSD), sem
+instrumentação de cobertura. Decisão do Codex em 2026-10-17, sob autorização
+do Mohamad para tomar as decisões do projeto nesta retomada. Os limites
+permanecem 200/100 ms. Runners hospedados mantêm os mesmos testes funcionais,
+assinaturas e amostras de latência, mas os quantis são diagnóstico do ambiente;
+não substituem o gate local. Publicar exige evidência recente vinculada à árvore
+`app` inteira. Isso não prova clique físico, WebView ou SLA em outro hardware;
+o aceite nativo completo e os demais sistemas continuam pendentes para a final.
+Detalhes e limites: `docs/adr/0014-ambiente-referencia-performance.md`.
+
 ---
 
 ## 5. Arquitetura
@@ -477,7 +488,7 @@ Regras do marketplace (confirme na documentação): caminhos `source` relativos 
 | UI | Vitest + Testing Library | Componentes, i18n, acessibilidade (axe) | Sem violações sérias de acessibilidade |
 | E2E da janela | Playwright contra a UI com servidor simulado | Chegada de decisão, atalhos, recolher, expirar | Fluxos principais |
 | Visual | Playwright (capturas) | As formas em 24/40/96 px, claro e escuro | Revisão humana na Fase 3 |
-| Manual com Claude Code real | Roteiro em `docs/testes-manuais.md` | Instalar pelo marketplace, 3 sessões, permitir, negar, expirar, app fechado | Executado antes de cada release |
+| Manual com Claude Code real | Roteiro em `docs/teste-equipe-ti.md` | Instalar pelo marketplace, 3 sessões, permitir, negar, expirar, app fechado | Executado antes de cada release |
 
 O CI (`ci.yml`) roda: lint (clippy, eslint), formatação (rustfmt, prettier), testes, `npm audit`/`cargo audit`, `claude plugin validate .` (se o CLI estiver disponível no runner; senão, validação contra os JSON Schemas) e build do app nas três plataformas.
 

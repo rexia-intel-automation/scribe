@@ -10,7 +10,7 @@ The documented app design uses loopback communication and no telemetry. Scribe d
 
 ## Which version is available?
 
-`v0.1.0-beta.1` is a Windows prerelease for IT evaluation. It is not the final release. Other changes in open pull requests are not included in that beta.
+Check [Releases](https://github.com/rexia-intel-automation/scribe/releases) for available packages. This source targets experimental beta.2 with plugin0.1.1 stdio; beta.1 is the incompatible legacy HTTP pairing. Neither is an accepted final release.
 
 ## Are native questions and plan approval accepted?
 

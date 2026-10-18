@@ -4,7 +4,7 @@
 
 <Badge type="warning" text="Beta Windows · somente avaliação" />
 
-A versão publicada `v0.1.0-beta.1` é um pré-lançamento para avaliação da TI no Windows, não uma versão final aceita. Ela usa o plugin `0.1.0` por HTTP local. O branch atual do marketplace usa o plugin `0.1.1` por stdio e é incompatível com a beta.1; o pacote correspondente de app/helper stdio ainda não foi publicado. Leia as [notas de compatibilidade de instalação](/pt-BR/installation) antes de configurar qualquer combinação.
+A experimental `v0.1.0-beta.2` destina-se à avaliação da TI com app/helper `0.1.0-beta.2` e plugin `0.1.1` por stdio. Confira disponibilidade e checksums na [página da release](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2); página indisponível significa publicação incompleta. Não é uma versão final aceita. A combinação HTTP da beta.1 é incompatível. Leia as [notas de compatibilidade de instalação](/pt-BR/installation).
 
 ## Acompanhe sessões
 

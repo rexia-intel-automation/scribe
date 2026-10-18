@@ -101,6 +101,7 @@
   "troubleshoot": "Nenhum evento recebido. Confira a configuração do plugin.",
   "help": "Solução de problemas",
   "about": "Sobre o Scribe",
+  "buildVersion": "Versão {version} · revisão {revision}",
   "legal": "Projeto independente de código aberto da RexIA. Sem afiliação com a Anthropic. Claude e Claude Code são marcas da Anthropic, citadas apenas para descrever compatibilidade.",
   "formsTitle": "As dez formas da tinta",
   "formsDescription": "A mesma tinta em argila, em 24, 40 e 96 pixels. Troque o estado para ver a transição.",

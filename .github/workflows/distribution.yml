@@ -14,6 +14,7 @@ on:
       - 'app/hook-client/Cargo.lock'
       - 'app/package-lock.json'
       - 'app/**'
+      - 'vendor/**'
       - 'scripts/build-windows-installer.ps1'
 
 permissions:
