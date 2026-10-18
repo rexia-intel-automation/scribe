@@ -87,6 +87,8 @@ jobs:
       - run: cargo build --release --no-default-features --manifest-path app/hook-client/Cargo.toml --locked
       - run: cargo fmt --manifest-path app/src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path app/src-tauri/Cargo.toml --features desktop --locked --all-targets -- -D warnings
+      - name: Record finite durable-write environment baseline
+        run: node scripts/verification/storage-sync-baseline.mjs
       - run: cargo test --manifest-path app/src-tauri/Cargo.toml --features desktop --locked -- --nocapture --test-threads=1
       - name: Test GLib variant iterators with release optimizations
         if: matrix.os == 'ubuntu-22.04'

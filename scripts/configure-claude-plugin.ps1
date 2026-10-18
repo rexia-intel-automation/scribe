@@ -160,12 +160,14 @@ $configureValues = $null
 $marketplaceOutput = $null
 try {
     $script:Stage = 'locate Claude CLI'
+    $script:FailureReason = 'Install the native Claude Code executable (claude.exe) and reopen PowerShell. npm command shims are not supported.'
     $claudeCommand = Get-Command claude -CommandType Application -ErrorAction Stop
     if ($claudeCommand.CommandType -ne 'Application' -or
         [IO.Path]::GetExtension($claudeCommand.Source) -ne '.exe') {
         throw 'Claude Code native executable is unavailable.'
     }
     $script:ClaudeExecutable = $claudeCommand.Source
+    $script:FailureReason = $null
 
     $script:Stage = 'validate Scribe installation'
     if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -or
@@ -200,7 +202,11 @@ try {
     $helperPath = $hookPath
     $script:Stage = 'MCP helper capability check'
     if (-not (Test-ScribeMcpHelper -HelperPath $helperPath)) {
-        $script:FailureReason = 'Update the Scribe app and helper together to a build that supports MCP stdio.'
+        $script:FailureReason = if ($script:TimedOut) {
+            'The helper did not respond within 3 seconds. Retry once after Windows finishes checking the installed files; if it persists, send IT this stage and timeout status.'
+        } else {
+            'Update the Scribe app and helper together to a build that supports MCP stdio.'
+        }
         throw 'Required MCP helper capability is unavailable.'
     }
 

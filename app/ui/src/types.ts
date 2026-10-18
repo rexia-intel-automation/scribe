@@ -57,6 +57,7 @@ export interface View {
   warning?: string | null;
   decisions?: Decision[];
   notificationDecisionId?: string | null;
+  build?: { version: string; revision: string };
 }
 export interface Decision {
   id: string;

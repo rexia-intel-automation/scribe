@@ -62,7 +62,7 @@ pub(crate) fn shorten_path(text: &str) -> String {
     }
 }
 
-pub(crate) fn summary(text: &str, limit: usize) -> String {
+pub(crate) fn display_metadata(text: &str) -> String {
     let safe = redact(text);
     let safe = QUOTED_PATH.replace_all(&safe, |c: &regex::Captures| {
         format!("{}{}{}", &c["quote"], shorten_path(&c["path"]), &c["quote"])
@@ -70,6 +70,11 @@ pub(crate) fn summary(text: &str, limit: usize) -> String {
     let safe = INLINE_PATH.replace_all(&safe, |c: &regex::Captures| {
         format!("{}{}", &c["prefix"], shorten_path(&c["path"]))
     });
+    safe.into_owned()
+}
+
+pub(crate) fn summary(text: &str, limit: usize) -> String {
+    let safe = display_metadata(text);
     let single_line: String = safe
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })

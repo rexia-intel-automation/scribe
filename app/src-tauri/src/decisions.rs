@@ -242,7 +242,7 @@ impl Core {
             return Err("Invalid permission".into());
         }
         self.hook("PermissionRequest", body, now_ms())?;
-        let target = [
+        let target_field = [
             "command",
             "file_path",
             "path",
@@ -251,7 +251,13 @@ impl Core {
             "pattern",
         ]
         .iter()
-        .find_map(|key| hook.tool_input.get(key).and_then(Value::as_str));
+        .find_map(|key| {
+            hook.tool_input
+                .get(key)
+                .and_then(Value::as_str)
+                .map(|value| (*key, value))
+        });
+        let target = target_field.map(|(_, value)| value);
         let allowed_fields: &[&str] = match hook.tool_name.as_deref() {
             Some("Bash" | "PowerShell") => {
                 &["command", "description", "timeout", "run_in_background"]
@@ -291,7 +297,19 @@ impl Core {
         } else {
             target.unwrap_or_default().to_owned()
         };
-        let redacted = sanitize::redact(&raw_target);
+        let redacted = if hook
+            .tool_input
+            .as_object()
+            .is_some_and(|fields| fields.len() == 1)
+            && target_field
+                .is_some_and(|(key, _)| matches!(key, "file_path" | "path" | "notebook_path"))
+        {
+            // A typed path may contain spaces without shell quotes. Sanitize
+            // the whole value before applying the generic metadata matcher.
+            sanitize::display_metadata(&sanitize::shorten_path(&raw_target))
+        } else {
+            sanitize::display_metadata(&raw_target)
+        };
         let mut display_target: String = redacted.chars().take(8000).collect();
         if redacted.chars().count() > 8000 {
             display_target.push('…');
@@ -312,7 +330,7 @@ impl Core {
                             .filter(|update| {
                                 scribe_hook_protocol::valid_permission_update(update)
                                     && serde_json::to_string(update)
-                                        .is_ok_and(|s| sanitize::redact(&s) == s)
+                                        .is_ok_and(|s| sanitize::display_metadata(&s) == s)
                             })
                             .cloned()
                             .collect()

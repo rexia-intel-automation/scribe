@@ -220,6 +220,23 @@ windowsTest('PowerShell 5.1 and 7 reject a helper without attested-stdio-v1 befo
   }
 });
 
+windowsTest('PowerShell 5.1 and 7 explain an unsupported npm shim without executing it', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      await rm(join(fixture.fakeBin, 'claude.exe'));
+      await writeFile(join(fixture.fakeBin, 'claude.cmd'), '@echo SYNTHETIC_CLI_SECRET\r\n', 'utf8');
+      const result = runSetup(fixture);
+      assert.equal(result.status, 1, diagnostic(result, fixture));
+      assert.match(result.stderr, /native Claude Code executable \(claude.exe\)/);
+      assert.match(result.stderr, /npm command shims are not supported/);
+      assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SYNTHETIC_CLI_SECRET|SYNTHETIC_BEARER/);
+      assert.deepEqual(await recordedCalls(fixture.logPath), []);
+    });
+  }
+});
+
 windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and pass only client_path', async t => {
   for (const shell of ['5.1', '7']) {
     await t.test(`PowerShell ${shell}`, async t2 => {
@@ -370,7 +387,7 @@ windowsTest('PowerShell 5.1 and 7 stop a hung helper check before CLI use', asyn
       const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'hang' });
       assert.equal(result.status, 1, diagnostic(result, fixture));
       assert.match(result.stderr, /MCP helper capability check \(timeout\)/);
-      assert.match(result.stderr, /Update the Scribe app and helper together/);
+      assert.match(result.stderr, /helper did not respond within 3 seconds/);
       assert.ok(Date.now() - started < 10000, 'helper check must have a short deadline');
       assert.deepEqual(await recordedCalls(fixture.logPath), []);
     });

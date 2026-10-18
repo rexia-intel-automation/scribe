@@ -238,6 +238,38 @@ describe("session window", () => {
     expect(screen.getByText("Expired: answer in the terminal")).toBeVisible();
     expect(screen.queryByText(/0 decisions waiting/)).not.toBeInTheDocument();
   });
+  it("uses the current clock when a delayed snapshot contains an expired request", () => {
+    vi.useFakeTimers();
+    let receive: ((value: View) => void) | undefined;
+    vi.mocked(bridge.observe).mockImplementation(async (callback) => {
+      receive = callback;
+      return () => {};
+    });
+    const data = fixture();
+    data.preferences.language = "en";
+    const app = render(<App initialView={data} />);
+    try {
+      vi.setSystemTime(Date.now() + 5000);
+      const expired = {
+        ...pendingDecision("delayed-expiry"),
+        expiresAt: Date.now() - 1000,
+      };
+      act(() =>
+        receive!({
+          ...data,
+          revision: data.revision + 1,
+          decisions: [expired],
+        }),
+      );
+      expect(
+        screen.getByRole("heading", { name: "Permissions and questions" }),
+      ).toBeVisible();
+      expect(screen.getByText("Expired: answer in the terminal")).toBeVisible();
+    } finally {
+      app.unmount();
+      vi.useRealTimers();
+    }
+  });
   it("translates persisted system actions while preserving user reports", () => {
     expect(action("Editando …/project/file.ts", "en")).toBe(
       "Editing …/project/file.ts",
@@ -908,6 +940,32 @@ describe("session window", () => {
       app.unmount();
       vi.useRealTimers();
     }
+  });
+  it("offers setup help immediately before the first session arrives", () => {
+    const data = fixture();
+    data.sessions = [];
+    render(<App initialView={data} />);
+    expect(screen.getByText(t("pt-BR", "troubleshoot"))).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: t("pt-BR", "help") }),
+    ).toBeVisible();
+  });
+  it("identifies the installed build in settings without exposing profile data", async () => {
+    const user = userEvent.setup();
+    const data = fixture();
+    data.build = { version: "0.1.0", revision: "a".repeat(40) };
+    render(<App initialView={data} />);
+    await user.click(
+      screen.getByRole("button", { name: t("pt-BR", "settings") }),
+    );
+    expect(
+      screen.getByText(
+        t("pt-BR", "buildVersion", {
+          version: "0.1.0",
+          revision: "a".repeat(12),
+        }),
+      ),
+    ).toHaveAttribute("title", "a".repeat(40));
   });
   it("remembers receipt of a hook after its completed session leaves the list", async () => {
     vi.useFakeTimers();

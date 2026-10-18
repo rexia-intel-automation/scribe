@@ -14,6 +14,14 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ### Corrigido
 
+- Alvos de permissões encurtam caminhos privados antes de exibir ou gravar.
+  Se parte da ação foi ocultada, a aprovação fica no terminal; o cartão não
+  permite armar ou autorizar uma ação parcialmente representada.
+- Ajuda de integração disponível imediatamente enquanto o app aguarda sua
+  primeira sessão, sem esperar cinco minutos numa janela vazia.
+- A tela Sobre, o health autenticado e o diagnóstico do helper identificam a
+  revisão de origem. O smoke de instalação confere a revisão do app e do
+  helper contra o pacote selecionado, inclusive quando a versão numérica é igual.
 - O serviço MCP interno fica montado apenas nos dois endpoints autenticados,
   impedindo que outros caminhos cheguem ao serviço usando apenas Bearer.
   A política de segurança descreve a autenticação HMAC e o helper em stdio.

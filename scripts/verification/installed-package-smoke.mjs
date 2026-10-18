@@ -26,14 +26,21 @@ export function assertTrustedRunner(env = process.env) {
   }
 }
 
-export function parseAttestation(text, expectedVersion) {
+export function parseAttestation(text, expectedVersion, expectedRevision) {
   let value;
   try { value = JSON.parse(text); } catch { throw new Error('Installed helper returned invalid attestation JSON.'); }
   if (value?.name !== 'scribe-hook' || value?.version !== expectedVersion
-    || value?.mcp_transport !== 'attested-stdio-v1') {
+    || value?.mcp_transport !== 'attested-stdio-v1'
+    || expectedRevision !== undefined && value?.source_revision !== expectedRevision) {
     throw new Error('Installed helper attestation does not match the selected release.');
   }
   return value;
+}
+
+export function checkAppBuild(value, version, revision) {
+  if (value?.ok !== true || value?.version !== version || value?.sourceRevision !== revision) {
+    throw new Error('Installed app build does not match the selected release.');
+  }
 }
 
 function safeResponse(line, id) {
@@ -212,23 +219,27 @@ async function stopChild(child, stdin) {
   if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }
 
-async function waitForHealth(port, token, app, deadline, exited) {
+async function waitForHealth(port, token, app, deadline, exited, version, revision) {
   while (Date.now() < deadline) {
     if (app.exitCode !== null || app.signalCode !== null) throw exited();
+    let response;
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/v1/health`, {
+      response = await fetch(`http://127.0.0.1:${port}/v1/health`, {
         headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1500),
       });
-      if (response.ok) return;
     } catch { /* Listener startup is asynchronous; retry inside the fixed deadline. */ }
+    if (response?.ok) {
+      checkAppBuild(await response.json(), version, revision);
+      return;
+    }
     await new Promise((ok) => setTimeout(ok, 250));
   }
   throw new Error('Installed app local health check timed out.');
 }
 
-async function runInstalled(paths, version) {
+async function runInstalled(paths, version, revision) {
   const attested = await run(paths.helper, ['--mcp-check']);
-  parseAttestation(attested, version);
+  parseAttestation(attested, version, revision);
   for (const path of [paths.app, paths.helper]) if (!(await exists(path))) throw new Error('Installed app or helper is missing.');
   const app = spawn(paths.app, ['--open'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
   let stderr = '';
@@ -246,7 +257,7 @@ async function runInstalled(paths, version) {
       try { config = JSON.parse(await readFile(connection, 'utf8')); break; } catch { await new Promise((ok) => setTimeout(ok, 250)); }
     }
     if (!config || !Number.isInteger(config.port) || typeof config.token !== 'string') throw new Error('Installed app did not create a valid local connection.');
-    await waitForHealth(config.port, config.token, app, deadline, exited);
+    await waitForHealth(config.port, config.token, app, deadline, exited, version, revision);
     const event = JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'installed-package-smoke', cwd: process.env.RUNNER_TEMP });
     await run(paths.helper, ['--hook', 'SessionStart'], { input: event, capture: false });
     const { child, lines } = await helperProcess(paths.helper); helper = { child, lines };
@@ -290,7 +301,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   const artifactName = filenames.find((name) => ({ nsis: /-setup\.exe$/i, msi: /\.msi$/i, dmg: /\.dmg$/i, deb: /\.deb$/i, appimage: /\.appimage$/i })[bundle].test(name));
   if (!artifactName) throw new Error('Verified release did not contain the selected bundle.');
   const paths = await install(bundle, join(collected, artifactName), root);
-  await runInstalled(paths, VERSION);
+  await runInstalled(paths, VERSION, args['--source-sha']);
   process.stdout.write(`PASS ${bundle}: verified release ${args['--tag']} installed; app health and attested MCP scribe_report succeeded.\n`);
 }
 

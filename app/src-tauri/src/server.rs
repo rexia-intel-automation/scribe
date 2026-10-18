@@ -660,7 +660,9 @@ async fn mcp_challenge(
 }
 
 async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION")}))
+    Json(
+        serde_json::json!({"ok":true,"version":env!("CARGO_PKG_VERSION"),"sourceRevision":scribe_hook_protocol::BUILD_REVISION}),
+    )
 }
 
 async fn hook(State(state): State<HttpState>, Path(event): Path<String>, body: Bytes) -> Response {

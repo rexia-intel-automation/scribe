@@ -15,6 +15,7 @@ export default defineConfig({
     },
   },
   test: {
+    fileParallelism: false,
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],

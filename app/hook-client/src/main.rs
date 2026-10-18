@@ -426,7 +426,7 @@ fn main() {
     if args == ["--mcp-check"] {
         println!(
             "{}",
-            serde_json::json!({"name":"scribe-hook", "version":env!("CARGO_PKG_VERSION"), "mcp_transport":"attested-stdio-v1"})
+            serde_json::json!({"name":"scribe-hook", "version":env!("CARGO_PKG_VERSION"), "mcp_transport":"attested-stdio-v1", "source_revision":scribe_hook_protocol::BUILD_REVISION})
         );
         return;
     }

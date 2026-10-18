@@ -101,6 +101,7 @@
   "troubleshoot": "No events received. Check the plugin setup.",
   "help": "Troubleshooting",
   "about": "About Scribe",
+  "buildVersion": "Version {version} · revision {revision}",
   "legal": "Independent open-source project by RexIA. Not affiliated with Anthropic. Claude and Claude Code are trademarks of Anthropic, cited only to describe compatibility.",
   "formsTitle": "The ten ink forms",
   "formsDescription": "The same clay ink, at 24, 40 and 96 pixels. Change the state to see the transition.",

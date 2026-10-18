@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertTrustedRunner, helperProcess, parseAttestation, parseReportResult, runMcpSmoke, startupFailure, waitForLine } from './installed-package-smoke.mjs';
+import { assertTrustedRunner, checkAppBuild, helperProcess, parseAttestation, parseReportResult, runMcpSmoke, startupFailure, waitForLine } from './installed-package-smoke.mjs';
 
 const trusted = {
   GITHUB_ACTIONS: 'true', CI: 'true', GITHUB_REF: 'refs/heads/main',
@@ -59,6 +59,22 @@ test('attestation requires the installed helper name, release version, and trans
     '{"name":"scribe-hook","version":"0.1.1","mcp_transport":"attested-stdio-v1"}',
     '{"name":"scribe-hook","version":"0.1.0","mcp_transport":"stdio"}',
   ]) assert.throws(() => parseAttestation(body, '0.1.0'), /attestation/);
+});
+
+test('installed app and helper must both identify the selected source revision', () => {
+  const revision = 'a'.repeat(40);
+  const helper = { name: 'scribe-hook', version: '0.1.0', mcp_transport: 'attested-stdio-v1', source_revision: revision };
+  assert.doesNotThrow(() => parseAttestation(JSON.stringify(helper), '0.1.0', revision));
+  for (const source_revision of [undefined, 'development', 'b'.repeat(40)]) {
+    assert.throws(() => parseAttestation(JSON.stringify({ ...helper, source_revision }), '0.1.0', revision), /attestation/);
+  }
+  assert.doesNotThrow(() => checkAppBuild({ ok: true, version: '0.1.0', sourceRevision: revision }, '0.1.0', revision));
+  for (const value of [
+    { ok: true, version: '0.1.0' },
+    { ok: true, version: '0.1.0', sourceRevision: 'b'.repeat(40) },
+    { ok: false, version: '0.1.0', sourceRevision: revision },
+    { ok: true, version: '0.0.1', sourceRevision: revision },
+  ]) assert.throws(() => checkAppBuild(value, '0.1.0', revision), /app build/);
 });
 
 test('report accepts public success text, rejects malformed JSON and MCP errors', () => {
