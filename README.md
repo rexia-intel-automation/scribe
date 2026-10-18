@@ -45,6 +45,10 @@ Old backups and corporate Roaming server copies are not deleted by Scribe.
 
 ## Windows candidate test
 
+The setup script finds the per-user NSIS helper under `%LOCALAPPDATA%\Scribe`,
+then the MSI helper under `%ProgramFiles%\Scribe` if no per-user helper exists.
+When both exist, the per-user installation takes precedence and must be compatible.
+
 Download the paired package only from the beta.2 release page, or obtain a
 verified candidate from IT. Use its matching files together:
 

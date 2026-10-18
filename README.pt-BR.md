@@ -47,6 +47,10 @@ empresa não são apagadas pelo Scribe.
 
 ## Teste do candidato no Windows
 
+O configurador procura o helper NSIS por usuário em `%LOCALAPPDATA%\Scribe`;
+se ausente, procura o helper MSI em `%ProgramFiles%\Scribe`. Quando ambos
+existem, a instalação por usuário tem preferência e precisa ser compatível.
+
 Baixe o pacote combinado somente da página da beta.2, ou obtenha um candidato
 verificado com a TI. Use estes arquivos correspondentes:
 
