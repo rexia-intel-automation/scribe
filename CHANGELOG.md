@@ -22,6 +22,8 @@ O ADR 0014 registra esta decisão e os limites da medição.
 
 ### Corrigido
 
+- O configurador encontra o helper instalado pelo MSI em `Program Files`
+  quando não há uma instalação por usuário do NSIS.
 - Configuração no PowerShell 7 preserva uma lista com um único marketplace,
   como a CLI nativa atual retorna, sem falhar antes de instalar o plugin.
 - O MSI usa a versão numérica interna `0.1.0.2`, aceita pelo WiX, mantendo

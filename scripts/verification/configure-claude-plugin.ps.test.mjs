@@ -295,6 +295,24 @@ windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and p
   }
 });
 
+windowsTest('PowerShell 5.1 and 7 configure a fresh MSI helper under Program Files', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const programFiles = join(fixture.root, 'program files');
+      const msiHelper = join(programFiles, 'Scribe', 'scribe-hook.exe');
+      await mkdir(join(programFiles, 'Scribe'), { recursive: true });
+      await copyFile(fixture.helperPath, msiHelper);
+      await rm(fixture.helperPath);
+      const result = runSetup(fixture, { ProgramFiles: programFiles, SCRIBE_TEST_HELPER_MODE: 'valid' });
+      assert.equal(result.status, 0, diagnostic(result, fixture));
+      const payload = (await recordedCalls(fixture.logPath)).find(call => call.kind === 'STDIN');
+      assert.equal((await realpath(JSON.parse(payload.value).client_path)).toLowerCase(), (await realpath(msiHelper)).toLowerCase());
+    });
+  }
+});
+
 windowsTest('PowerShell 5.1 and 7 preserve a one-entry marketplace array from the real CLI', async t => {
   for (const shell of ['5.1', '7']) {
     await t.test(`PowerShell ${shell}`, async t2 => {

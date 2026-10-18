@@ -176,6 +176,9 @@ try {
     }
 
     $hookPath = [IO.Path]::GetFullPath([IO.Path]::Combine($env:LOCALAPPDATA, 'Scribe\scribe-hook.exe'))
+    if (-not [IO.File]::Exists($hookPath) -and -not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $hookPath = [IO.Path]::GetFullPath([IO.Path]::Combine($env:ProgramFiles, 'Scribe\scribe-hook.exe'))
+    }
     $connectionPath = [IO.Path]::Combine($env:APPDATA, 'com.rexia.scribe\connection.json')
     if (-not [IO.File]::Exists($hookPath) -or
         -not [IO.File]::Exists($connectionPath) -or
