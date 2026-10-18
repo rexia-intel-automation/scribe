@@ -39,6 +39,8 @@ jobs:
       - run: node --test scripts/verification/release.test.mjs scripts/verification/distribution.test.mjs
       - name: Enforce temporary desktop maintenance policy expiry
         run: node scripts/verification/audit-desktop-dependencies.mjs --check-expiry
+      - name: Require current app tree performance on the Windows reference machine
+        run: node scripts/verification/verify-reference-performance.mjs
       - name: Validate tag and package versions
         id: version
         shell: bash

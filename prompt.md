@@ -216,6 +216,17 @@ Formato: **FR-ID — título.** Critérios em Dado / Quando / Então. "Sessão" 
 | NFR-10 | Plataformas | macOS 13+, Windows 10+, Ubuntu 22.04+ |
 | NFR-11 | Licenças | Somente dependências compatíveis com MIT; fontes com licença OFL embarcadas |
 
+Para a beta.2, os gates de servidor de NFR-01/02 são medidos no notebook
+Windows de referência do escritório (i5-10300H, 16 GB, Windows 11, SSD), sem
+instrumentação de cobertura. Decisão do Codex em 2026-10-17, sob autorização
+do Mohamad para tomar as decisões do projeto nesta retomada. Os limites
+permanecem 200/100 ms. Runners hospedados mantêm os mesmos testes funcionais,
+assinaturas e amostras de latência, mas os quantis são diagnóstico do ambiente;
+não substituem o gate local. Publicar exige evidência recente vinculada à árvore
+`app` inteira. Isso não prova clique físico, WebView ou SLA em outro hardware;
+o aceite nativo completo e os demais sistemas continuam pendentes para a final.
+Detalhes e limites: `docs/adr/0014-ambiente-referencia-performance.md`.
+
 ---
 
 ## 5. Arquitetura

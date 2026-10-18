@@ -39,6 +39,8 @@ jobs:
       - name: Audit desktop vulnerabilities and scoped maintenance policy
         run: node scripts/verification/audit-desktop-dependencies.mjs
   native-and-plugin:
+    env:
+      SCRIBE_SHARED_RUNNER: '1'
     strategy:
       fail-fast: false
       matrix:

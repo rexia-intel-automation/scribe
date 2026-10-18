@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const existingExceptions = ['RUSTSEC-2024-0370', 'RUSTSEC-2024-0429'];
 const maintenance = new Map([
@@ -50,7 +51,7 @@ export function checkDesktopAudit(report, at = Date.now()) {
   return accepted;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1]))) {
   try {
     if (process.argv.length === 3 && process.argv[2] === '--check-expiry') {
       checkMaintenanceWindow();

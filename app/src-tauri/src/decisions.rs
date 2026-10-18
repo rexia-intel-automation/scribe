@@ -292,18 +292,18 @@ impl Core {
                         && value.as_str().is_none_or(|s| !ambiguous_text(s))
                 })
         });
-        let raw_target = if complete && hook.tool_input.as_object().unwrap().len() > 1 {
+        let show_fields = complete && hook.tool_input.as_object().unwrap().len() > 1;
+        let raw_target = if show_fields {
             serde_json::to_string_pretty(&hook.tool_input)?
         } else {
             target.unwrap_or_default().to_owned()
         };
-        let redacted = if !(complete
-            && hook
-                .tool_input
-                .as_object()
-                .is_some_and(|fields| fields.len() > 1))
-            && target_field
-                .is_some_and(|(key, _)| matches!(key, "file_path" | "path" | "notebook_path"))
+        let redacted = if show_fields {
+            // Sanitize typed values before JSON encoding: quotes and spaces in
+            // filenames are data, not delimiters in a shell command.
+            serde_json::to_string_pretty(&sanitize::display_value(&hook.tool_input, false))?
+        } else if target_field
+            .is_some_and(|(key, _)| matches!(key, "file_path" | "path" | "notebook_path"))
         {
             // A typed path may contain spaces without shell quotes. Sanitize
             // the whole value before applying the generic metadata matcher.
@@ -330,8 +330,7 @@ impl Core {
                         a.iter()
                             .filter(|update| {
                                 scribe_hook_protocol::valid_permission_update(update)
-                                    && serde_json::to_string(update)
-                                        .is_ok_and(|s| sanitize::display_metadata(&s) == s)
+                                    && sanitize::display_value(update, false) == **update
                             })
                             .cloned()
                             .collect()

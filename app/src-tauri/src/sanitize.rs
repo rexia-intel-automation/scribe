@@ -32,7 +32,7 @@ static AUTHORIZATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?is)(\bauthorization\b).*").unwrap()
 });
 static QUOTED_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?P<quote>["'])(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^"'\r\n]+)["']"#).unwrap()
+    Regex::new(r#""(?P<double>(?:/|[A-Za-z]:[\\/]|\\\\)[^"\r\n]+)"|'(?P<single>(?:/|[A-Za-z]:[\\/]|\\\\)[^'\r\n]+)'"#).unwrap()
 });
 static INLINE_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?P<prefix>(?:^|[\s=<>|&;(\[\{,@])(?:-[A-Za-z]+)?)(?P<path>(?:/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)"#)
@@ -55,8 +55,18 @@ pub(crate) fn shorten_path(text: &str) -> String {
     let path = redact(text).replace('\\', "/");
     let parts: Vec<_> = path.split('/').filter(|s| !s.is_empty()).collect();
     let absolute = path.starts_with('/') || path.as_bytes().get(1) == Some(&b':');
-    if absolute && parts.len() > 2 {
-        format!("…/{}", parts[parts.len() - 2..].join("/"))
+    let home_prefix = match parts.as_slice() {
+        [home, _, ..] if *home == "home" || home.eq_ignore_ascii_case("users") => 2,
+        [drive, users, _, ..] if drive.ends_with(':') && users.eq_ignore_ascii_case("users") => 3,
+        _ => 0,
+    };
+    if absolute && (parts.len() > 2 || home_prefix > 0) {
+        let retained = parts.len().saturating_sub(2).max(home_prefix);
+        if retained == parts.len() {
+            "…".into()
+        } else {
+            format!("…/{}", parts[retained..].join("/"))
+        }
     } else {
         path
     }
@@ -65,12 +75,47 @@ pub(crate) fn shorten_path(text: &str) -> String {
 pub(crate) fn display_metadata(text: &str) -> String {
     let safe = redact(text);
     let safe = QUOTED_PATH.replace_all(&safe, |c: &regex::Captures| {
-        format!("{}{}{}", &c["quote"], shorten_path(&c["path"]), &c["quote"])
+        let (quote, path) = c.name("double").map_or_else(
+            || ("'", c.name("single").unwrap().as_str()),
+            |path| ("\"", path.as_str()),
+        );
+        format!("{quote}{}{quote}", shorten_path(path))
     });
     let safe = INLINE_PATH.replace_all(&safe, |c: &regex::Captures| {
         format!("{}{}", &c["prefix"], shorten_path(&c["path"]))
     });
     safe.into_owned()
+}
+
+pub(crate) fn display_value(value: &Value, path: bool) -> Value {
+    match value {
+        Value::String(text) => Value::String(if path {
+            shorten_path(text)
+        } else {
+            display_metadata(text)
+        }),
+        Value::Array(values) => {
+            Value::Array(values.iter().map(|v| display_value(v, path)).collect())
+        }
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        display_value(
+                            value,
+                            matches!(
+                                key.as_str(),
+                                "file_path" | "path" | "notebook_path" | "directories"
+                            ),
+                        ),
+                    )
+                })
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
 }
 
 pub(crate) fn summary(text: &str, limit: usize) -> String {
@@ -134,6 +179,10 @@ mod tests {
             shorten_path("C:\\Users\\public\\project\\file.rs"),
             "…/project/file.rs"
         );
+        assert_eq!(shorten_path("C:\\Users\\public\\project"), "…/project");
+        assert_eq!(shorten_path("c:\\users\\public\\project"), "…/project");
+        assert_eq!(shorten_path("/home/public/project"), "…/project");
+        assert_eq!(shorten_path("/Users/public"), "…");
         assert_eq!(
             summary("read '/private/user/project/file name.rs'", 100),
             "read '…/project/file name.rs'"

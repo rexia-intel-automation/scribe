@@ -7,6 +7,11 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 Preparação do pacote `0.1.0-beta.2`, com plugin `0.1.1`. A versão pública
 continua beta.1 até a publicação de uma nova tag após revisão e verificações.
 
+Os gates de servidor de 100/200 ms desta beta usam o notebook Windows de
+referência do escritório; o CI hospedado preserva cenários e publica os quantis
+como diagnóstico. A publicação exige evidência recente da árvore `app` inteira.
+O ADR 0014 registra esta decisão e os limites da medição.
+
 ### Alterado
 
 - SQLite no Windows usa WAL/FULL nas gravações e muda para rollback journal

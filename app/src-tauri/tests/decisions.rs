@@ -831,6 +831,22 @@ async fn private_path_prefixes_are_omitted_and_cannot_authorize_a_hidden_action(
     start(&core, "path-privacy");
     for (tool, fields) in [
         (
+            "Read",
+            json!({"file_path":"/home/PUBLIC_PRIVATE_PARENT's Person/project/file.rs", "limit":20}),
+        ),
+        (
+            "Glob",
+            json!({"path":r"C:\Users\PUBLIC_PRIVATE_PARENT O'Brien\project", "pattern":"*.rs"}),
+        ),
+        (
+            "Grep",
+            json!({"path":"/home/PUBLIC_PRIVATE_PARENT \"Person\"/project/file.rs", "pattern":"public"}),
+        ),
+        (
+            "Bash",
+            json!({"command":"cat \"/home/PUBLIC_PRIVATE_PARENT's Person/project/file.rs\""}),
+        ),
+        (
             "Edit",
             json!({"file_path":r"C:\Users\PUBLIC_PRIVATE_PARENT Person\project\file.rs", "old_string":"old", "new_string":"new"}),
         ),
@@ -885,6 +901,7 @@ async fn private_path_prefixes_are_omitted_and_cannot_authorize_a_hidden_action(
             card.target
         );
         assert!(!card.can_allow && card.risk);
+        assert!(!card.target.contains("PUBLIC_FILE_CONTENT"));
         for action in ["arm", "allow"] {
             assert!(core
                 .resolve_decision(&card.id, input(json!({"action":action})))
@@ -936,6 +953,9 @@ async fn private_path_prefixes_are_omitted_and_cannot_authorize_a_hidden_action(
         assert!(!bytes
             .windows(b"PUBLIC_PRIVATE_PARENT".len())
             .any(|window| window == b"PUBLIC_PRIVATE_PARENT"));
+        assert!(!bytes
+            .windows(b"PUBLIC_FILE_CONTENT".len())
+            .any(|window| window == b"PUBLIC_FILE_CONTENT"));
     }
 }
 

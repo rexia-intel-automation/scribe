@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "mode": "reference-strict",
+  "measuredAt": "2026-10-18T02:48:45.8035843Z",
+  "appTree": "ef4033626e426859c858380662ffe61dfa8f38a3",
+  "exitCode": 0,
+  "testBinarySha256": "7a69b86215ce7e4610044a9ee1899c4297018b4e30bd89bb21ed5fb671f4642e",
+  "scope": "server-core-and-authenticated-http",
+  "environment": {
+    "platform": "win32",
+    "cpu": "Intel(R) Core(TM) i5-10300H CPU @ 2.50GHz",
+    "ramGiB": 15.84,
+    "os": "Microsoft Windows 11 Home Single Language",
+    "osVersion": "10.0.26300",
+    "storage": "SSD; synthetic database on the C: volume",
+    "uninstrumented": true,
+    "profile": "cargo test, desktop feature, debug assertions; no llvm-cov"
+  },
+  "nfr01": {
+    "samples": 32,
+    "p95Ms": 4
+  },
+  "nfr02": [
+    {
+      "transport": "private-http",
+      "action": "allow",
+      "samples": 128,
+      "p95Ms": 2,
+      "maxMs": 8,
+      "over100Ms": 0
+    },
+    {
+      "transport": "private-http",
+      "action": "deny",
+      "samples": 128,
+      "p95Ms": 3,
+      "maxMs": 4,
+      "over100Ms": 0
+    },
+    {
+      "transport": "direct-core",
+      "action": "allow",
+      "samples": 128,
+      "p95Ms": 1,
+      "maxMs": 2,
+      "over100Ms": 0
+    },
+    {
+      "transport": "direct-core",
+      "action": "deny",
+      "samples": 128,
+      "p95Ms": 1,
+      "maxMs": 6,
+      "over100Ms": 0
+    }
+  ],
+  "excluded": [
+    "physical click",
+    "WebView IPC and focus",
+    "helper stdout delivery",
+    "other hardware or operating systems"
+  ],
+  "provenance": "Frozen staged app tree before commit; public synthetic fixtures. Test build source hint uses base fa90f49; appTree identifies the measured snapshot. Not a distributed binary.",
+  "logSha256": "9a03e28c2ecdfeee74aee5b858cb2d94d9e4ea87bd9ceaa6bfc80d44056f7fbb"
+}
