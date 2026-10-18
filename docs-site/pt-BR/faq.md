@@ -10,7 +10,7 @@ O projeto documenta comunicação local por loopback e ausência de telemetria. 
 
 ## Qual versão está disponível?
 
-A `v0.1.0-beta.1` é um pré-lançamento Windows para avaliação da TI. Ainda não é a versão final. Alterações em pull requests abertas não estão incluídas nessa beta.
+Confira os pacotes disponíveis em [Releases](https://github.com/rexia-intel-automation/scribe/releases). Esta fonte prepara a experimental beta.2 com plugin0.1.1 stdio; beta.1 é a combinação HTTP antiga e incompatível. Nenhuma é uma versão final aceita.
 
 ## Perguntas nativas e aprovação de planos já foram aceitas?
 

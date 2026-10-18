@@ -4,10 +4,11 @@ Aplicativo desktop local para acompanhar sessões do Claude Code e decisões hum
 
 [English](README.md)
 
-**Estado da release:** `v0.1.0-beta.1` é a última beta Windows publicada. O
-candidato atual com MCP stdio ainda está em validação; não foi publicado nem
-aceito como release. Perguntas nativas e aprovação de planos ainda precisam de
-teste em uma sessão interativa nova do Claude Code. Veja
+**Estado da release:** esta fonte prepara a experimental `v0.1.0-beta.2` para
+avaliação da TI. Confira os downloads na [página da release](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2);
+se a página não estiver disponível, a publicação ainda não terminou. Perguntas
+nativas e aprovação de planos ainda precisam de sessão interativa nova do
+Claude Code e aceite humano. Veja
 [a verificação das decisões](https://github.com/rexia-intel-automation/scribe/blob/main/docs/fase-4.md) para evidências e limites pendentes.
 
 O plugin candidato é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper.
@@ -46,8 +47,8 @@ empresa não são apagadas pelo Scribe.
 
 ## Teste do candidato no Windows
 
-O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
-pacote candidato, use estes arquivos correspondentes:
+Baixe o pacote combinado somente da página da beta.2, ou obtenha um candidato
+verificado com a TI. Use estes arquivos correspondentes:
 
 - `Scribe_0.1.0-beta.2_x64-setup.exe` (app e helper)
 - `configure-claude-plugin.ps1`
@@ -64,8 +65,8 @@ fornecer o plugin `0.1.1`: o script reutiliza um marketplace `rexia-scribe`
 existente ou, se não houver um, instala do branch padrão do repositório público.
 O script candidato atualiza o marketplace existente e o plugin, e verifica que
 o plugin `0.1.1` está habilitado para o usuário antes de configurá-lo. Uma versão
-antiga ou incompatível causa falha na configuração. O candidato ainda aguarda
-CI e um ensaio interativo externo.
+antiga ou incompatível causa falha na configuração. A publicação exige CI e smokes de instalação concluídos. Um ensaio interativo
+externo e o aceite humano continuam pendentes.
 
 Antes de executar, confira os hashes do instalador e do script com as entradas
 correspondentes em `SHA256SUMS.txt`. No PowerShell:

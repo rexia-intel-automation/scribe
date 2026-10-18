@@ -1,6 +1,10 @@
 # Instalação
 
-## Beta.1 publicada: avaliação somente no Windows
+## Pacote combinado beta.2 por stdio
+
+Use app/helper `0.1.0-beta.2` com plugin `0.1.1`. Obtenha arquivos e checksums correspondentes na [página da beta.2](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2) e siga seu README. Se indisponível, a publicação ainda não terminou. A publicação exige CI do main e smokes de instalação de NSIS, MSI, DMG, DEB e AppImage. Esses testes automatizados não constituem aceite humano.
+
+## Beta.1 antiga: combinação Windows arquivada
 
 `v0.1.0-beta.1` é um pré-lançamento sem assinatura para avaliação da TI, não uma versão final aceita. Ele combina o app e o helper nativo com o plugin `0.1.0`, que usa a conexão HTTP local. O branch atual do marketplace usa o plugin `0.1.1` por stdio e é incompatível com a beta.1. O app da beta.1 informa `0.1.0`; o novo candidato usa `0.1.0-beta.2` e identifica sua revisão de origem.
 
@@ -31,9 +35,9 @@ powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
 
 No PowerShell 7, use `pwsh -NoProfile -File .\configure-claude-plugin.ps1`. Após a configuração, feche o Claude Code e inicie uma sessão interativa nova. A saída da CLI do Claude fica oculta; se o script falhar, registre a etapa e o código de saída sem compartilhar tokens ou arquivos do perfil privado.
 
-## Candidato de migração para stdio: não publicado
+## Migração e compatibilidade stdio
 
-A combinação candidata de app, helper e plugin por stdio ainda está em preparação e revisão. Ela não é uma release instalável nem um resultado de aceite. Não baixe nem configure um candidato diretamente do branch do repositório.
+Use um pacote beta.2 verificado, sem obter binários diretamente do branch do repositório. O aceite humano de perguntas nativas e aprovação de planos continua pendente.
 
 Quando uma combinação for publicada, os arquivos incluirão README, script de configuração, roteiro de teste da TI, instalador Windows, helper nativo, plugin `0.1.1`, `SHA256SUMS.txt` e `BUILD-METADATA.txt` com `source_sha`. Confira os hashes e o SHA de origem registrados: o candidato usa `0.1.0-beta.2`; confira também a revisão de origem. O script candidato exige a CLI nativa do Claude Code atualizada, atualiza o marketplace/plugin existente e verifica o plugin `0.1.1` habilitado no escopo do usuário, incluindo a versão de pasta quando informada, antes de configurar. Os comandos foram conferidos na ajuda da CLI `2.1.294`; o ensaio real continua pendente.
 
@@ -41,10 +45,9 @@ Abra o app combinado uma vez para criar o arquivo de conexão antes da configura
 
 ## Outros sistemas operacionais
 
-A beta publicada tem instalador somente para Windows. Os pacotes candidatos
-stdio para macOS e Linux ainda não foram publicados nem validados por uma
-instalação limpa. O par app/plugin da beta.1 para Windows é incompatível com o
-plugin 0.1.1. Use estas etapas somente com uma futura combinação candidata em
+A beta.1 antiga tem instalador somente para Windows. A publicação da beta.2
+exige também smokes automatizados de instalação dos pacotes macOS e Linux. O par app/plugin da beta.1 para Windows é incompatível com o
+plugin 0.1.1. Use estas etapas somente com uma combinação beta.2 em
 que app, helper, plugin, checksums e `source_sha` de `BUILD-METADATA.txt`
 correspondam. Siga a política da sua organização para software sem assinatura;
 não desative o Gatekeeper nem outros controles de segurança.

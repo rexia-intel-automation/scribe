@@ -1,6 +1,10 @@
 # Installation
 
-## Published beta.1: Windows evaluation only
+## Beta.2 paired stdio package
+
+Use app/helper `0.1.0-beta.2` with plugin `0.1.1`. Obtain matching files and checksums from the [beta.2 release page](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2) and follow its README. If unavailable, publication has not completed. Publishing requires main CI and installation smokes for NSIS, MSI, DMG, DEB and AppImage. These automated checks do not constitute human acceptance.
+
+## Legacy beta.1: archived Windows pairing
 
 `v0.1.0-beta.1` is an unsigned Windows prerelease for IT evaluation, not an accepted final release. It pairs the app and native helper with plugin `0.1.0`, which uses the local HTTP connection. The current marketplace branch is plugin `0.1.1` over stdio and is incompatible with beta.1. The beta.1 app reports `0.1.0`; the new candidate uses `0.1.0-beta.2` and includes its source revision.
 
@@ -31,9 +35,9 @@ powershell.exe -NoProfile -File .\configure-claude-plugin.ps1
 
 PowerShell 7 uses `pwsh -NoProfile -File .\configure-claude-plugin.ps1`. Close Claude Code and start a fresh interactive session after setup. The script withholds Claude CLI output; if it fails, record the stage and exit code without sharing tokens or private profile contents.
 
-## Stdio migration candidate: not published
+## Stdio migration and compatibility
 
-The app/helper/plugin stdio candidate is still under preparation and review. It is not an installable release or an acceptance result. Do not download or configure a candidate from the repository branch.
+Use a verified beta.2 package, not binaries from the repository branch. Human acceptance of native questions and plan approval remains pending.
 
 When a paired package is published, it will include the README, setup script, IT test checklist, Windows setup, native helper, plugin `0.1.1`, `SHA256SUMS.txt`, and `BUILD-METADATA.txt` with `source_sha`. Verify hashes and the recorded source SHA together: the candidate version is `0.1.0-beta.2`; match its source revision as well. The candidate script requires an updated native Claude Code CLI, updates the existing marketplace/plugin, and verifies that plugin `0.1.1` is enabled in user scope, including its folder version when reported, before configuration. The commands were checked in CLI `2.1.294` help; the real installation test remains pending.
 
@@ -41,10 +45,10 @@ Launch the paired app once so it creates its connection file before configuratio
 
 ## Other operating systems
 
-The published beta installer targets Windows only. The stdio candidate packages
-for macOS and Linux have not been published or validated by a clean installation.
+Legacy beta.1 targets Windows only. Beta.2 publication requires automated
+installation smokes for the macOS and Linux packages as well.
 The Windows beta.1 app/plugin pair is incompatible with plugin 0.1.1. Use these
-steps only with a future paired candidate whose app, helper, plugin, checksums,
+steps only with a paired beta.2 package whose app, helper, plugin, checksums,
 and `BUILD-METADATA.txt` `source_sha` match. Follow your organization's policy
 for unsigned software; do not disable Gatekeeper or other security controls.
 

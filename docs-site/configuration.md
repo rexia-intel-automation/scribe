@@ -6,7 +6,7 @@ The Windows `v0.1.0-beta.1` app uses plugin `0.1.0` and its local HTTP connectio
 
 ## Stdio candidate
 
-The candidate app/helper `0.1.0-beta.2` and plugin `0.1.1` stdio combination is not published or accepted yet. Its setup instructions will require checksums, the `BUILD-METADATA.txt` source SHA and an updated native Claude Code CLI. The candidate script updates the marketplace/plugin and verifies that plugin `0.1.1` is enabled in user scope, including its folder version when reported, before configuration. Do not use these instructions with beta.1.
+The experimental app/helper `0.1.0-beta.2` pairs with plugin `0.1.1` over stdio. Check the beta.2 release page for package availability; human acceptance remains pending. Its setup instructions will require checksums, the `BUILD-METADATA.txt` source SHA and an updated native Claude Code CLI. The candidate script updates the marketplace/plugin and verifies that plugin `0.1.1` is enabled in user scope, including its folder version when reported, before configuration. Do not use these instructions with beta.1.
 
 Launch the paired app once to create its connection file before configuring the stdio plugin; the app may close during configuration. With the app closed, `/mcp` should still show a connected server. A tool call that needs the app reports it unavailable; reopen the app and repeat the call in the same Claude Code session. These are expected test results, with human acceptance still pending.
 

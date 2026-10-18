@@ -4,10 +4,11 @@ Local desktop companion for Claude Code sessions and human decisions.
 
 [Português brasileiro](README.pt-BR.md)
 
-**Release status:** `v0.1.0-beta.1` is the last published Windows beta. The
-current MCP stdio candidate is still under validation; it has not been published
-or accepted as a release. Interactive native questions and plan approval still
-need a fresh Claude Code session test. See
+**Release status:** this source targets experimental `v0.1.0-beta.2` for IT
+evaluation. Check its [release page](https://github.com/rexia-intel-automation/scribe/releases/tag/v0.1.0-beta.2)
+for verified downloads; if the page is unavailable, publication has not completed.
+Interactive native questions and plan approval still need a fresh Claude Code
+session test and human acceptance. See
 [decision verification](https://github.com/rexia-intel-automation/scribe/blob/main/docs/fase-4.md) for evidence and remaining limits.
 
 The candidate plugin is `0.1.1` and requires helper capability
@@ -44,8 +45,8 @@ Old backups and corporate Roaming server copies are not deleted by Scribe.
 
 ## Windows candidate test
 
-There is no published download for the MCP stdio candidate yet. When IT provides
-the candidate package, use its matching files together:
+Download the paired package only from the beta.2 release page, or obtain a
+verified candidate from IT. Use its matching files together:
 
 - `Scribe_0.1.0-beta.2_x64-setup.exe` (app and helper)
 - `configure-claude-plugin.ps1`
@@ -63,7 +64,8 @@ script must provide plugin `0.1.1`: the script reuses an existing
 repository's default branch. The candidate script refreshes an existing
 marketplace, updates the plugin and verifies that plugin `0.1.1` is enabled for
 the user before configuring it. An outdated or mismatched plugin causes setup
-to fail. The candidate remains pending CI and an external interactive test.
+to fail. Publication requires successful CI and installation smokes. An external
+interactive test and human acceptance remain pending.
 
 Verify the downloaded installer and script against their entries in
 `SHA256SUMS.txt` before running them. In PowerShell:
