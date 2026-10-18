@@ -9,6 +9,9 @@
       "../../vendor/glib-0.18.5/COPYRIGHT": "licenses/glib-COPYRIGHT"
     },
     "windows": {
+      "wix": {
+        "version": "0.1.0.2"
+      },
       "nsis": {
         "installMode": "currentUser"
       }
