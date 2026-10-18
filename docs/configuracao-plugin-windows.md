@@ -21,9 +21,9 @@ pacote MSIX do Codex, com o executável nativo `claude.exe` disponível no
   0.1.1 e execute novamente este script.
 - Confirme que `claude.exe` está no `PATH`.
 
-O número de pacote `0.1.0` sozinho não comprova compatibilidade: a beta.1 usa o
-mesmo número. Confira o commit `source_sha` dos artefatos e a capacidade exigida
-pelo script. A tag mínima compatível será registrada ao publicar a release.
+Este candidato exige app/helper `0.1.0-beta.2` e plugin `0.1.1`.
+Confira também o commit `source_sha` dos artefatos e a capacidade exigida pelo
+script. A beta.1 pública usa o protocolo antigo e não forma um par compatível.
 
 Na raiz do checkout, execute:
 

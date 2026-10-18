@@ -12,8 +12,7 @@ teste em uma sessão interativa nova do Claude Code. Veja
 
 O plugin candidato é `0.1.1` e exige a capacidade `attested-stdio-v1` no helper.
 O plugin publicado na beta.1 usa HTTP/Bearer e é incompatível. O app/helper
-candidato ainda informa versão de pacote `0.1.0`, também usada na beta.1; o
-número sozinho não identifica uma versão compatível. Mantenha app, helper,
+candidato informa versão de pacote `0.1.0-beta.2`. Mantenha app, helper,
 script de configuração, fonte do plugin e checksums do mesmo pacote/revisão
 candidata; anote o `source_sha` de `BUILD-METADATA.txt`. O script verifica a
 capacidade do helper, mas isso não confirma que o app desktop está em execução
@@ -50,7 +49,7 @@ empresa não são apagadas pelo Scribe.
 O candidato MCP stdio ainda não tem download publicado. Quando a TI fornecer o
 pacote candidato, use estes arquivos correspondentes:
 
-- `Scribe_0.1.0_x64-setup.exe` (app e helper)
+- `Scribe_0.1.0-beta.2_x64-setup.exe` (app e helper)
 - `configure-claude-plugin.ps1`
 - `SHA256SUMS.txt` e `BUILD-METADATA.txt`
 - `teste-equipe-ti.md` (roteiro de testes)
@@ -118,8 +117,8 @@ O plugin MCP deixou de armazenar ou enviar o token Bearer da conexão pelo
 plugin deixa de ser usado por este candidato; o arquivo de conexão continua
 privado ao Scribe. O script usa a CLI oficial e não edita nem limpa diretamente
 os arquivos de configuração do Claude Code. Atualize app/helper e plugin juntos; use `source_sha` e a
-capacidade verificada para identificar compatibilidade, pois a versão de pacote
-`0.1.0` do app/helper não distingue o candidato da beta.1.
+capacidade verificada para identificar a revisão compatível. Configurações →
+Sobre mostra a revisão do app; `--mcp-check` inclui `source_revision` no helper.
 
 O script não é assinado. `Restricted` bloqueia scripts; `RemoteSigned` pode
 bloquear este arquivo baixado. Só depois de aprovar o arquivo e seu SHA-256,
@@ -166,10 +165,10 @@ aprovado; este guia não contorna o Gatekeeper.
 Para um pacote Debian/Ubuntu, confira o checksum com
 `sha256sum -c SHA256SUMS.txt`, instale o `.deb` correspondente pelo processo
 aprovado de gerenciamento de pacotes e localize o helper instalado. Para o
-candidato 0.1.0 no Debian/Ubuntu:
+candidato 0.1.0-beta.2 no Debian/Ubuntu:
 
 ```sh
-sudo apt install ./Scribe_0.1.0_amd64.deb
+sudo apt install ./Scribe_0.1.0-beta.2_amd64.deb
 dpkg -L scribe | grep '/scribe-hook$'
 ```
 
@@ -237,7 +236,7 @@ com sucesso e informa a capacidade candidata:
 "$SCRIBE_HELPER" --mcp-check
 ```
 
-Continue somente se o JSON informar `name` `scribe-hook`, `version` `0.1.0` e
+Continue somente se o JSON informar `name` `scribe-hook`, `version` `0.1.0-beta.2` e
 `mcp_transport` `attested-stdio-v1`. Isso confere o build e a inicialização do
 helper; não prova que o app desktop esteja aberto nem valida uma chamada MCP
 real.

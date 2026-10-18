@@ -318,10 +318,10 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
-            let db = rusqlite::Connection::open(&path).unwrap();
-            let count = db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0));
-            drop(db);
-            if matches!(count, Ok(0)) {
+            // A SQLite polling reader can block the exclusive WAL-to-rollback
+            // cleanup we are observing. Inspect bytes without opening a second
+            // SQLite connection, then verify the row count after cleanup.
+            if !String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_IDLE_METADATA") {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -330,6 +330,13 @@ async fn idle_server_prunes_storage_without_hooks_or_ui_connections() {
     .await
     .unwrap();
     assert!(!String::from_utf8_lossy(&storage_bytes(&path)).contains("PUBLIC_IDLE_METADATA"));
+    let db = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    drop(db);
     assert!(core
         .snapshot(scribe_core::now_ms())
         .unwrap()

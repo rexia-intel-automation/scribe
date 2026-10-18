@@ -11,7 +11,7 @@ a identificação é `development`, e o artefato não passa no smoke de release.
 
 O smoke de instalação exige que app e helper informem o mesmo SHA registrado
 em `BUILD-METADATA.txt`. Isso detecta componentes trocados mesmo quando ambos
-informam `0.1.0`; não substitui checksums, assinatura ou aprovação independente.
+informam a mesma versão numérica; não substitui checksums, assinatura ou aprovação independente.
 
 ## Verificação da instalação antes da publicação
 

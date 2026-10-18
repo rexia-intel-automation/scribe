@@ -36,7 +36,8 @@ jobs:
       - run: cargo audit --file app/hook-client/Cargo.lock --deny warnings
       - run: cargo audit --file app/hook-protocol/Cargo.lock --deny warnings
       # GTK3 maintenance exception and source backport rationale: docs/dependencias-desktop.md.
-      - run: cargo audit --file app/src-tauri/Cargo.lock --deny warnings --ignore RUSTSEC-2024-0370 --ignore RUSTSEC-2024-0429
+      - name: Audit desktop vulnerabilities and scoped maintenance policy
+        run: node scripts/verification/audit-desktop-dependencies.mjs
   native-and-plugin:
     strategy:
       fail-fast: false

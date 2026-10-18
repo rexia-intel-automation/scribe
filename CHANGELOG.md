@@ -4,6 +4,9 @@ Todas as alterações relevantes serão registradas aqui. Versionamento SemVer.
 
 ## [Não lançado]
 
+Preparação do pacote `0.1.0-beta.2`, com plugin `0.1.1`. A versão pública
+continua beta.1 até a publicação de uma nova tag após revisão e verificações.
+
 ### Alterado
 
 - SQLite no Windows usa WAL/FULL nas gravações e muda para rollback journal

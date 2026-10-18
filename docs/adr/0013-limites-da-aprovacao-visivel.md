@@ -47,6 +47,9 @@ exibição e da persistência. Se isso altera a representação recebida, o cart
 não pode armar nem permitir a ação; negar e voltar ao terminal continuam
 disponíveis. O terminal apresenta a solicitação original. Isso vale também
 para caminhos dentro de comandos e de metadados com vários campos.
+Essa regra se refere ao alvo de permissões. O caminho informativo de um plano
+continua encurtado enquanto seu texto integral validado permanece visível;
+a aprovação do plano mantém seus dois gestos e o eco original em memória.
 
 O encurtamento não é uma autorização implícita de um caminho semelhante.
 Pedidos relativos inteiramente visíveis continuam sujeitos às mesmas regras.

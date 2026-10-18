@@ -37,6 +37,8 @@ jobs:
         with:
           node-version: '24'
       - run: node --test scripts/verification/release.test.mjs scripts/verification/distribution.test.mjs
+      - name: Enforce temporary desktop maintenance policy expiry
+        run: node scripts/verification/audit-desktop-dependencies.mjs --check-expiry
       - name: Validate tag and package versions
         id: version
         shell: bash

@@ -26,9 +26,40 @@ vendor por `rg 'array_iter_str\('`. Os únicos resultados encontrados foram
 a definição, documentação e testes do próprio glib. Scribe não cria nem itera
 arrays Variant dessa API. No Windows estes crates GTK não entram no binário.
 
-O CI mantém `--deny warnings`; só estes dois IDs têm exceção na auditoria do
+O CI mantém `--deny warnings`; estes dois IDs têm exceção na auditoria do
 desktop, com esta justificativa pública. A auditoria do cliente de hooks não
 tem exceções. Novos avisos, vulnerabilidades e npm audit continuam bloqueando.
 Os relatórios completos preservam ambos os avisos. A revisão independente deve
 avaliar esta conclusão e o risco residual antes da catraca; atualizar os crates
 ou a estratégia de backend quando houver versão compatível corrigida.
+
+## Consolidação D-Bus — decisão temporária de 2026-10-17
+
+RustSec publicou em 17/10 os avisos de manutenção
+[RUSTSEC-2026-0370](https://rustsec.org/advisories/RUSTSEC-2026-0370.html),
+[0371](https://rustsec.org/advisories/RUSTSEC-2026-0371.html) e
+[0372](https://rustsec.org/advisories/RUSTSEC-2026-0372.html). Eles registram a
+incorporação de zvariant, zbus_names e zvariant_derive ao zbus 6, sem indicar
+uma vulnerabilidade corrigida nessas versões. Na verificação desta rodada,
+[Tauri v2](https://github.com/tauri-apps/plugins-workspace/blob/v2/Cargo.toml)
+ainda exige zbus 5.9 e
+[notify-rust](https://github.com/hoodie/notify-rust/blob/v4.18.2/Cargo.toml)
+exige zbus 5. Mudar somente o lockfile para 6 não satisfaz essas dependências.
+
+Na condução autônoma autorizada pelo Mohamad, a decisão é manter as APIs
+estáveis e aceitar temporariamente apenas esses avisos informativos para
+zvariant 5.15.0, zbus_names 4.3.4 e zvariant_derive 5.15.0. A política vence
+em **2026-11-01 00:00 UTC**, sem renovação automática, e precisa de revisão
+independente antes do merge. Não equivale a uma aprovação de segurança final.
+
+`audit-desktop-dependencies.mjs` executa cargo audit com `--deny warnings`,
+mantendo somente os dois ignores históricos acima. Ele verifica o relatório
+JSON e só aceita os três avisos se ID, pacote, versão e classificação
+`unmaintained` forem exatos, sem CVSS ou alias CVE. Vulnerabilidades, novos
+avisos, classificações diferentes, filtros adicionais, falhas da ferramenta
+e exceções vencidas bloqueiam. A release também confere o vencimento antes
+da validação da tag; um CI antigo não permite publicar depois dessa data.
+
+Próximo passo: migrar os consumidores para zbus 6 quando houver versões
+estáveis compatíveis, remover a política temporária e repetir a auditoria
+das três plataformas. Os avisos completos continuam nos logs da rodada.

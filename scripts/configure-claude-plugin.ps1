@@ -134,7 +134,7 @@ function Test-ScribeMcpHelper {
         $versionProperty = $capability.PSObject.Properties['version']
         $transportProperty = $capability.PSObject.Properties['mcp_transport']
         return ($null -ne $nameProperty -and $nameProperty.Value -ceq 'scribe-hook' -and
-            $null -ne $versionProperty -and $versionProperty.Value -ceq '0.1.0' -and
+            $null -ne $versionProperty -and $versionProperty.Value -ceq '0.1.0-beta.2' -and
             $null -ne $transportProperty -and $transportProperty.Value -ceq 'attested-stdio-v1')
     }
     catch {

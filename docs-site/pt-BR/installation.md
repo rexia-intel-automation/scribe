@@ -2,7 +2,7 @@
 
 ## Beta.1 publicada: avaliação somente no Windows
 
-`v0.1.0-beta.1` é um pré-lançamento sem assinatura para avaliação da TI, não uma versão final aceita. Ele combina o app e o helper nativo com o plugin `0.1.0`, que usa a conexão HTTP local. O branch atual do marketplace usa o plugin `0.1.1` por stdio e é incompatível com a beta.1. O app ainda informa a versão `0.1.0`, portanto esse número sozinho não identifica a combinação.
+`v0.1.0-beta.1` é um pré-lançamento sem assinatura para avaliação da TI, não uma versão final aceita. Ele combina o app e o helper nativo com o plugin `0.1.0`, que usa a conexão HTTP local. O branch atual do marketplace usa o plugin `0.1.1` por stdio e é incompatível com a beta.1. O app da beta.1 informa `0.1.0`; o novo candidato usa `0.1.0-beta.2` e identifica sua revisão de origem.
 
 A beta.1 não foi revalidada com o Claude Code `2.1.294` e não inclui as correções recentes de MCP. Fixar a fonte abaixo evita misturar versões do plugin; não comprova que as ferramentas MCP dessa beta funcionem no cliente atual. O novo pacote pareado continua em validação.
 
@@ -35,7 +35,7 @@ No PowerShell 7, use `pwsh -NoProfile -File .\configure-claude-plugin.ps1`. Apó
 
 A combinação candidata de app, helper e plugin por stdio ainda está em preparação e revisão. Ela não é uma release instalável nem um resultado de aceite. Não baixe nem configure um candidato diretamente do branch do repositório.
 
-Quando uma combinação for publicada, os arquivos incluirão README, script de configuração, roteiro de teste da TI, instalador Windows, helper nativo, plugin `0.1.1`, `SHA256SUMS.txt` e `BUILD-METADATA.txt` com `source_sha`. Confira os hashes e o SHA de origem registrados: o app continua na versão `0.1.0`, igual à beta.1, e esse número não diferencia os pacotes. O script candidato exige a CLI nativa do Claude Code atualizada, atualiza o marketplace/plugin existente e verifica o plugin `0.1.1` habilitado no escopo do usuário, incluindo a versão de pasta quando informada, antes de configurar. Os comandos foram conferidos na ajuda da CLI `2.1.294`; o ensaio real continua pendente.
+Quando uma combinação for publicada, os arquivos incluirão README, script de configuração, roteiro de teste da TI, instalador Windows, helper nativo, plugin `0.1.1`, `SHA256SUMS.txt` e `BUILD-METADATA.txt` com `source_sha`. Confira os hashes e o SHA de origem registrados: o candidato usa `0.1.0-beta.2`; confira também a revisão de origem. O script candidato exige a CLI nativa do Claude Code atualizada, atualiza o marketplace/plugin existente e verifica o plugin `0.1.1` habilitado no escopo do usuário, incluindo a versão de pasta quando informada, antes de configurar. Os comandos foram conferidos na ajuda da CLI `2.1.294`; o ensaio real continua pendente.
 
 Abra o app combinado uma vez para criar o arquivo de conexão antes da configuração; ele pode fechar durante o processo. Se uma chamada de ferramenta MCP informar que o Scribe está indisponível, reabra o app e tente novamente na mesma sessão do Claude Code. Esse caminho de recuperação não comprova aceite humano do candidato.
 
@@ -65,7 +65,7 @@ processo aprovado de gerenciamento de pacotes e localize o helper pela lista de
 arquivos do pacote, sem presumir seu caminho:
 
 ```sh
-sudo apt install ./Scribe_0.1.0_amd64.deb
+sudo apt install ./Scribe_0.1.0-beta.2_amd64.deb
 dpkg -L scribe | grep '/scribe-hook$'
 ```
 
@@ -138,7 +138,7 @@ exija que a verificação de capacidade do helper termine com sucesso:
 "$SCRIBE_HELPER" --mcp-check
 ```
 
-Continue somente se o JSON informar `name` `scribe-hook`, `version` `0.1.0` e
+Continue somente se o JSON informar `name` `scribe-hook`, `version` `0.1.0-beta.2` e
 `mcp_transport` `attested-stdio-v1`. Isso confirma que o build do helper inicia;
 não prova que o app desktop esteja aberto nem valida uma chamada MCP real.
 

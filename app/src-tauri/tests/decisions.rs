@@ -831,6 +831,18 @@ async fn private_path_prefixes_are_omitted_and_cannot_authorize_a_hidden_action(
     start(&core, "path-privacy");
     for (tool, fields) in [
         (
+            "Edit",
+            json!({"file_path":r"C:\Users\PUBLIC_PRIVATE_PARENT Person\project\file.rs", "old_string":"old", "new_string":"new"}),
+        ),
+        (
+            "Write",
+            json!({"file_path":"/home/PUBLIC_PRIVATE_PARENT Person/project/file name.rs", "content":"PUBLIC_FILE_CONTENT"}),
+        ),
+        (
+            "NotebookEdit",
+            json!({"notebook_path":r"C:\Users\PUBLIC_PRIVATE_PARENT Person\project\file.ipynb", "new_source":"PUBLIC_FILE_CONTENT"}),
+        ),
+        (
             "Read",
             json!({"file_path":r"C:\Users\PUBLIC_PRIVATE_PARENT Person\project\file name.rs"}),
         ),

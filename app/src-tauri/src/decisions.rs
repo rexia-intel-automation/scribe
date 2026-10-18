@@ -297,10 +297,11 @@ impl Core {
         } else {
             target.unwrap_or_default().to_owned()
         };
-        let redacted = if hook
-            .tool_input
-            .as_object()
-            .is_some_and(|fields| fields.len() == 1)
+        let redacted = if !(complete
+            && hook
+                .tool_input
+                .as_object()
+                .is_some_and(|fields| fields.len() > 1))
             && target_field
                 .is_some_and(|(key, _)| matches!(key, "file_path" | "path" | "notebook_path"))
         {

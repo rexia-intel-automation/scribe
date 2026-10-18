@@ -34,7 +34,7 @@ public static class FakeScribeExecutable
             {
                 return 0;
             }
-            Console.WriteLine("{\"name\":\"scribe-hook\",\"version\":\"0.1.0\",\"mcp_transport\":\"attested-stdio-v1\"}");
+            Console.WriteLine("{\"name\":\"scribe-hook\",\"version\":\"0.1.0-beta.2\",\"mcp_transport\":\"attested-stdio-v1\"}");
             return 0;
         }
 
