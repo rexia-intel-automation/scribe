@@ -22,6 +22,8 @@ O ADR 0014 registra esta decisão e os limites da medição.
 
 ### Corrigido
 
+- Configuração no PowerShell 7 preserva uma lista com um único marketplace,
+  como a CLI nativa atual retorna, sem falhar antes de instalar o plugin.
 - O MSI usa a versão numérica interna `0.1.0.2`, aceita pelo WiX, mantendo
   `0.1.0-beta.2` no app, helper e nomes dos pacotes.
 - Alvos de permissões encurtam caminhos privados antes de exibir ou gravar.

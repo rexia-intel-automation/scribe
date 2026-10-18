@@ -219,7 +219,11 @@ try {
         throw 'Marketplace list failed.'
     }
 
-    $marketplaceOutput = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    # Preserve a one-entry JSON array in both PowerShell 5.1 and 7.
+    # Validate the standalone response before wrapping it to reject composite JSON.
+    $null = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $marketplaceResult.Output -ErrorAction Stop
+    $marketplaceEnvelope = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject ('{"response":' + $marketplaceResult.Output + '}') -ErrorAction Stop
+    $marketplaceOutput = $marketplaceEnvelope.PSObject.Properties['response'].Value
     if ($marketplaceOutput -is [array]) {
         $marketplaceEntries = $marketplaceOutput
     }
@@ -232,6 +236,7 @@ try {
     $existingMarketplace = @($marketplaceEntries | Where-Object { $_.name -eq 'rexia-scribe' }).Count -gt 0
     $marketplaceResult = $null
     $marketplaceOutput = $null
+    $marketplaceEnvelope = $null
     $marketplaceEntries = $null
 
     if ($existingMarketplace) {

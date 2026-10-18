@@ -42,6 +42,7 @@ public static class FakeScribeExecutable
         if (args.Length >= 4 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "list")
         {
             var mode = Environment.GetEnvironmentVariable("SCRIBE_TEST_MARKETPLACE_MODE");
+            if (mode == "single-array") { Console.WriteLine("[{\"name\":\"rexia-scribe\"}]"); return 0; }
             Console.WriteLine(mode == "missing"
                 ? "{\"marketplaces\":[{\"name\":\"synthetic-other\"}]}"
                 : "{\"marketplaces\":[{\"name\":\"rexia-scribe\"},{\"name\":\"synthetic-other\"}]}");
@@ -290,6 +291,20 @@ windowsTest('PowerShell 5.1 and 7 accept the marker, allow repeated setup, and p
         assert.equal((await realpath(payload.client_path)).toLowerCase(), expectedHelperPath.toLowerCase());
         assert.doesNotMatch(JSON.stringify(payload), /SYNTHETIC_BEARER|SYNTHETIC_INDEPENDENT_HOOK_KEY|token|hook_key|port/i);
       }
+    });
+  }
+});
+
+windowsTest('PowerShell 5.1 and 7 preserve a one-entry marketplace array from the real CLI', async t => {
+  for (const shell of ['5.1', '7']) {
+    await t.test(`PowerShell ${shell}`, async t2 => {
+      const fixture = await makeFixture(shell);
+      t2.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const result = runSetup(fixture, { SCRIBE_TEST_HELPER_MODE: 'valid', SCRIBE_TEST_MARKETPLACE_MODE: 'single-array' });
+      assert.equal(result.status, 0, diagnostic(result, fixture));
+      const calls = (await recordedCalls(fixture.logPath)).filter(call => call.kind === 'ARGS').map(call => call.value.split('\u001f'));
+      assert.deepEqual(calls[1].slice(0, 3), ['plugin', 'marketplace', 'update']);
+      assert.equal(calls.at(-1)[1], 'configure');
     });
   }
 });
